@@ -28,6 +28,7 @@
 #include <pvz2native/input/gamepad.h>
 #include <pvz2native/log.h>
 #include <pvz2native/save_dates.h>
+#include <pvz2native/steam_shortcut.h>
 
 /* Set once the window exists, so input mapping can use logical window coords. */
 static SDL_Window *g_window = NULL;
@@ -1866,6 +1867,7 @@ int main(int argc, char **argv) {
         SDL_Quit();
         return 1;
     }
+    pvz2_check_steam_shortcut_prompt();
     pvz2_fix_future_save_dates();
 
     /* PvZ2's .so only imports gl* symbols, never egl* -- on real Android the

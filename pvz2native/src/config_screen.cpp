@@ -21,6 +21,7 @@
 #include <pvz2native/host_assets.h>
 #include <pvz2native/host_paths.h>
 #include <pvz2native/input/gamepad.h>
+#include <pvz2native/steam_shortcut.h>
 
 #include <SDL.h>
 #include <glad/gl.h>
@@ -216,6 +217,7 @@ struct Strings {
 	const char *cloud_edit_hint;
 	const char *cloud_export_local;
 	const char *cloud_import_local;
+	const char *steam_add;
 };
 
 static const Strings kStringsEN = {
@@ -246,7 +248,8 @@ static const Strings kStringsEN = {
 	"Upload save to cloud", "Download save from cloud", "Auto-sync on exit",
 	"Restart game now to load save",
 	"Type with keyboard or press Ctrl+V to paste from clipboard",
-	"Export save to JSON", "Import save from JSON"
+	"Export save to JSON", "Import save from JSON",
+	"Add game to Steam"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -276,7 +279,8 @@ static const Strings kStringsES = {
 	"Subir partida a la nube", "Descargar partida de la nube", "Sincronizar al salir",
 	"Reiniciar juego ahora para cargar partida",
 	"Escribe con el teclado o pulsa Ctrl+V para pegar del portapapeles",
-	"Exportar partida a JSON", "Importar partida desde JSON"
+	"Exportar partida a JSON", "Importar partida desde JSON",
+	"Añadir juego a Steam"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -306,7 +310,8 @@ static const Strings kStringsFR = {
 	"Envoyer la sauvegarde dans le cloud", "Télécharger la sauvegarde du cloud", "Synchroniser en quittant",
 	"Redémarrer le jeu pour charger la sauvegarde",
 	"Tapez au clavier ou appuyez sur Ctrl+V pour coller",
-	"Exporter la sauvegarde en JSON", "Importer la sauvegarde depuis JSON"
+	"Exporter la sauvegarde en JSON", "Importer la sauvegarde depuis JSON",
+	"Ajouter le jeu à Steam"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -336,7 +341,8 @@ static const Strings kStringsDE = {
 	"Spielstand in die Cloud hochladen", "Spielstand aus der Cloud herunterladen", "Beim Beenden synchronisieren",
 	"Spiel neu starten, um Spielstand zu laden",
 	"Mit der Tastatur eingeben oder Strg+V zum Einfügen drücken",
-	"Spielstand als JSON exportieren", "Spielstand aus JSON importieren"
+	"Spielstand als JSON exportieren", "Spielstand aus JSON importieren",
+	"Spiel zu Steam hinzufügen"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -366,7 +372,8 @@ static const Strings kStringsPT = {
 	"Enviar jogo salvo para a nuvem", "Baixar jogo salvo da nuvem", "Sincronizar ao sair",
 	"Reiniciar o jogo agora para carregar",
 	"Digite com o teclado ou pressione Ctrl+V para colar",
-	"Exportar jogo salvo para JSON", "Importar jogo salvo de JSON"
+	"Exportar jogo salvo para JSON", "Importar jogo salvo de JSON",
+	"Adicionar jogo à Steam"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -396,7 +403,8 @@ static const Strings kStringsIT = {
 	"Carica salvataggio nel cloud", "Scarica salvataggio dal cloud", "Sincronizza all'uscita",
 	"Riavvia il gioco per caricare il salvataggio",
 	"Digita con la tastiera o premi Ctrl+V per incollare",
-	"Esporta salvataggio in JSON", "Importa salvataggio da JSON"
+	"Esporta salvataggio in JSON", "Importa salvataggio da JSON",
+	"Aggiungi gioco a Steam"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -2032,6 +2040,7 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->cloud_autosync, false, false, cc->auto_sync != 0, ""});
         items.push_back({str->cloud_export_local, true, false, false, ""});
         items.push_back({str->cloud_import_local, true, false, false, ""});
+        items.push_back({str->steam_add, true, false, false, ""});
 
         if (pvz2_cloud_writes_locked()) {
             items.push_back({str->cloud_restart_now, true, false, false, ""});
@@ -3245,6 +3254,7 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({false,false,false,cc->auto_sync!=0, 7,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 11,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 12,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({true, false,false,false, 13,0,0,0,0,nullptr,nullptr,nullptr});
 		if (pvz2_cloud_writes_locked()) {
 			ritems.push_back({true, false,false,false, 8,0,0,0,0,nullptr,nullptr,nullptr});
 		}
@@ -3647,6 +3657,9 @@ static void handle_event(const SDL_Event *e) {
 					} else if (act == 12) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_import_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+					} else if (act == 13) {
+						play_sound(g_snd_confirm);
+						pvz2_add_to_steam(g_cloud_status, sizeof(g_cloud_status));
 					} else if (act == 8) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_restart_game();

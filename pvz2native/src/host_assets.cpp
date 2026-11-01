@@ -140,6 +140,9 @@ const RcAsset kRcAssets[] = {
     {315, "achievements/achievement_the_shadow_family.bmp"},
     {316, "achievements/achievement_present_perfect.bmp"},
     {317, "config/achievement_unlock.wav"},
+    {350, "steam/Grid.png"},
+    {351, "steam/Hero.png"},
+    {352, "steam/Logo.png"},
 };
 
 }  // namespace
