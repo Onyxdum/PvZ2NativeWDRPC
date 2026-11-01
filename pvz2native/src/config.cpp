@@ -333,6 +333,12 @@ const Setting kSettings[] = {
     {"discord", "trace_file", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_trace_file),
      sizeof(g_config.discord_trace_file), "Where trace output goes. Relative to the .exe folder.",
      "presence_trace.txt", nullptr},
+    {"discord", "world_icons", nullptr, Kind::kBool, offsetof(pvz2_config_t, discord_world_icons), 0,
+     "Show world-specific icons in Discord Rich Presence per world.", "1", nullptr},
+    {"discord", "world_icon_url", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_world_icon_url),
+     sizeof(g_config.discord_world_icon_url),
+     "Base URL or 'asset' for world icon images in Discord Rich Presence.",
+     "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/", nullptr},
 };
 
 /* --- small helpers --------------------------------------------------------- */

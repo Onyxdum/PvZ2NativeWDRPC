@@ -184,6 +184,8 @@ typedef struct pvz2_config {
     int discord_trace;       /* dump every asset path / log line seen, to discord_trace_file */
     char discord_rules[512];
     char discord_trace_file[512];
+    int discord_world_icons;
+    char discord_world_icon_url[256];
 
     /* [paths] -- keys `so`, `obb` and `save`. Always concrete after load: a value
      * left unset in the .ini is filled with <exe_dir>/<default filename>

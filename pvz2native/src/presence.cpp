@@ -81,7 +81,15 @@ constexpr int kReconnectMs = 5000;
 struct Activity {
     std::string details;
     std::string state;
-    bool operator==(const Activity &o) const { return details == o.details && state == o.state; }
+    std::string large_image;
+    std::string large_text;
+    std::string small_image;
+    std::string small_text;
+    bool operator==(const Activity &o) const {
+        return details == o.details && state == o.state &&
+               large_image == o.large_image && large_text == o.large_text &&
+               small_image == o.small_image && small_text == o.small_text;
+    }
     bool operator!=(const Activity &o) const { return !(*this == o); }
 };
 
@@ -522,6 +530,8 @@ std::string g_image;
 std::string g_trace_path;
 std::string g_rules_path;
 bool g_trace = false;
+bool g_world_icons = true;
+std::string g_world_icon_url = "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/";
 
 std::mutex g_user_mu;
 std::string g_user_id;
@@ -570,7 +580,19 @@ std::string activity_json(const Activity *a, std::int64_t start, unsigned nonce)
         j += ",\"activity\":{\"details\":\"" + json_escape(clip(a->details, kFieldMax)) + "\"";
         if (!a->state.empty()) j += ",\"state\":\"" + json_escape(clip(a->state, kFieldMax)) + "\"";
         j += ",\"timestamps\":{\"start\":" + std::to_string((long long)start) + "}";
-        if (!g_image.empty()) {
+        if (!a->large_image.empty()) {
+            j += ",\"assets\":{\"large_image\":\"" + json_escape(a->large_image) + "\"";
+            if (!a->large_text.empty()) {
+                j += ",\"large_text\":\"" + json_escape(clip(a->large_text, kFieldMax)) + "\"";
+            }
+            if (!a->small_image.empty()) {
+                j += ",\"small_image\":\"" + json_escape(a->small_image) + "\"";
+                if (!a->small_text.empty()) {
+                    j += ",\"small_text\":\"" + json_escape(clip(a->small_text, kFieldMax)) + "\"";
+                }
+            }
+            j += "}";
+        } else if (!g_image.empty()) {
             j += ",\"assets\":{\"large_image\":\"" + json_escape(g_image) +
                  "\",\"large_text\":\"PvZ2Native\"}";
         }
@@ -578,6 +600,112 @@ std::string activity_json(const Activity *a, std::int64_t start, unsigned nonce)
     }
     j += "},\"nonce\":\"" + std::to_string(nonce) + "\"}";
     return j;
+}
+
+std::string get_icon_uri(const std::string &key) {
+    if (g_world_icon_url == "asset" || g_world_icon_url == "assets") {
+        return key;
+    }
+    std::string base = g_world_icon_url;
+    if (!base.empty() && base.back() != '/') base += '/';
+    return base + key + ".webp";
+}
+
+void resolve_activity_assets(Activity &act, const std::string &cur_level, const std::string &cur_world) {
+    const std::string default_pvz = get_icon_uri(!g_image.empty() ? g_image : "pvz2");
+    if (!g_world_icons) {
+        act.large_image = default_pvz;
+        act.large_text = "Plants vs. Zombies 2";
+        act.small_image.clear();
+        act.small_text.clear();
+        return;
+    }
+
+    std::string icon_key;
+    std::string world_name;
+
+    const std::string lvl_low = lower(cur_level);
+    const std::string wrd_low = lower(cur_world);
+    const std::string det_low = lower(act.details);
+    const std::string st_low = lower(act.state);
+
+    auto matches = [&](const char *s) -> bool {
+        return lvl_low.find(s) != std::string::npos ||
+               wrd_low.find(s) != std::string::npos ||
+               det_low.find(s) != std::string::npos ||
+               st_low.find(s) != std::string::npos;
+    };
+
+    if (matches("lostcity") || matches("ciudad perdida") || matches("lost city") ||
+        matches("citÃ© perdue") || matches("cite perdue") || matches("cittÃ  perduta") ||
+        matches("citta perduta") || matches("verlorene stadt") || matches("cidade perdida")) {
+        icon_key = "ciudad_perdida";
+        world_name = (g_lang == PresLang::ES) ? "Ciudad Perdida" : "Lost City";
+    } else if (matches("iceage") || matches("cuevas congeladas") || matches("frostbite caves") ||
+               matches("grottes glaciaires") || matches("frostbeulen") || matches("geladura") ||
+               matches("grotte congelate")) {
+        icon_key = "cuevas_congeladas";
+        world_name = (g_lang == PresLang::ES) ? "Cuevas Congeladas" : "Frostbite Caves";
+    } else if (matches("dark") || matches("edad oscura") || matches("dark ages") ||
+               matches("l'Ã¢ge des tÃ©nÃ¨bres") || matches("age des tenebres") || matches("mittelalter") ||
+               matches("idade das trevas") || matches("secoli bui")) {
+        icon_key = "edad_oscura";
+        world_name = (g_lang == PresLang::ES) ? "Edad Oscura" : "Dark Ages";
+    } else if (matches("future") || matches("futuro lejano") || matches("far future") ||
+               matches("futur Ã©loignÃ©") || matches("futur eloigne") || matches("ferne zukunft") ||
+               matches("futuro distante") || matches("futuro lontano")) {
+        icon_key = "futuro_lejano";
+        world_name = (g_lang == PresLang::ES) ? "Futuro Lejano" : "Far Future";
+    } else if (matches("dino") || matches("pantano") || matches("jurassic") ||
+               matches("jurassisches") || matches("pÃ¢ntano") || matches("giurassico")) {
+        icon_key = "pantano_jurasico";
+        world_name = (g_lang == PresLang::ES) ? "Pantano del JurÃ¡sico" : "Jurassic Marsh";
+    } else if (matches("beach") || matches("playa") || matches("big wave") ||
+               matches("dÃ©ferlantes") || matches("deferlantes") || matches("riesenwellen") ||
+               matches("boa onda") || matches("spiaggia")) {
+        icon_key = "playa_gran_ola";
+        world_name = (g_lang == PresLang::ES) ? "Playa de la Gran Ola" : "Big Wave Beach";
+    } else if (matches("modern") || matches("tiempos modernos") || matches("modern day") ||
+               matches("temps modernes") || matches("moderne") || matches("vida moderna") ||
+               matches("tempi moderni")) {
+        icon_key = "tiempos_modernos";
+        world_name = (g_lang == PresLang::ES) ? "Tiempos Modernos" : "Modern Day";
+    } else if (matches("eighties") || matches("vueltacasete") || matches("neon mixtape") ||
+               matches("fluotonik") || matches("neon-mixtape") || matches("idade da juba") ||
+               matches("discomix")) {
+        icon_key = "vueltacasete_neon";
+        world_name = (g_lang == PresLang::ES) ? "Vueltacasete de NeÃ³n" : "Neon Mixtape Tour";
+    } else if (lvl_low.rfind("lod_", 0) == 0 || matches("pinata") || matches("piÃ±ata")) {
+        icon_key = "fiesta_pinatas";
+        world_name = (g_lang == PresLang::ES) ? "Fiesta de PiÃ±atas" : "PiÃ±ata Party";
+    } else if (matches("egypt") || matches("egipto") || matches("Ã©gypte") ||
+               matches("pirate") || matches("pirata") ||
+               matches("cowboy") || matches("oeste") || matches("west") ||
+               matches("tutorial") || matches("intro") || matches("casa del jugador") ||
+               matches("player's house")) {
+        icon_key = "mundos_no_mencionados";
+        if (matches("egypt") || matches("egipto") || matches("Ã©gypte")) {
+            world_name = (g_lang == PresLang::ES) ? "Antiguo Egipto" : "Ancient Egypt";
+        } else if (matches("pirate") || matches("pirata")) {
+            world_name = (g_lang == PresLang::ES) ? "Mares Piratas" : "Pirate Seas";
+        } else if (matches("cowboy") || matches("oeste") || matches("west")) {
+            world_name = (g_lang == PresLang::ES) ? "Salvaje Oeste" : "Wild West";
+        } else {
+            world_name = (g_lang == PresLang::ES) ? "Mundo ClÃ¡sico" : "Classic World";
+        }
+    }
+
+    if (!icon_key.empty()) {
+        act.large_image = get_icon_uri(icon_key);
+        act.large_text = world_name;
+        act.small_image = default_pvz;
+        act.small_text = "Plants vs. Zombies 2";
+    } else {
+        act.large_image = default_pvz;
+        act.large_text = "Plants vs. Zombies 2";
+        act.small_image.clear();
+        act.small_text.clear();
+    }
 }
 
 /* Handshake; true once Discord answered READY. */
@@ -640,6 +768,7 @@ void worker() {
     int boss_phase = 0;
     bool level_won = false;
     std::string current_level;
+    std::string current_world;
     Activity sent;
     bool have_sent = false;
     unsigned nonce = 1;
@@ -722,16 +851,30 @@ void worker() {
                 level_won = false;
             }
 
-            if (ev.rfind("state:GameStateMgr State=GAME_WorldMap", 0) == 0 ||
-                ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0 ||
-                ev.rfind("state:UniverseMap", 0) == 0 ||
-                ev.rfind("state:WorldMap Current World=", 0) == 0) {
+            if (ev.rfind("state:WorldMap Current World=", 0) == 0) {
+                current_world = ev.substr(27);
                 is_paused = false;
                 is_chooser = false;
                 goals_count = 0;
                 boss_phase = 0;
                 level_won = false;
                 current_level.clear();
+            } else if (ev.rfind("state:GameStateMgr State=GAME_WorldMap", 0) == 0) {
+                is_paused = false;
+                is_chooser = false;
+                goals_count = 0;
+                boss_phase = 0;
+                level_won = false;
+                current_level.clear();
+            } else if (ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0 ||
+                       ev.rfind("state:UniverseMap", 0) == 0) {
+                is_paused = false;
+                is_chooser = false;
+                goals_count = 0;
+                boss_phase = 0;
+                level_won = false;
+                current_level.clear();
+                current_world.clear();
             }
 
             for (const Rule &r : rules) {
@@ -839,6 +982,8 @@ void worker() {
             }
         }
 
+        resolve_activity_assets(desired, current_level, current_world);
+
         if (ipc.is_open()) drain(ipc);
 
         if (!ipc.is_open()) {
@@ -895,6 +1040,10 @@ void pvz2_presence_start(void) {
     g_client_id = cfg->discord_client_id;
     g_image = cfg->discord_image;
     g_trace = cfg->discord_trace != 0;
+    g_world_icons = cfg->discord_world_icons != 0;
+    if (cfg->discord_world_icon_url[0] != '\0') {
+        g_world_icon_url = cfg->discord_world_icon_url;
+    }
 
     if (cfg->discord_rules[0] != '\0' &&
         std::strcmp(cfg->discord_rules, "presence_rules.txt") != 0) {
