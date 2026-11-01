@@ -8,6 +8,7 @@
  */
 
 #include <pvz2native/dependencies/libc_internal.h>
+#include <pvz2native/presence.h>
 
 #include <mutex>
 #include <string>
@@ -46,6 +47,10 @@ void guest_log(GuestCall &c, const char *prio, const std::string &tag, const std
     static std::mutex lock;
     static std::string last;
     static std::uint64_t repeat = 0;
+
+    /* Discord Rich Presence tap. Before the dedupe below on purpose: the rules
+     * file decides what matters, and a no-op when presence is off. */
+    if (pvz2_presence_enabled()) pvz2_presence_note("log", (tag + ": " + text).c_str());
 
     std::string line = std::string("[guest ") + prio + "] " + tag + ": " + text;
     std::lock_guard<std::mutex> lk(lock);

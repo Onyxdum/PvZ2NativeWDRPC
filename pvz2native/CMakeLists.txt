@@ -35,5 +35,13 @@ endif()
 # the link fails on every Dynarmic::A32::Jit symbol. A static x86_64 build runs
 # on any 64-bit Windows anyway, which is what -m32 would have been for.
 if (MINGW)
-    target_link_options(pvz2native PRIVATE -static)
+    target_link_options(pvz2native PRIVATE -static -mwindows)
 endif()
+
+add_custom_command(TARGET pvz2native POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_en.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_es.txt"
+        "$<TARGET_FILE_DIR:pvz2native>"
+)

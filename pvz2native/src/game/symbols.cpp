@@ -237,6 +237,9 @@ const GameSymbols kVersions[] = {
              * delivering; 1 is what sub_738F3C writes when a real server replies
              * "passed". */
             .purchase_receipt_verdict = 0x737ea4,
+            .zomboss_setup_stage       = 0xa56f60,
+            .zomboss_stage_init_call   = 0xa520d4,
+            .zomboss_stage_change_call = 0xa57444,
         },
         /* probe: the frame-gate field offsets are 9.6.1's; reading a 4.5.2 driver
          * at them printed plausible garbage, which is worse than printing

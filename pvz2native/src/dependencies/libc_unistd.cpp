@@ -13,6 +13,7 @@
 
 #include <pvz2native/dependencies/dependency.h>
 #include <pvz2native/dependencies/vfs.h>
+#include <pvz2native/presence.h>
 
 #include <cstdio>
 #include <cstring>
@@ -20,6 +21,7 @@
 #include <map>
 #include <mutex>
 #include <random>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -97,6 +99,11 @@ void fill_random(GuestCall &c, std::uint32_t dst, std::uint32_t count) {
     }
 }
 
+/* Host fds opened on the .obb, so reads of it can be reported to Discord Rich
+ * Presence (see vfs::note_obb_read). */
+std::mutex g_obb_fd_mu;
+std::set<int> g_obb_fds;
+
 void c_open(GuestCall &c) {
     std::string gpath = c.cstr(c.arg(0), 1024);
     if (is_random_device(gpath)) {
@@ -106,6 +113,7 @@ void c_open(GuestCall &c) {
         return;
     }
     std::string hpath = vfs::translate(c.rt, gpath);
+    if (pvz2_presence_enabled()) pvz2_presence_note("file", gpath.c_str());
 #if defined(_WIN32)
     int fd = _open(hpath.c_str(), vfs::translate_open_flags(c.arg(1)), 0666);
 #else
@@ -116,6 +124,10 @@ void c_open(GuestCall &c) {
         std::lock_guard<std::mutex> lk(c.rt->files_lock);
         token = c.rt->next_fd_token++;
         c.rt->host_fds[token] = fd;
+        if (vfs::is_obb_path(hpath)) {
+            std::lock_guard<std::mutex> ok(g_obb_fd_mu);
+            g_obb_fds.insert(fd);
+        }
     } else {
         c.set_errno(2 /* ENOENT */);
     }
@@ -128,6 +140,10 @@ void c_close(GuestCall &c) {
     if (c.arg(0) == kRandomFdToken) { c.set_result(0); return; }
     int fd = c.fd(c.arg(0));
     if (fd < 0) { c.set_result((std::uint32_t)-1); return; }
+    {
+        std::lock_guard<std::mutex> ok(g_obb_fd_mu);
+        g_obb_fds.erase(fd);
+    }
 #if defined(_WIN32)
     _close(fd);
 #else
@@ -154,6 +170,20 @@ void c_read(GuestCall &c) {
     int fd = c.fd(c.arg(0));
     int got = -1;
     if (fd >= 0 && c.in_bounds(dst, count)) {
+        if (pvz2_presence_enabled()) {
+            bool is_obb;
+            {
+                std::lock_guard<std::mutex> ok(g_obb_fd_mu);
+                is_obb = g_obb_fds.count(fd) != 0;
+            }
+            if (is_obb) {
+#if defined(_WIN32)
+                vfs::note_obb_read(c.rt, (long long)_lseeki64(fd, 0, SEEK_CUR));
+#else
+                vfs::note_obb_read(c.rt, (long long)lseek(fd, 0, SEEK_CUR));
+#endif
+            }
+        }
 #if defined(_WIN32)
         got = _read(fd, &c.img->mem[dst], count);
 #else

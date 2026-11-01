@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <map>
 #include <unordered_map>
+#include <vector>
 
 namespace pvz2native {
 
@@ -58,6 +60,17 @@ public:
      * or without the "ASSET:" prefix). Returns nullptr if absent. */
     const Entry *find(const std::string &guest_path) const;
 
+    /* Which RSG ("resource group") the absolute .obb offset `pos` falls inside,
+     * and its name as stored in the RSB (e.g. a world's background group), or
+     * nullptr. Used by Discord Rich Presence: the engine loads whole groups by
+     * reading the .obb directly, so the group being read says what the game is
+     * about to show. */
+    const std::string *group_at(uint64_t pos) const;
+
+    /* The file whose payload STARTS exactly at `pos`, as stored (upper-case,
+     * '\\' separators), or nullptr. */
+    const std::string *file_starting_at(uint64_t pos) const;
+
     /* The exact normalisation `find` applies, exposed for logging: strips
      * "ASSET:", uppercases, and converts '/' to '\\' to match how names are
      * stored in the RSB. Mirrors AndroidAssetUtils.GetAssetNameFromFileName
@@ -68,6 +81,14 @@ private:
     bool loaded_ = false;
     std::string obb_path_;
     std::unordered_map<std::string, Entry> entries_;
+
+    struct Group {
+        uint64_t offset;
+        uint32_t size;
+        std::string name;
+    };
+    std::vector<Group> groups_;                    /* sorted by offset */
+    std::map<uint64_t, std::string> by_offset_;    /* payload start -> file name */
 };
 
 }  // namespace pvz2native

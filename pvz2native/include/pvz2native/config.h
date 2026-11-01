@@ -174,6 +174,16 @@ typedef struct pvz2_config {
      * all -- actually do. Off makes every launch a clean first run. Default ON. */
     int persist_saves;
 
+    /* [discord] -- Rich Presence (see presence.h). Off unless enabled AND a
+     * client_id (the Application ID from discord.com/developers) is set. The
+     * two file names are relative to the executable's folder unless absolute. */
+    int discord_enabled;
+    char discord_client_id[32];
+    char discord_image[64];  /* large_image key uploaded under Rich Presence > Art Assets */
+    int discord_trace;       /* dump every asset path / log line seen, to discord_trace_file */
+    char discord_rules[512];
+    char discord_trace_file[512];
+
     /* [paths] -- keys `so`, `obb` and `save`. Always concrete after load: a value
      * left unset in the .ini is filled with <exe_dir>/<default filename>
      * (so/obb) or the executable's own folder (save_dir), and a relative one is

@@ -1,5 +1,6 @@
 /* Guest path translation -- see vfs.h for why this layer exists at all. */
 
+#include <pvz2native/presence.h>
 #include <pvz2native/dependencies/vfs.h>
 
 #include <pvz2native/config.h>
@@ -91,6 +92,49 @@ int translate_open_flags(std::uint32_t g) {
     if (g & 0x400) h |= O_APPEND;
 #endif
     return h;
+}
+
+bool is_obb_path(const std::string &host_path) {
+    auto norm = [](std::string s) {
+        for (char &c : s) {
+            if (c == '\\') c = '/';
+            c = (char)std::tolower((unsigned char)c);
+        }
+        return s;
+    };
+    const std::string h = norm(host_path);
+    if (h == norm(obb_host_path())) return true;
+    return h.size() > 4 && h.compare(h.size() - 4, 4, ".obb") == 0;
+}
+
+void note_obb_read(GuestRuntime *rt, long long pos) {
+    if (pos < 0 || !pvz2_presence_enabled()) return;
+    std::string group, file;
+    {
+        std::lock_guard<std::mutex> lk(rt->rsb_index_lock);
+        if (!rt->rsb_index_tried) {
+            rt->rsb_index_tried = true;
+            rt->rsb_index.load(obb_host_path());
+        }
+        if (const std::string *g = rt->rsb_index.group_at((std::uint64_t)pos)) group = *g;
+        if (const std::string *n = rt->rsb_index.file_starting_at((std::uint64_t)pos)) file = *n;
+    }
+    /* Per thread, so a loader thread re-reading inside one group reports it once,
+     * unless the read offset rewinds back to the start of the group on a later open. */
+    static thread_local std::string last_group, last_file;
+    static thread_local long long last_pos = -1;
+    const bool rewind = pos <= last_pos;
+    if (!group.empty()) {
+        if (group != last_group || rewind) {
+            last_group = group;
+            pvz2_presence_note("rsb", group.c_str());
+        }
+        last_pos = pos;
+    }
+    if (!file.empty() && (file != last_file || rewind)) {
+        last_file = file;
+        pvz2_presence_note("rsbfile", file.c_str());
+    }
 }
 
 }  // namespace vfs

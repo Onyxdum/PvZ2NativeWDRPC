@@ -10,6 +10,7 @@
 #include <pvz2native/host_time.h>
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/log.h>
+#include <pvz2native/presence.h>
 
 #include <atomic>
 #include <chrono>
@@ -228,6 +229,32 @@ bool accept_receipt_locally(pvz2_elf_image_t *img) {
     return false;
 }
 
+void zomboss_stage_hook(GuestCall &call) {
+    const std::uint32_t stage = call.arg(1);
+    if (pvz2_presence_enabled()) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "Board BossPhase=%u", stage + 1);
+        pvz2_presence_note("state", buf);
+    }
+    call.returns = false;
+    call.regs[15] = call.img->so_base + sym().patch.zomboss_setup_stage;
+}
+
+bool patch_call_site(pvz2_elf_image_t *img, std::uint32_t call_offset, std::uint32_t target_addr) {
+    if (!in_image(img, call_offset)) return false;
+    const std::uint32_t word = read_word(img, call_offset);
+    if ((word & kOpcodeMask) != kOpcodeBl) {
+        std::printf("pvz2: [patch] call site 0x%x is not a BL (found 0x%08x)\n", call_offset, word);
+        return false;
+    }
+    const std::uint32_t pc = img->so_base + call_offset;
+    const std::int32_t diff = (std::int32_t)target_addr - (std::int32_t)(pc + 8);
+    const std::uint32_t imm24 = ((std::uint32_t)(diff >> 2)) & 0x00FFFFFFu;
+    const std::uint32_t new_bl = 0xEB000000u | imm24;
+    write_word(img, call_offset, new_bl);
+    return true;
+}
+
 }  // namespace
 
 void game_apply_patches(pvz2_elf_image_t *img) {
@@ -300,6 +327,25 @@ void game_apply_patches(pvz2_elf_image_t *img) {
     if (accept_receipt_locally(img)) {
         pvz2_log("[patch] purchase receipts are accepted locally, exactly as a validation "
                  "server answering \"passed\"");
+    }
+}
+
+void game_apply_late_patches(pvz2_elf_image_t *img) {
+    if (img == nullptr) return;
+    if (sym().patch.zomboss_setup_stage == 0) return;
+
+    const std::uint32_t trampoline =
+        make_guest_callback("ZombieZombossMech.SetupStage", zomboss_stage_hook);
+    if (trampoline == 0) {
+        std::printf("pvz2: [patch] failed to allocate trampoline for ZombieZombossMech.SetupStage\n");
+        return;
+    }
+
+    if (sym().patch.zomboss_stage_init_call != 0) {
+        patch_call_site(img, sym().patch.zomboss_stage_init_call, trampoline);
+    }
+    if (sym().patch.zomboss_stage_change_call != 0) {
+        patch_call_site(img, sym().patch.zomboss_stage_change_call, trampoline);
     }
 }
 

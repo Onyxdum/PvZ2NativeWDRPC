@@ -4,10 +4,27 @@
 
 **Runs the real native library of *Plants vs. Zombies 2* for Android (`libPVZ2.so`, ARM32) on PC.** The only thing that is emulated is the **CPU**: PvZ2 exists only compiled for ARM (there is no x86/x64 build), so a JIT translates its ARM instructions to x86_64. Everything else — Android, JNI, libc, OpenGL ES, the filesystem — **is not emulated, it is reimplemented natively**, the same way **Wine** does with Windows.
 
-This repository is a customized branch of [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native) with PC-focused improvements (in-game settings, keyboard shortcuts, controller support, quit confirm, and more). Upstream source: https://github.com/OptiJuegos/PvZ2Native
+This repository is a fork of [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (originally based on [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)) with Discord Rich Presence and PC-focused improvements (in-game settings, keyboard shortcuts, controller support, quit confirm, and more).
 
 > [!WARNING]
 > Experimental project. **The game is not included**: you must supply your own `libPVZ2.so` and your own `.obb`, obtained legally from the Android release.
+
+---
+
+## Discord Rich Presence
+
+This fork adds support for Discord Rich Presence. It automatically switches between Spanish and English depending on the language you have configured in `presence_rules_es.txt` or `presence_rules_en.txt`.
+
+It shows which menu you are in (Almanac, Shop, Zen Garden, Travel Log) and when you start playing, the current world and day or night, along with modes like Vasebreaker, Piñata Party, Epic Quests, and Endless Zones. If the level has objectives or endangered plants it adds a star (`⭐`) depending on the number of objectives, in boss levels it shows the Zombot name along with the current phase, and it also detects when you are choosing seeds, paused, or collecting the level reward.
+
+It comes enabled by default in `config.ini`, so you only need to have Discord open:
+
+```ini
+[discord]
+enabled = 1
+client_id = 1560077802550853694
+image = pvz2
+```
 
 ---
 
@@ -260,6 +277,7 @@ Single source of truth for paths and debugging (legacy `PVZ2_*` environment vari
 | `[runtime]` | `allow_repeat_quests` | `1` (default): repeatable quests you already claimed count kills again instead of completing by themselves when they come up again (the save's completed-quests list is cleaned at launch); `0` = leave the save alone. |
 | `[shortcuts]` | `bind_*` | Keyboard → on-screen tap (also in settings UI). |
 | `[board]` / `[gamepad]` / `[gamepad_binds]` | … | Controller focus grid and binds (also in settings UI). |
+| `[discord]` | `enabled`, `client_id`, `image`, `rules` | Discord Rich Presence (enabled by default). |
 
 ---
 
@@ -294,6 +312,7 @@ The window cannot be resized with the mouse (that would stretch the picture); pi
 | Input (mouse / keyboard / controller) | 🟢 |
 | In-game settings / quit confirm | 🟢 |
 | Local achievements (list + toast) | 🟢 |
+| Discord Rich Presence (EN/ES, goal stars, boss phases, pause) | 🟢 |
 | Online services | 🔴 Not implemented (deliberately offline) |
 
 ---

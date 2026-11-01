@@ -17,6 +17,7 @@
 #include <pvz2native/gfx/gl_requirements.h>
 #include <pvz2native/gfx/video_mode.h>
 #include <pvz2native/input/input_queue.h>
+#include <pvz2native/presence.h>
 #include <pvz2native/pvz2_session.h>
 #include <pvz2native/surface.h>
 #include <pvz2native/config_screen.h>
@@ -916,6 +917,7 @@ static void release_host_assets(void) {
 #endif
 
 void pvz2_host_pre_sdl_quit(void) {
+    pvz2_presence_stop();
     config_screen_shutdown();
     release_host_assets();
 }
@@ -1981,6 +1983,9 @@ int main(int argc, char **argv) {
     paint_startup_frame(window, have_splash);
 
     pvz2_session_set_host_pump(host_pump);
+    /* Before the boot, so the resource paths it loads are already seen. No-op
+     * unless [discord] enabled = 1 with a client_id. */
+    pvz2_presence_start();
     /* The loading screen is repainted from inside the boot many times a second: without vsync those presents do not
      * wait for the display and the boot is not slowed down. Back on when the loading screen is gone. */
     if (have_splash) pvz2_frame_limit_vsync_suspend();
@@ -2084,6 +2089,7 @@ int main(int argc, char **argv) {
         }
         pvz2_session_end(session);
     }
+    pvz2_presence_stop();
 
     pvz2_gamepad_shutdown();
     achievements_shutdown();

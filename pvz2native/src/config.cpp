@@ -306,6 +306,29 @@ const Setting kSettings[] = {
      "Optional: triggers are treated as digital buttons internally; leave this\n"
      "commented unless you need to tune the axis-to-digital cutover.",
      nullptr, "0.50"},
+
+    {"discord", "enabled", nullptr, Kind::kBool, offsetof(pvz2_config_t, discord_enabled), 0,
+     "Discord Rich Presence. Needs client_id below, and the Discord app running.", "1", nullptr},
+    {"discord", "client_id", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_client_id),
+     sizeof(g_config.discord_client_id),
+     "Application ID from https://discord.com/developers/applications. The\n"
+     "application's NAME is what Discord shows as the game being played.",
+     "1560077802550853694", nullptr},
+    {"discord", "image", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_image),
+     sizeof(g_config.discord_image),
+     "Key of the large image, uploaded under Rich Presence > Art Assets.", "pvz2", nullptr},
+    {"discord", "rules", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_rules),
+     sizeof(g_config.discord_rules),
+     "File that maps what the game does to the text shown (created with examples\n"
+     "on first run). Relative to the .exe folder.",
+     "presence_rules.txt", nullptr},
+    {"discord", "trace", nullptr, Kind::kBool, offsetof(pvz2_config_t, discord_trace), 0,
+     "Write every resource path and log line the game produces to trace_file, in\n"
+     "order. Turn this on to find out what to put in the rules file.",
+     "0", nullptr},
+    {"discord", "trace_file", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_trace_file),
+     sizeof(g_config.discord_trace_file), "Where trace output goes. Relative to the .exe folder.",
+     "presence_trace.txt", nullptr},
 };
 
 /* --- small helpers --------------------------------------------------------- */
@@ -1233,11 +1256,22 @@ void apply_host_autodetect_defaults(void) {
 
 /* The defaults that cannot be literals in kSettings because they depend on where
  * the executable lives. Runs after parsing, so a value from the file wins. */
+bool file_exists_at(const std::string &p) {
+    if (std::FILE *f = std::fopen(p.c_str(), "rb")) {
+        std::fclose(f);
+        return true;
+    }
+    return false;
+}
+
 void finish_defaults(const char *base_dir) {
     const std::string base = base_with_sep(base_dir);
-    finish_path(g_config.so_path, sizeof(g_config.so_path), base_dir, base + kDefaultSoName);
-    finish_path(g_config.obb_path, sizeof(g_config.obb_path), base_dir, base + kDefaultObbName);
-    finish_path(g_config.save_dir, sizeof(g_config.save_dir), base_dir, base);
+    const std::string def_so = (!file_exists_at(base + kDefaultSoName) && file_exists_at(base + "lib/libPVZ2.so")) ? (base + "lib/libPVZ2.so") : (base + kDefaultSoName);
+    const std::string def_obb = (!file_exists_at(base + kDefaultObbName) && file_exists_at(base + "lib/main.147.com.ea.game.pvz2_row.obb")) ? (base + "lib/main.147.com.ea.game.pvz2_row.obb") : (base + kDefaultObbName);
+    const std::string def_save = (file_exists_at(base + "save/prefs.dat")) ? (base + "save") : base;
+    finish_path(g_config.so_path, sizeof(g_config.so_path), base_dir, def_so);
+    finish_path(g_config.obb_path, sizeof(g_config.obb_path), base_dir, def_obb);
+    finish_path(g_config.save_dir, sizeof(g_config.save_dir), base_dir, def_save);
     /* Optional path: an unset log_file stays empty rather than inventing a
      * default (that would create a log file the player never asked for). */
     if (g_config.log_file[0] != '\0' && !is_absolute(g_config.log_file))
