@@ -35,6 +35,14 @@ int pvz2_presence_enabled(void);
 /* Clears the activity, closes the connection and joins the worker. */
 void pvz2_presence_stop(void);
 
+/* Copies the authenticated Discord user ID and username (from Discord IPC READY)
+ * into the caller buffers. Returns 1 if a Discord user is connected, 0 otherwise. */
+int pvz2_presence_get_user(char *id_out, unsigned id_cap, char *name_out, unsigned name_cap);
+
+/* Attempts an immediate Discord IPC handshake if not already authenticated, and
+ * fills `id_out` / `name_out`. Returns 1 on success, 0 if Discord is not running. */
+int pvz2_presence_auth_now(char *id_out, unsigned id_cap, char *name_out, unsigned name_cap);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

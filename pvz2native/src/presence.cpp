@@ -35,6 +35,7 @@
  */
 
 #include <pvz2native/config.h>
+#include <pvz2native/host_paths.h>
 #include <pvz2native/presence.h>
 
 #include <SDL.h>
@@ -152,8 +153,15 @@ std::string expand(const std::string &tmpl, const std::smatch &m) {
     return o;
 }
 
-std::string base_dir() {
-    char *p = SDL_GetBasePath();
+std::string data_dir() {
+    char *p = pvz2_host_data_path();
+    std::string s = p ? p : "";
+    if (p) SDL_free(p);
+    return s;
+}
+
+std::string install_dir() {
+    char *p = pvz2_host_install_path();
     std::string s = p ? p : "";
     if (p) SDL_free(p);
     return s;
@@ -166,7 +174,18 @@ bool is_absolute(const std::string &p) {
 }
 
 std::string resolve(const std::string &p) {
-    return is_absolute(p) ? p : base_dir() + p;
+    if (is_absolute(p)) return p;
+    std::string d = data_dir() + p;
+    if (FILE *f = std::fopen(d.c_str(), "rb")) {
+        std::fclose(f);
+        return d;
+    }
+    std::string inst = install_dir() + p;
+    if (FILE *f = std::fopen(inst.c_str(), "rb")) {
+        std::fclose(f);
+        return inst;
+    }
+    return d;
 }
 
 const char *kRulesTemplate =
@@ -278,7 +297,13 @@ public:
         return false;
 #else
         std::vector<std::string> dirs;
-        for (const char *v : {"XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"})
+        if (const char *xdg = std::getenv("XDG_RUNTIME_DIR")) {
+            dirs.push_back(xdg);
+            dirs.push_back(std::string(xdg) + "/app/com.discordapp.Discord");
+            dirs.push_back(std::string(xdg) + "/app/dev.vencord.Vesktop");
+            dirs.push_back(std::string(xdg) + "/snap.discord");
+        }
+        for (const char *v : {"TMPDIR", "TMP", "TEMP"})
             if (const char *d = std::getenv(v)) dirs.push_back(d);
         dirs.push_back("/tmp");
         for (const std::string &d : dirs) {
@@ -353,7 +378,12 @@ private:
 #else
         const char *c = (const char *)p;
         while (n > 0) {
-            ssize_t w = ::send(fd_, c, n, 0);
+#ifdef MSG_NOSIGNAL
+            const int flags = MSG_NOSIGNAL;
+#else
+            const int flags = 0;
+#endif
+            ssize_t w = ::send(fd_, c, n, flags);
             if (w <= 0) {
                 close();
                 return false;
@@ -435,6 +465,39 @@ std::string g_trace_path;
 std::string g_rules_path;
 bool g_trace = false;
 
+std::mutex g_user_mu;
+std::string g_user_id;
+std::string g_username;
+
+/* Extracts a string field `"key":"value"` inside `json` starting at `from`. */
+std::string extract_json_str(const std::string &json, const char *key, std::size_t from = 0) {
+    std::string pat = std::string("\"") + key + "\":\"";
+    std::size_t p = json.find(pat, from);
+    if (p == std::string::npos) return {};
+    p += pat.size();
+    std::string out;
+    while (p < json.size() && json[p] != '"') {
+        if (json[p] == '\\' && p + 1 < json.size()) {
+            ++p;
+        }
+        out += json[p++];
+    }
+    return out;
+}
+
+void parse_ready_user(const std::string &payload) {
+    std::size_t u = payload.find("\"user\":");
+    if (u == std::string::npos) return;
+    std::string uid = extract_json_str(payload, "id", u);
+    std::string uname = extract_json_str(payload, "username", u);
+    std::string gname = extract_json_str(payload, "global_name", u);
+    if (!uid.empty()) {
+        std::lock_guard<std::mutex> lk(g_user_mu);
+        g_user_id = uid;
+        g_username = !uname.empty() ? uname : gname;
+    }
+}
+
 std::string pid_string() {
 #ifdef _WIN32
     return std::to_string((unsigned long)GetCurrentProcessId());
@@ -461,11 +524,14 @@ std::string activity_json(const Activity *a, std::int64_t start, unsigned nonce)
 
 /* Handshake; true once Discord answered READY. */
 bool handshake(Ipc &ipc) {
-    if (!ipc.send(0, "{\"v\":1,\"client_id\":\"" + json_escape(g_client_id) + "\"}")) return false;
+    const std::string cid = !g_client_id.empty() ? g_client_id : "1560077802550853694";
+    if (!ipc.send(0, "{\"v\":1,\"client_id\":\"" + json_escape(cid) + "\"}")) return false;
     std::uint32_t op = 0;
     std::string payload;
     if (!ipc.recv(op, payload, 3000)) return false;
-    return payload.find("\"READY\"") != std::string::npos;
+    if (payload.find("\"READY\"") == std::string::npos) return false;
+    parse_ready_user(payload);
+    return true;
 }
 
 /* Throws away whatever Discord has replied (acks, errors, PINGs) so the pipe
@@ -798,6 +864,30 @@ void pvz2_presence_stop(void) {
     g_stop = true;
     g_cv.notify_all();
     g_thread.join();
+}
+
+int pvz2_presence_get_user(char *id_out, unsigned id_cap, char *name_out, unsigned name_cap) {
+    using namespace pvz2native;
+    std::lock_guard<std::mutex> lk(g_user_mu);
+    if (g_user_id.empty()) {
+        if (id_out && id_cap > 0) id_out[0] = '\0';
+        if (name_out && name_cap > 0) name_out[0] = '\0';
+        return 0;
+    }
+    if (id_out && id_cap > 0) std::snprintf(id_out, id_cap, "%s", g_user_id.c_str());
+    if (name_out && name_cap > 0) std::snprintf(name_out, name_cap, "%s", g_username.c_str());
+    return 1;
+}
+
+int pvz2_presence_auth_now(char *id_out, unsigned id_cap, char *name_out, unsigned name_cap) {
+    using namespace pvz2native;
+    if (pvz2_presence_get_user(id_out, id_cap, name_out, name_cap)) return 1;
+    Ipc ipc;
+    if (ipc.connect()) {
+        handshake(ipc);
+        ipc.close();
+    }
+    return pvz2_presence_get_user(id_out, id_cap, name_out, name_cap);
 }
 
 }  // extern "C"

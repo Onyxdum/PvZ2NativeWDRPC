@@ -396,6 +396,7 @@ main() {
         info "Copying assets/ → ${ASSET_DIR}/assets/"
         rm -rf "${ASSET_DIR}/assets"
         cp -a "${PROJECT_ROOT}/assets" "${ASSET_DIR}/assets"
+        cp -a "${PROJECT_ROOT}"/pvz2native/presence_rules*.txt "${ASSET_DIR}/" 2>/dev/null || true
     else
         warn "assets/ not found at ${PROJECT_ROOT}/assets (splash/settings UI will be missing on Linux)"
     fi
