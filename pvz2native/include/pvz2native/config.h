@@ -262,6 +262,9 @@ int pvz2_config_update_gamepad_bind(const char *button, const char *bind_name);
 /* Sets [gamepad] enabled + port and persists to config.ini. Returns 1 on success. */
 int pvz2_config_update_gamepad_device(int enabled, int port);
 
+/* Sets [discord] enabled and persists to config.ini. Returns 1 on success. */
+int pvz2_config_update_discord_enabled(int enabled);
+
 /* Sets [video] display and persists to config.ini. `index` is clamped to
  * [0, SDL_GetNumVideoDisplays()) by the caller's own check (see
  * pvz2_effective_display); an out-of-range value here is still stored as-is so

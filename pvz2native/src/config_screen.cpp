@@ -22,6 +22,7 @@
 #include <pvz2native/host_paths.h>
 #include <pvz2native/input/gamepad.h>
 #include <pvz2native/steam_shortcut.h>
+#include <pvz2native/presence.h>
 
 #include <SDL.h>
 #include <glad/gl.h>
@@ -218,6 +219,7 @@ struct Strings {
 	const char *cloud_export_local;
 	const char *cloud_import_local;
 	const char *steam_add;
+	const char *cloud_discord_rpc;
 };
 
 static const Strings kStringsEN = {
@@ -249,7 +251,8 @@ static const Strings kStringsEN = {
 	"Restart game now to load save",
 	"Type with keyboard or press Ctrl+V to paste from clipboard",
 	"Export save to JSON", "Import save from JSON",
-	"Add game to Steam"
+	"Add game to Steam",
+	"Discord Rich Presence"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -280,7 +283,8 @@ static const Strings kStringsES = {
 	"Reiniciar juego ahora para cargar partida",
 	"Escribe con el teclado o pulsa Ctrl+V para pegar del portapapeles",
 	"Exportar partida a JSON", "Importar partida desde JSON",
-	"Añadir juego a Steam"
+	"Añadir juego a Steam",
+	"Discord Rich Presence"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -311,7 +315,8 @@ static const Strings kStringsFR = {
 	"Redémarrer le jeu pour charger la sauvegarde",
 	"Tapez au clavier ou appuyez sur Ctrl+V pour coller",
 	"Exporter la sauvegarde en JSON", "Importer la sauvegarde depuis JSON",
-	"Ajouter le jeu à Steam"
+	"Ajouter le jeu à Steam",
+	"Discord Rich Presence"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -342,7 +347,8 @@ static const Strings kStringsDE = {
 	"Spiel neu starten, um Spielstand zu laden",
 	"Mit der Tastatur eingeben oder Strg+V zum Einfügen drücken",
 	"Spielstand als JSON exportieren", "Spielstand aus JSON importieren",
-	"Spiel zu Steam hinzufügen"
+	"Spiel zu Steam hinzufügen",
+	"Discord Rich Presence"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -373,7 +379,8 @@ static const Strings kStringsPT = {
 	"Reiniciar o jogo agora para carregar",
 	"Digite com o teclado ou pressione Ctrl+V para colar",
 	"Exportar jogo salvo para JSON", "Importar jogo salvo de JSON",
-	"Adicionar jogo à Steam"
+	"Adicionar jogo à Steam",
+	"Discord Rich Presence"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -404,7 +411,8 @@ static const Strings kStringsIT = {
 	"Riavvia il gioco per caricare il salvataggio",
 	"Digita con la tastiera o premi Ctrl+V per incollare",
 	"Esporta salvataggio in JSON", "Importa salvataggio da JSON",
-	"Aggiungi gioco a Steam"
+	"Aggiungi gioco a Steam",
+	"Discord Rich Presence"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -2038,6 +2046,9 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->cloud_upload, true, false, false, ""});
         items.push_back({str->cloud_download, true, false, false, ""});
         items.push_back({str->cloud_autosync, false, false, cc->auto_sync != 0, ""});
+        const pvz2_config_t *cfg = pvz2_config();
+        const bool rpc_on = cfg && cfg->discord_enabled != 0;
+        items.push_back({str->cloud_discord_rpc, false, false, rpc_on, ""});
         items.push_back({str->cloud_export_local, true, false, false, ""});
         items.push_back({str->cloud_import_local, true, false, false, ""});
         items.push_back({str->steam_add, true, false, false, ""});
@@ -3252,6 +3263,9 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({true, false,false,false, 5,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 6,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({false,false,false,cc->auto_sync!=0, 7,0,0,0,0,nullptr,nullptr,nullptr});
+		const pvz2_config_t *cfg = pvz2_config();
+		const bool rpc_on = cfg && cfg->discord_enabled != 0;
+		ritems.push_back({false,false,false,rpc_on, 14,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 11,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 12,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 13,0,0,0,0,nullptr,nullptr,nullptr});
@@ -3789,6 +3803,10 @@ static void handle_event(const SDL_Event *e) {
 						Pvz2CloudConfig *cc = pvz2_cloud_config();
 						cc->auto_sync = !cc->auto_sync;
 						pvz2_cloud_save_config();
+					} else if (ritems[i].slider_id == 14) {
+						const pvz2_config_t *cfg = pvz2_config();
+						int cur = (cfg && cfg->discord_enabled) ? 1 : 0;
+						pvz2_presence_set_enabled(!cur);
 					}
 				} else if (g_screen == Screen::CloudProviderPick) {
 					if ((int)i >= 0 && (int)i < PVZ2_CLOUD_PROVIDER_COUNT) {

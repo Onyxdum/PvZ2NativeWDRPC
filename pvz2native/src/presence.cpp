@@ -939,6 +939,15 @@ void pvz2_presence_stop(void) {
     g_thread.join();
 }
 
+void pvz2_presence_set_enabled(int enable) {
+    pvz2_config_update_discord_enabled(enable);
+    if (enable) {
+        pvz2_presence_start();
+    } else {
+        pvz2_presence_stop();
+    }
+}
+
 int pvz2_presence_get_user(char *id_out, unsigned id_cap, char *name_out, unsigned name_cap) {
     using namespace pvz2native;
     std::lock_guard<std::mutex> lk(g_user_mu);
