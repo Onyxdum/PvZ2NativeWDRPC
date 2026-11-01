@@ -611,7 +611,7 @@ std::string get_icon_uri(const std::string &key) {
     return base + key + ".webp";
 }
 
-void resolve_activity_assets(Activity &act, const std::string &cur_level, const std::string &cur_world) {
+void resolve_activity_assets(Activity &act, const std::string &cur_level, const std::string &cur_world, bool level_won) {
     const std::string default_pvz = get_icon_uri(!g_image.empty() ? g_image : "pvz2");
     if (!g_world_icons) {
         act.large_image = default_pvz;
@@ -698,11 +698,44 @@ void resolve_activity_assets(Activity &act, const std::string &cur_level, const 
     if (!icon_key.empty()) {
         act.large_image = get_icon_uri(icon_key);
         act.large_text = world_name;
-        act.small_image.clear();
-        act.small_text.clear();
     } else {
         act.large_image = default_pvz;
         act.large_text = "Plants vs. Zombies 2";
+    }
+
+    /* Small badge icons for specific activities */
+    if (level_won || det_low.find("nivel completado") != std::string::npos ||
+        det_low.find("level completed") != std::string::npos ||
+        st_low.find("recompensa") != std::string::npos ||
+        st_low.find("reward") != std::string::npos) {
+        act.small_image = get_icon_uri("recompensa");
+        act.small_text = (g_lang == PresLang::ES) ? "Recompensa" : "Reward";
+    } else if (det_low.find("tronco") != std::string::npos ||
+               det_low.find("travel log") != std::string::npos ||
+               det_low.find("carnet de voyage") != std::string::npos ||
+               det_low.find("reiseklotz") != std::string::npos ||
+               det_low.find("diario di viaggio") != std::string::npos ||
+               det_low.find("diÃ¡rio de viagem") != std::string::npos ||
+               lvl_low.find("challenge_levels") != std::string::npos) {
+        act.small_image = get_icon_uri("tronco_viaje");
+        act.small_text = (g_lang == PresLang::ES) ? "Tronco de Viaje" : "Travel Log";
+    } else if (det_low.find("jardÃ­n zen") != std::string::npos ||
+               det_low.find("jardin zen") != std::string::npos ||
+               det_low.find("zen garden") != std::string::npos ||
+               det_low.find("zen-garten") != std::string::npos ||
+               st_low.find("cuidando las plantas") != std::string::npos) {
+        act.small_image = get_icon_uri("jardin_zen");
+        act.small_text = (g_lang == PresLang::ES) ? "JardÃ­n Zen" : "Zen Garden";
+    } else if (lvl_low.find("vasebreaker") != std::string::npos ||
+               det_low.find("rompejarrones") != std::string::npos ||
+               det_low.find("vasebreaker") != std::string::npos ||
+               det_low.find("vasenbrecher") != std::string::npos ||
+               det_low.find("casse-vase") != std::string::npos ||
+               det_low.find("spaccavasi") != std::string::npos ||
+               det_low.find("quebravaso") != std::string::npos) {
+        act.small_image = get_icon_uri("rompejarrones");
+        act.small_text = (g_lang == PresLang::ES) ? "Rompejarrones" : "Vasebreaker";
+    } else {
         act.small_image.clear();
         act.small_text.clear();
     }
@@ -982,7 +1015,7 @@ void worker() {
             }
         }
 
-        resolve_activity_assets(desired, current_level, current_world);
+        resolve_activity_assets(desired, current_level, current_world, level_won);
 
         if (ipc.is_open()) drain(ipc);
 
