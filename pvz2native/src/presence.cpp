@@ -698,8 +698,8 @@ void resolve_activity_assets(Activity &act, const std::string &cur_level, const 
     if (!icon_key.empty()) {
         act.large_image = get_icon_uri(icon_key);
         act.large_text = world_name;
-        act.small_image = default_pvz;
-        act.small_text = "Plants vs. Zombies 2";
+        act.small_image.clear();
+        act.small_text.clear();
     } else {
         act.large_image = default_pvz;
         act.large_text = "Plants vs. Zombies 2";
