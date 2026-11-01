@@ -531,7 +531,7 @@ std::string g_trace_path;
 std::string g_rules_path;
 bool g_trace = false;
 bool g_world_icons = true;
-std::string g_world_icon_url = "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/";
+std::string g_world_icon_url = "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/v2/";
 
 std::mutex g_user_mu;
 std::string g_user_id;
@@ -1042,7 +1042,11 @@ void pvz2_presence_start(void) {
     g_trace = cfg->discord_trace != 0;
     g_world_icons = cfg->discord_world_icons != 0;
     if (cfg->discord_world_icon_url[0] != '\0') {
-        g_world_icon_url = cfg->discord_world_icon_url;
+        std::string u = cfg->discord_world_icon_url;
+        if (u == "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/") {
+            u = "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/v2/";
+        }
+        g_world_icon_url = u;
     }
 
     if (cfg->discord_rules[0] != '\0' &&

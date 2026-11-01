@@ -338,7 +338,7 @@ const Setting kSettings[] = {
     {"discord", "world_icon_url", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_world_icon_url),
      sizeof(g_config.discord_world_icon_url),
      "Base URL or 'asset' for world icon images in Discord Rich Presence.",
-     "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/", nullptr},
+     "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/v2/", nullptr},
 };
 
 /* --- small helpers --------------------------------------------------------- */
