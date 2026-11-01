@@ -12,7 +12,7 @@ void pvz2_check_steam_shortcut_prompt(void);
 
 /* Manually add the current game executable to Steam library shortcuts.
  * Returns 1 on success, 0 on failure. If msg_out is non-null, writes status message. */
-int pvz2_add_to_steam(char *msg_out, int msg_cap);
+int pvz2_add_to_steam(char *msg_out, int msg_cap, const char *locale);
 
 #ifdef __cplusplus
 }

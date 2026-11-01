@@ -3673,7 +3673,7 @@ static void handle_event(const SDL_Event *e) {
 						pvz2_cloud_import_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
 					} else if (act == 13) {
 						play_sound(g_snd_confirm);
-						pvz2_add_to_steam(g_cloud_status, sizeof(g_cloud_status));
+						pvz2_add_to_steam(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
 					} else if (act == 8) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_restart_game();

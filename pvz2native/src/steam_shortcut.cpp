@@ -28,6 +28,12 @@ struct SteamStrings {
     const wchar_t *notice_success;
     const wchar_t *notice_already;
     const wchar_t *notice_no_steam;
+
+    const char *status_not_found;
+    const char *status_no_profiles;
+    const char *status_restart_steam;
+    const char *status_success;
+    const char *status_already;
 };
 
 const SteamStrings kStringsES = {
@@ -40,7 +46,13 @@ const SteamStrings kStringsES = {
     L"para que aparezca en tu biblioteca.",
     L"¡Plants vs. Zombies 2 ha sido añadido a tu biblioteca de Steam con éxito!",
     L"Plants vs. Zombies 2 ya está añadido en tu biblioteca de Steam.",
-    L"No se encontró una instalación de Steam en este equipo."
+    L"No se encontró una instalación de Steam en este equipo.",
+
+    "Steam no detectado en este sistema",
+    "No se encontraron perfiles de Steam",
+    "Añadido a Steam. Reinicia Steam para verlo.",
+    "Añadido a tu biblioteca de Steam con éxito.",
+    "Plants vs. Zombies 2 ya está en tu biblioteca de Steam."
 };
 
 const SteamStrings kStringsEN = {
@@ -52,7 +64,13 @@ const SteamStrings kStringsEN = {
     L"for the game to appear in your library.",
     L"Plants vs. Zombies 2 has been successfully added to your Steam library!",
     L"Plants vs. Zombies 2 is already in your Steam library.",
-    L"Steam installation was not found on this computer."
+    L"Steam installation was not found on this computer.",
+
+    "Steam was not found on this system",
+    "No Steam user profiles found",
+    "Added to Steam. Restart Steam to see it.",
+    "Successfully added to your Steam library.",
+    "Plants vs. Zombies 2 is already in your Steam library."
 };
 
 const SteamStrings kStringsFR = {
@@ -63,7 +81,13 @@ const SteamStrings kStringsFR = {
     L"Remarque : Comme Steam est ouvert, veuillez redémarrer Steam pour qu'il apparaisse dans votre bibliothèque.",
     L"Plants vs. Zombies 2 a été ajouté avec succès à votre bibliothèque Steam !",
     L"Plants vs. Zombies 2 est déjà présent dans votre bibliothèque Steam.",
-    L"Aucune installation de Steam n'a été trouvée sur cet ordinateur."
+    L"Aucune installation de Steam n'a été trouvée sur cet ordinateur.",
+
+    "Steam non détecté sur ce système",
+    "Aucun profil Steam trouvé",
+    "Ajouté à Steam. Redémarrez Steam pour le voir.",
+    "Ajouté avec succès à votre bibliothèque Steam.",
+    "Plants vs. Zombies 2 est déjà dans votre bibliothèque Steam."
 };
 
 const SteamStrings kStringsDE = {
@@ -74,7 +98,13 @@ const SteamStrings kStringsDE = {
     L"Hinweis: Da Steam gerade läuft, starte Steam bitte neu, damit das Spiel in deiner Bibliothek erscheint.",
     L"Plants vs. Zombies 2 wurde erfolgreich zu deiner Steam-Bibliothek hinzugefügt!",
     L"Plants vs. Zombies 2 ist bereits in deiner Steam-Bibliothek vorhanden.",
-    L"Steam-Installation wurde auf diesem Computer nicht gefunden."
+    L"Steam-Installation wurde auf diesem Computer nicht gefunden.",
+
+    "Steam wurde auf diesem System nicht gefunden",
+    "Keine Steam-Profile gefunden",
+    "Zu Steam hinzugefügt. Starte Steam neu, um es zu sehen.",
+    "Erfolgreich zu deiner Steam-Bibliothek hinzugefügt.",
+    "Plants vs. Zombies 2 ist bereits in deiner Steam-Bibliothek."
 };
 
 const SteamStrings kStringsPT = {
@@ -85,7 +115,13 @@ const SteamStrings kStringsPT = {
     L"Nota: Como a Steam está aberta, reinicie a Steam para que ele apareça na sua biblioteca.",
     L"Plants vs. Zombies 2 foi adicionado à sua biblioteca Steam com sucesso!",
     L"Plants vs. Zombies 2 já está na sua biblioteca Steam.",
-    L"A instalação da Steam não foi encontrada neste computador."
+    L"A instalação da Steam não foi encontrada neste computador.",
+
+    "Steam não detectada neste sistema",
+    "Nenhum perfil da Steam encontrado",
+    "Adicionado à Steam. Reinicie a Steam para ver.",
+    "Adicionado à sua biblioteca Steam com sucesso.",
+    "Plants vs. Zombies 2 já está na sua biblioteca Steam."
 };
 
 const SteamStrings kStringsIT = {
@@ -96,7 +132,13 @@ const SteamStrings kStringsIT = {
     L"Nota: Poiché Steam è aperto, riavvia Steam per visualizzarlo nella tua libreria.",
     L"Plants vs. Zombies 2 è stato aggiunto con successo alla tua libreria di Steam!",
     L"Plants vs. Zombies 2 è già presente nella tua libreria di Steam.",
-    L"Installazione di Steam non trovata su questo computer."
+    L"Installazione di Steam non trovata su questo computer.",
+
+    "Steam non rilevato su questo sistema",
+    "Nessun profilo Steam trovato",
+    "Aggiunto a Steam. Riavvia Steam per vederlo.",
+    "Aggiunto con successo alla tua libreria di Steam.",
+    "Plants vs. Zombies 2 è già presente nella tua libreria di Steam."
 };
 
 const SteamStrings &get_strings_for_locale(const char *loc) {
@@ -639,11 +681,17 @@ void install_steam_artwork(const std::string &user_dir, uint32_t unsigned_appid,
 
 } // namespace
 
-extern "C" int pvz2_add_to_steam(char *msg_out, int msg_cap) {
+extern "C" int pvz2_add_to_steam(char *msg_out, int msg_cap, const char *locale) {
+    if (!locale || !locale[0]) {
+        const pvz2_config_t *cfg = pvz2_config();
+        locale = (cfg && cfg->user_locale[0]) ? cfg->user_locale : "es_ES";
+    }
+    const SteamStrings &str = get_strings_for_locale(locale);
+
     std::string steam_dir = get_steam_install_dir();
     if (steam_dir.empty()) {
         if (msg_out && msg_cap > 0) {
-            std::snprintf(msg_out, msg_cap, "Steam no detectado en este sistema");
+            std::snprintf(msg_out, msg_cap, "%s", str.status_not_found);
         }
         return 0;
     }
@@ -651,7 +699,7 @@ extern "C" int pvz2_add_to_steam(char *msg_out, int msg_cap) {
     std::vector<std::string> user_dirs = get_steam_userdata_paths(steam_dir);
     if (user_dirs.empty()) {
         if (msg_out && msg_cap > 0) {
-            std::snprintf(msg_out, msg_cap, "No se encontraron perfiles de Steam");
+            std::snprintf(msg_out, msg_cap, "%s", str.status_no_profiles);
         }
         return 0;
     }
@@ -659,6 +707,7 @@ extern "C" int pvz2_add_to_steam(char *msg_out, int msg_cap) {
     std::string current_exe = get_current_exe_full_path();
     std::string current_dir = get_current_exe_dir(current_exe);
     int added_count = 0;
+    int already_count = 0;
 
     for (const auto &udir : user_dirs) {
         std::string config_dir = udir + "\\config";
@@ -688,6 +737,7 @@ extern "C" int pvz2_add_to_steam(char *msg_out, int msg_cap) {
         install_steam_artwork(udir, unsigned_appid, current_dir);
 
         if (check_if_already_in_vdf(shortcuts, current_exe)) {
+            already_count++;
             continue; // Already present in this profile
         }
 
@@ -738,13 +788,15 @@ extern "C" int pvz2_add_to_steam(char *msg_out, int msg_cap) {
     set_steam_asked_in_config();
 
     if (msg_out && msg_cap > 0) {
-        if (is_steam_process_running()) {
-            std::snprintf(msg_out, msg_cap, "Añadido a Steam. Reinicia Steam para verlo.");
+        if (added_count == 0 && already_count > 0) {
+            std::snprintf(msg_out, msg_cap, "%s", str.status_already);
+        } else if (is_steam_process_running()) {
+            std::snprintf(msg_out, msg_cap, "%s", str.status_restart_steam);
         } else {
-            std::snprintf(msg_out, msg_cap, "Añadido a tu biblioteca de Steam con éxito.");
+            std::snprintf(msg_out, msg_cap, "%s", str.status_success);
         }
     }
-    return (added_count > 0 || !user_dirs.empty()) ? 1 : 0;
+    return (added_count > 0 || already_count > 0) ? 1 : 0;
 }
 
 extern "C" void pvz2_check_steam_shortcut_prompt(void) {
@@ -801,7 +853,7 @@ extern "C" void pvz2_check_steam_shortcut_prompt(void) {
 
     if (btn == IDYES) {
         char status[256] = {0};
-        pvz2_add_to_steam(status, sizeof(status));
+        pvz2_add_to_steam(status, sizeof(status), locale);
 
         if (is_steam_process_running()) {
             MessageBoxW(NULL, str.notice_running, str.title,
