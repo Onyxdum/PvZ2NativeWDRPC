@@ -202,6 +202,10 @@ const Setting kSettings[] = {
      "Always decode ETC1 textures on the CPU. By default they go to the GPU as ETC2 (a\n"
      "superset) when the driver supports it, which is faster to load and uses less memory.",
      nullptr, "0"},
+    {"gl", "cloud_icon", nullptr, Kind::kBool, offsetof(pvz2_config_t, cloud_icon), 0,
+     "Show the cloud icon from newer PvZ2 versions on the main menu Cloud Save button\n"
+     "instead of the PopCap \"P\". 0 = keep the original \"P\".",
+     "1", nullptr},
 
     {"video", "mode", nullptr, Kind::kLower, offsetof(pvz2_config_t, video_mode),
      sizeof(g_config.video_mode),

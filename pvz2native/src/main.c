@@ -18,6 +18,7 @@
 #include <pvz2native/gfx/video_mode.h>
 #include <pvz2native/input/input_queue.h>
 #include <pvz2native/presence.h>
+#include <pvz2native/cloud_save.h>
 #include <pvz2native/pvz2_session.h>
 #include <pvz2native/surface.h>
 #include <pvz2native/config_screen.h>
@@ -917,6 +918,7 @@ static void release_host_assets(void) {
 #endif
 
 void pvz2_host_pre_sdl_quit(void) {
+    pvz2_cloud_on_quit();
     pvz2_presence_stop();
     config_screen_shutdown();
     release_host_assets();

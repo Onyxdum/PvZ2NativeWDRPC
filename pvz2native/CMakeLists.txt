@@ -16,6 +16,9 @@ else()
 endif()
 target_include_directories(pvz2native PUBLIC include/ ../stb/)
 target_link_libraries(pvz2native ${CMAKE_DL_LIBS} zlibstatic SDL2::SDL2 SDL2main glad dynarmic)
+if (WIN32)
+    target_link_libraries(pvz2native ws2_32 comdlg32)
+endif()
 include_directories(pvz2native PUBLIC include/)
 set_target_properties(pvz2native PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON OUTPUT_NAME pvz2)
 if (MSVC)
@@ -43,5 +46,9 @@ add_custom_command(TARGET pvz2native POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_en.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_es.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_fr.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_de.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_pt.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_it.txt"
         "$<TARGET_FILE_DIR:pvz2native>"
 )

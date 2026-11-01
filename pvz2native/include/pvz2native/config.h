@@ -80,6 +80,7 @@ typedef struct pvz2_config {
     int gl_flat_fragment;   /* replace every fragment shader body with a constant colour */
     int gl_strict;          /* query GL state on every suspicious call */
     int gl_no_etc2;         /* always decode ETC1 on the CPU, never hand it to the GPU as ETC2 */
+    int cloud_icon;         /* draw the cloud icon instead of the PopCap "P" on the main menu */
 
     /* [game] -- what the engine is told about the "device".
      *

@@ -240,6 +240,8 @@ const GameSymbols kVersions[] = {
             .zomboss_setup_stage       = 0xa56f60,
             .zomboss_stage_init_call   = 0xa520d4,
             .zomboss_stage_change_call = 0xa57444,
+            .company_link_allowed_fn   = 0x3e9390,
+            .company_button_skip_branch = 0x451c80,
         },
         /* probe: the frame-gate field offsets are 9.6.1's; reading a 4.5.2 driver
          * at them printed plausible garbage, which is worse than printing

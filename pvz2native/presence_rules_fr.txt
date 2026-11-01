@@ -1,0 +1,190 @@
+; === 1. NIVEAUX (Nouveaux et sauvegardes via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Briseur de vase | Égypte antique - Niveau $1
+regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Briseur de vase | Mers pirates - Niveau $1
+regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Briseur de vase | Far West - Niveau $1
+regex:state:Board Level=vasebreaker_future(\d+)(?::\d+)?$ | Briseur de vase | Futur éloigné - Niveau $1
+regex:state:Board Level=vasebreaker_dark(\d+)(?::\d+)?$ | Briseur de vase | L'âge des ténèbres - Niveau $1
+regex:state:Board Level=vasebreaker_endless:(\d+)$ | Briseur de vase | Mode infini - Niveau $1
+regex:state:Board Level=vasebreaker_endless$ | Briseur de vase | Mode infini
+regex:state:Board Level=vasebreaker_tutorial(\d*)(?::\d+)?$ | Briseur de vase | Didacticiel $1
+regex:state:Board Level=vasebreaker_([^/\\]+)$ | Briseur de vase | Niveau $1
+
+regex:state:Board Level=egypt_dangerroom:(\d+)$ | Zone infinie | Pyramide de la mort - Niveau $1
+regex:state:Board Level=pirate_dangerroom:(\d+)$ | Zone infinie | Butin du capitaine - Niveau $1
+regex:state:Board Level=cowboy_dangerroom:(\d+)$ | Zone infinie | Colline terrible - Niveau $1
+regex:state:Board Level=future_dangerroom:(\d+)$ | Zone infinie | Terreur du futur - Niveau $1
+regex:state:Board Level=dark_dangerroom:(\d+)$ | Zone infinie | Défi d'Arthur - Niveau $1
+regex:state:Board Level=beach_dangerroom:(\d+)$ | Zone infinie | Le tiki pyromane - Niveau $1
+regex:state:Board Level=iceage_dangerroom:(\d+)$ | Zone infinie | Bataille glacée - Niveau $1
+regex:state:Board Level=lostcity_dangerroom:(\d+)$ | Zone infinie | Temple fleuri - Niveau $1
+regex:state:Board Level=eighties_dangerroom:(\d+)$ | Zone infinie | Meilleurs tubes - Niveau $1
+regex:state:Board Level=dino_dangerroom:(\d+)$ | Zone infinie | Puits de goudron de La Cervela - Niveau $1
+regex:state:Board Level=modern_dangerroom:(\d+)$ | Zone infinie | Autoroute des dangers - Niveau $1
+
+state:Board Level=egypt_dangerroom | Zone infinie | Pyramide de la mort (Égypte antique)
+state:Board Level=pirate_dangerroom | Zone infinie | Butin du capitaine (Mers pirates)
+state:Board Level=cowboy_dangerroom | Zone infinie | Colline terrible (Far West)
+state:Board Level=future_dangerroom | Zone infinie | Terreur du futur (Futur éloigné)
+state:Board Level=dark_dangerroom | Zone infinie | Défi d'Arthur (L'âge des ténèbres)
+state:Board Level=beach_dangerroom | Zone infinie | Le tiki pyromane (Plage des déferlantes)
+state:Board Level=iceage_dangerroom | Zone infinie | Bataille glacée (Grottes glaciaires)
+state:Board Level=lostcity_dangerroom | Zone infinie | Temple fleuri (Cité perdue)
+state:Board Level=eighties_dangerroom | Zone infinie | Meilleurs tubes (Tournée Fluotonik)
+state:Board Level=dino_dangerroom | Zone infinie | Puits de goudron de La Cervela (Jurassic Mare)
+state:Board Level=modern_dangerroom | Zone infinie | Autoroute des dangers (Temps modernes)
+
+; === 1.1 NIVEAUX DE BOSS (Dr Zomboss / Zombots) ===
+regex:state:Board Level=egypt25(?::\d+)?$ | Égypte antique | Sphinx-inateur zombot
+regex:state:Board Level=pirate25(?::\d+)?$ | Mers pirates | Bateau pirate zombot
+regex:state:Board Level=cowboy25(?::\d+)?$ | Far West | Wagonnet de guerre zombot
+regex:state:Board Level=future25(?::\d+)?$ | Futur éloigné | Futurotron zombot
+regex:state:Board Level=dark20(?::\d+)?$ | L'âge des ténèbres | Dragons des ténèbres zombot
+regex:state:Board Level=beach32(?::\d+)?$ | Plage des déferlantes | Sous-marin requintronique zombot
+regex:state:Board Level=iceage30(?::\d+)?$ | Grottes glaciaires | Zombot à défenses 10 000 av. J.-C.
+regex:state:Board Level=iceage32(?::\d+)?$ | Grottes glaciaires | Zombot à défenses 10 000 av. J.-C.
+regex:state:Board Level=lostcity32(?::\d+)?$ | Cité perdue | Gondole aérostatique zombot
+regex:state:Board Level=eighties32(?::\d+)?$ | Tournée Fluotonik | Mixeur multipiste zombot
+regex:state:Board Level=dino32(?::\d+)?$ | Jurassic Mare | Technodino Mécasaurus zombot
+
+; Temps modernes (Combats contre Dr Zomboss)
+regex:state:Board Level=modern_zomboss_01_egypt(?::\d+)?$ | Temps modernes | Sphinx-inateur zombot
+regex:state:Board Level=modern_zomboss_02_pirate(?::\d+)?$ | Temps modernes | Bateau pirate zombot
+regex:state:Board Level=modern_zomboss_03_cowboy(?::\d+)?$ | Temps modernes | Wagonnet de guerre zombot
+regex:state:Board Level=modern_zomboss_04_future(?::\d+)?$ | Temps modernes | Futurotron zombot
+regex:state:Board Level=modern_zomboss_05_dark(?::\d+)?$ | Temps modernes | Dragons des ténèbres zombot
+regex:state:Board Level=modern_zomboss_06_beach(?::\d+)?$ | Temps modernes | Sous-marin requintronique zombot
+regex:state:Board Level=modern_zomboss_07_iceage(?::\d+)?$ | Temps modernes | Zombot à défenses 10 000 av. J.-C.
+regex:state:Board Level=modern_zomboss_08_lostcity(?::\d+)?$ | Temps modernes | Gondole aérostatique zombot
+regex:state:Board Level=modern_zomboss_09_eighties(?::\d+)?$ | Temps modernes | Mixeur multipiste zombot
+regex:state:Board Level=modern_zomboss_10_dino(?::\d+)?$ | Temps modernes | Technodino Mécasaurus zombot
+regex:state:Board Level=modern32(?::\d+)?$ | Temps modernes | Dr Zomboss (Partie 1)
+regex:state:Board Level=modern33(?::\d+)?$ | Temps modernes | Dr Zomboss (Partie 2)
+regex:state:Board Level=modern34(?::\d+)?$ | Temps modernes | Dr Zomboss (Combat final)
+
+regex:state:Board Level=egypt(\d+)(?::\d+)?$ | Égypte antique | Jour $1
+regex:state:Board Level=pirate(\d+)(?::\d+)?$ | Mers pirates | Jour $1
+regex:state:Board Level=cowboy(\d+)(?::\d+)?$ | Far West | Jour $1
+regex:state:Board Level=future(\d+)(?::\d+)?$ | Futur éloigné | Jour $1
+regex:state:Board Level=dark(\d+)(?::\d+)?$ | L'âge des ténèbres | Nuit $1
+regex:state:Board Level=beach(\d+)(?::\d+)?$ | Plage des déferlantes | Jour $1
+regex:state:Board Level=iceage(\d+)(?::\d+)?$ | Grottes glaciaires | Jour $1
+regex:state:Board Level=lostcity(\d+)(?::\d+)?$ | Cité perdue | Jour $1
+regex:state:Board Level=eighties(\d+)(?::\d+)?$ | Tournée Fluotonik | Jour $1
+regex:state:Board Level=dino(\d+)(?::\d+)?$ | Jurassic Mare | Jour $1
+regex:state:Board Level=modern(\d+)(?::\d+)?$ | Temps modernes | Jour $1
+regex:state:Board Level=modern_zomboss_(\d+)(?::\d+)?$ | Temps modernes | Contre Dr Zomboss ($1)
+
+regex:state:Board Level=tutorial(\d+)(?::\d+)?$ | Maison du joueur | Didacticiel - Jour $1
+regex:state:Board Level=intro(\d+)(?::\d+)?$ | Maison du joueur | Introduction $1
+regex:state:Board Level=goldbloom(\d+)$ | Quête épique | Phosflorescent - Étape $1
+regex:state:Board Level=challenge_levels[/\\]egypt[/\\]cl_egypt(\d+)$ | Carnet de voyage | Égypte antique - Niveau $1
+regex:state:Board Level=challenge_levels[/\\]premiumquest_[^/\\]+_(\d+)$ | Quête épique | Plante premium - Étape $1
+regex:state:Board Level=challenge_levels[/\\].*$ | Carnet de voyage | En pleine quête
+regex:state:Board Level=lod_.*$ | Partie de piñata | En cours
+
+; === 2. SECOURS DEPUIS FICHIER DE SAUVEGARDE ===
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_egypt(\d+)/save_UIWidgets\.rton$ | Briseur de vase | Égypte antique - Niveau $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_pirate(\d+)/save_UIWidgets\.rton$ | Briseur de vase | Mers pirates - Niveau $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_cowboy(\d+)/save_UIWidgets\.rton$ | Briseur de vase | Far West - Niveau $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_future(\d+)/save_UIWidgets\.rton$ | Briseur de vase | Futur éloigné - Niveau $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_dark(\d+)/save_UIWidgets\.rton$ | Briseur de vase | L'âge des ténèbres - Niveau $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_endless/save_UIWidgets\.rton$ | Briseur de vase | Mode infini
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_([^/]+)/save_UIWidgets\.rton$ | Briseur de vase | Niveau $1
+
+regex:asset:.*/save/[^/]*?_\d{9,}_egypt_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Pyramide de la mort (Égypte antique)
+regex:asset:.*/save/[^/]*?_\d{9,}_pirate_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Butin du capitaine (Mers pirates)
+regex:asset:.*/save/[^/]*?_\d{9,}_cowboy_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Colline terrible (Far West)
+regex:asset:.*/save/[^/]*?_\d{9,}_future_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Terreur du futur (Futur éloigné)
+regex:asset:.*/save/[^/]*?_\d{9,}_dark_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Défi d'Arthur (L'âge des ténèbres)
+regex:asset:.*/save/[^/]*?_\d{9,}_beach_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Le tiki pyromane (Plage des déferlantes)
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Bataille glacée (Grottes glaciaires)
+regex:asset:.*/save/[^/]*?_\d{9,}_lostcity_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Temple fleuri (Cité perdue)
+regex:asset:.*/save/[^/]*?_\d{9,}_eighties_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Meilleurs tubes (Tournée Fluotonik)
+regex:asset:.*/save/[^/]*?_\d{9,}_dino_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Puits de goudron de La Cervela (Jurassic Mare)
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_dangerroom/save_UIWidgets\.rton$ | Zone infinie | Autoroute des dangers (Temps modernes)
+
+regex:asset:.*/save/[^/]*?_\d{9,}_egypt25/save_UIWidgets\.rton$ | Égypte antique | Sphinx-inateur zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_pirate25/save_UIWidgets\.rton$ | Mers pirates | Bateau pirate zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_cowboy25/save_UIWidgets\.rton$ | Far West | Wagonnet de guerre zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_future25/save_UIWidgets\.rton$ | Futur éloigné | Futurotron zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_dark20/save_UIWidgets\.rton$ | L'âge des ténèbres | Dragons des ténèbres zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_beach32/save_UIWidgets\.rton$ | Plage des déferlantes | Sous-marin requintronique zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage30/save_UIWidgets\.rton$ | Grottes glaciaires | Zombot à défenses 10 000 av. J.-C.
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage32/save_UIWidgets\.rton$ | Grottes glaciaires | Zombot à défenses 10 000 av. J.-C.
+regex:asset:.*/save/[^/]*?_\d{9,}_lostcity32/save_UIWidgets\.rton$ | Cité perdue | Gondole aérostatique zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_eighties32/save_UIWidgets\.rton$ | Tournée Fluotonik | Mixeur multipiste zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_dino32/save_UIWidgets\.rton$ | Jurassic Mare | Technodino Mécasaurus zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_01_egypt/save_UIWidgets\.rton$ | Temps modernes | Sphinx-inateur zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_02_pirate/save_UIWidgets\.rton$ | Temps modernes | Bateau pirate zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_03_cowboy/save_UIWidgets\.rton$ | Temps modernes | Wagonnet de guerre zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_04_future/save_UIWidgets\.rton$ | Temps modernes | Futurotron zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_05_dark/save_UIWidgets\.rton$ | Temps modernes | Dragons des ténèbres zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_06_beach/save_UIWidgets\.rton$ | Temps modernes | Sous-marin requintronique zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_07_iceage/save_UIWidgets\.rton$ | Temps modernes | Zombot à défenses 10 000 av. J.-C.
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_08_lostcity/save_UIWidgets\.rton$ | Temps modernes | Gondole aérostatique zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_09_eighties/save_UIWidgets\.rton$ | Temps modernes | Mixeur multipiste zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_10_dino/save_UIWidgets\.rton$ | Temps modernes | Technodino Mécasaurus zombot
+regex:asset:.*/save/[^/]*?_\d{9,}_modern32/save_UIWidgets\.rton$ | Temps modernes | Dr Zomboss (Partie 1)
+regex:asset:.*/save/[^/]*?_\d{9,}_modern33/save_UIWidgets\.rton$ | Temps modernes | Dr Zomboss (Partie 2)
+regex:asset:.*/save/[^/]*?_\d{9,}_modern34/save_UIWidgets\.rton$ | Temps modernes | Dr Zomboss (Combat final)
+
+regex:asset:.*/save/[^/]*?_\d{9,}_egypt(\d+)/save_UIWidgets\.rton$ | Égypte antique | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_pirate(\d+)/save_UIWidgets\.rton$ | Mers pirates | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_cowboy(\d+)/save_UIWidgets\.rton$ | Far West | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_future(\d+)/save_UIWidgets\.rton$ | Futur éloigné | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_dark(\d+)/save_UIWidgets\.rton$ | L'âge des ténèbres | Nuit $1
+regex:asset:.*/save/[^/]*?_\d{9,}_beach(\d+)/save_UIWidgets\.rton$ | Plage des déferlantes | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage(\d+)/save_UIWidgets\.rton$ | Grottes glaciaires | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_lostcity(\d+)/save_UIWidgets\.rton$ | Cité perdue | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_eighties(\d+)/save_UIWidgets\.rton$ | Tournée Fluotonik | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_dino(\d+)/save_UIWidgets\.rton$ | Jurassic Mare | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_modern(\d+)/save_UIWidgets\.rton$ | Temps modernes | Jour $1
+regex:asset:.*/save/[^/]*?_\d{9,}_lod_[^/]+/save_UIWidgets\.rton$ | Partie de piñata | En cours
+
+; === 3. FIN DE NIVEAU ===
+Play_WinMusic | Niveau terminé | Récupération de la récompense
+
+; === 4. ÉCRANS ET MENUS ===
+state:GameStateMgr State=GAME_Almanac | Dans l'Almanach | Consultation des plantes et zombies
+state:GameStateMgr State=GAME_Store | Dans la Boutique | Améliorations et plantes
+state:GameStateMgr State=GAME_ZenGarden | Jardin zen | Soin des plantes
+state:GameStateMgr State=GAME_ArcadeMenu | Briseur de vase | Choix du niveau
+state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Dans le menu principal
+
+rsb:ZenGardenGroup_ | Jardin zen | Soin des plantes
+rsb:DelayLoad_Background_Zen | Jardin zen | Soin des plantes
+temp:rsb:UI_Quests_ | Carnet de voyage | Consultation des quêtes
+temp:rsb:RoadSign_ | Carnet de voyage | Consultation des quêtes
+temp:rsb:UI_Almanac_ | Dans l'Almanach | Consultation des plantes et zombies
+rsb:UI_VaseBreakerMenu_ | Briseur de vase | Choix du niveau
+
+; === 5. CARTES DES MONDES ===
+state:UniverseMap Shown=true | Sur la carte | Choix du monde
+state:WorldMap Current World=egypt | Sur la carte | Égypte antique
+state:WorldMap Current World=pirate | Sur la carte | Mers pirates
+state:WorldMap Current World=cowboy | Sur la carte | Far West
+state:WorldMap Current World=future | Sur la carte | Futur éloigné
+state:WorldMap Current World=dark | Sur la carte | L'âge des ténèbres
+state:WorldMap Current World=beach | Sur la carte | Plage des déferlantes
+state:WorldMap Current World=iceage | Sur la carte | Grottes glaciaires
+state:WorldMap Current World=lostcity | Sur la carte | Cité perdue
+state:WorldMap Current World=eighties | Sur la carte | Tournée Fluotonik
+state:WorldMap Current World=dino | Sur la carte | Jurassic Mare
+state:WorldMap Current World=modern | Sur la carte | Temps modernes
+
+rsb:WorldMap_Egypt_ | Sur la carte | Égypte antique
+rsb:WorldMap_Pirate_ | Sur la carte | Mers pirates
+rsb:WorldMap_Cowboy_ | Sur la carte | Far West
+rsb:WorldMap_Future_ | Sur la carte | Futur éloigné
+rsb:WorldMap_Dark_ | Sur la carte | L'âge des ténèbres
+rsb:WorldMap_Beach_ | Sur la carte | Plage des déferlantes
+rsb:WorldMap_Iceage_ | Sur la carte | Grottes glaciaires
+rsb:WorldMap_Lostcity_ | Sur la carte | Cité perdue
+rsb:WorldMap_Eighties_ | Sur la carte | Tournée Fluotonik
+rsb:WorldMap_Dino_ | Sur la carte | Jurassic Mare
+rsb:WorldMap_Modern_ | Sur la carte | Temps modernes
+rsb:UI_World_Preview_ | Sur la carte | Exploration des mondes
+rsb:UI_Universe_ | Sur la carte | Choix du monde
+rsb:UI_MainMenu_ | Plants vs. Zombies 2 | Dans le menu principal
+
+default | Plants vs. Zombies 2 | Dans le menu principal

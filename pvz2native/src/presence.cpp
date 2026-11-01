@@ -197,11 +197,69 @@ const char *kRulesTemplate =
     "\n"
     "default | Plants vs. Zombies 2 | In Main Menu\n";
 
-bool g_is_spanish = false;
+enum class PresLang { EN, ES, FR, DE, PT, IT };
+PresLang g_lang = PresLang::EN;
+
+struct PresStrings {
+    const char *rules_file;
+    const char *main_menu;
+    const char *level_completed;
+    const char *collecting_reward;
+    const char *phase_word;
+    const char *choosing_seeds;
+    const char *paused;
+    const char *world_map;
+    const char *almanac;
+    const char *shop;
+    const char *zen_garden;
+    const char *travel_log;
+};
+
+static const PresStrings kPresEN = {
+    "presence_rules_en.txt", "In Main Menu", "Level Completed", "Collecting reward",
+    "Phase", "Choosing seeds", "Paused",
+    "On World Map", "In Almanac", "In Shop", "Zen Garden", "Travel Log"
+};
+static const PresStrings kPresES = {
+    "presence_rules_es.txt", "En el menú principal", "Nivel completado", "Recogiendo recompensa",
+    "Fase", "Eligiendo plantas", "En pausa",
+    "En el mapa", "En el Almanaque", "En la Tienda", "Jardín Zen", "Tronco de Viaje"
+};
+static const PresStrings kPresFR = {
+    "presence_rules_fr.txt", "Dans le menu principal", "Niveau terminé", "Récupération de la récompense",
+    "Phase", "Choix des plantes", "En pause",
+    "Sur la carte", "Dans l'Almanach", "Dans la Boutique", "Jardin zen", "Carnet de voyage"
+};
+static const PresStrings kPresDE = {
+    "presence_rules_de.txt", "Im Hauptmenü", "Level abgeschlossen", "Belohnung einsammeln",
+    "Phase", "Pflanzenauswahl", "Pausiert",
+    "Auf der Weltkarte", "Im Lexikon", "Im Laden", "Zen-Garten", "Reiseklotz"
+};
+static const PresStrings kPresPT = {
+    "presence_rules_pt.txt", "No menu principal", "Nível concluído", "Coletando recompensa",
+    "Fase", "Escolhendo plantas", "Em pausa",
+    "No mapa", "No Almanaque", "Na Loja", "Jardim Zen", "Diário de Viagem"
+};
+static const PresStrings kPresIT = {
+    "presence_rules_it.txt", "Nel menu principale", "Livello completato", "Riscossione ricompensa",
+    "Fase", "Scelta delle piante", "In pausa",
+    "Sulla mappa", "Nell'Almanacco", "Nel Negozio", "Giardino zen", "Diario di viaggio"
+};
+
+const PresStrings *pres_str() {
+    switch (g_lang) {
+        case PresLang::ES: return &kPresES;
+        case PresLang::FR: return &kPresFR;
+        case PresLang::DE: return &kPresDE;
+        case PresLang::PT: return &kPresPT;
+        case PresLang::IT: return &kPresIT;
+        default:           return &kPresEN;
+    }
+}
 
 std::vector<Rule> load_rules(const std::string &path, Activity &def) {
     std::vector<Rule> rules;
-    def = Activity{"Plants vs. Zombies 2", g_is_spanish ? "En el menú principal" : "In Main Menu"};
+    def = Activity{"Plants vs. Zombies 2", pres_str()->main_menu};
 
     FILE *f = std::fopen(path.c_str(), "rb");
     if (!f) {
@@ -705,54 +763,59 @@ void worker() {
             in_temp = false;
         }
 
+        const PresStrings *ps = pres_str();
         if (level_won) {
-            desired = Activity{g_is_spanish ? "Nivel completado" : "Level Completed",
-                               g_is_spanish ? "Recogiendo recompensa" : "Collecting reward"};
+            desired = Activity{ps->level_completed, ps->collecting_reward};
         } else if (!in_temp) {
             desired = persistent;
             const bool is_level_activity =
                 (persistent.details != def.details &&
-                 persistent.details != "En el mapa" &&
-                 persistent.details != "On World Map" &&
-                 persistent.details != "En el Almanaque" &&
-                 persistent.details != "In Almanac" &&
-                 persistent.details != "En la Tienda" &&
-                 persistent.details != "In Shop" &&
-                 persistent.details != "Jardín Zen" &&
-                 persistent.details != "Zen Garden" &&
-                 persistent.details != "Tronco de Viaje" &&
-                 persistent.details != "Travel Log" &&
+                 persistent.details != ps->world_map &&
+                 persistent.details != ps->almanac &&
+                 persistent.details != ps->shop &&
+                 persistent.details != ps->zen_garden &&
+                 persistent.details != ps->travel_log &&
                  persistent.details != "Plants vs. Zombies 2");
 
             if (is_level_activity) {
-                const bool is_boss = (desired.state.rfind("Zombot", 0) == 0 ||
-                                      desired.state.find("Dr. Zomboss") != std::string::npos ||
+                const std::string st_low = lower(desired.state);
+                const bool is_boss = (st_low.find("zombot") != std::string::npos ||
+                                      st_low.find("zomboss") != std::string::npos ||
+                                      desired.state.find("Zumbô") != std::string::npos ||
+                                      desired.state.find("Zumbão") != std::string::npos ||
                                       is_boss_level_id(current_level));
 
                 if (is_boss) {
                     const int max_phases = (current_level.find("eighties") != std::string::npos ||
                                             desired.state.find("Multiescenario") != std::string::npos ||
-                                            desired.state.find("Multi-stage") != std::string::npos)
+                                            desired.state.find("Multi-stage") != std::string::npos ||
+                                            desired.state.find("multipiste") != std::string::npos ||
+                                            desired.state.find("Rampensau") != std::string::npos ||
+                                            desired.state.find("Multimistureba") != std::string::npos ||
+                                            desired.state.find("Multifasico") != std::string::npos)
                                                ? 5
                                                : 3;
                     const int cur_phase = (boss_phase > 0) ? (boss_phase > max_phases ? max_phases : boss_phase) : 1;
                     std::string extra;
                     if (is_paused && is_chooser) {
-                        extra = g_is_spanish ? " - Eligiendo plantas - En pausa" : " - Choosing seeds - Paused";
+                        extra = std::string(" - ") + ps->choosing_seeds + " - " + ps->paused;
                     } else if (is_paused) {
-                        extra = g_is_spanish ? " - En pausa" : " - Paused";
+                        extra = std::string(" - ") + ps->paused;
                     } else if (is_chooser) {
-                        extra = g_is_spanish ? " - Eligiendo plantas" : " - Choosing seeds";
+                        extra = std::string(" - ") + ps->choosing_seeds;
                     }
-                    const std::string phase_str = g_is_spanish
-                                                      ? (" (Fase " + std::to_string(cur_phase) + "/" + std::to_string(max_phases) + extra + ")")
-                                                      : (" (Phase " + std::to_string(cur_phase) + "/" + std::to_string(max_phases) + extra + ")");
+                    const std::string phase_str = std::string(" (") + ps->phase_word + " " +
+                                                  std::to_string(cur_phase) + "/" +
+                                                  std::to_string(max_phases) + extra + ")";
                     desired.state += phase_str;
                 } else {
                     if (goals_count > 0 &&
                         (desired.state.rfind("Día ", 0) == 0 || desired.state.rfind("Dia ", 0) == 0 ||
-                         desired.state.rfind("Day ", 0) == 0 || desired.state.rfind("Noche ", 0) == 0 ||
-                         desired.state.rfind("Night ", 0) == 0)) {
+                         desired.state.rfind("Day ", 0) == 0 || desired.state.rfind("Jour ", 0) == 0 ||
+                         desired.state.rfind("Tag ", 0) == 0 || desired.state.rfind("Giorno ", 0) == 0 ||
+                         desired.state.rfind("Noche ", 0) == 0 || desired.state.rfind("Night ", 0) == 0 ||
+                         desired.state.rfind("Nuit ", 0) == 0 || desired.state.rfind("Nacht ", 0) == 0 ||
+                         desired.state.rfind("Noite ", 0) == 0 || desired.state.rfind("Notte ", 0) == 0)) {
                         std::string stars;
                         const int n = goals_count > 3 ? 3 : goals_count;
                         for (int i = 0; i < n; ++i) stars += "⭐";
@@ -761,15 +824,16 @@ void worker() {
 
                     if (is_paused && is_chooser) {
                         desired.state = desired.state.empty()
-                                            ? (g_is_spanish ? "Eligiendo plantas (En pausa)" : "Choosing seeds (Paused)")
-                                            : desired.state + (g_is_spanish ? " (Eligiendo plantas - En pausa)" : " (Choosing seeds - Paused)");
+                                            ? (std::string(ps->choosing_seeds) + " (" + ps->paused + ")")
+                                            : desired.state + " (" + ps->choosing_seeds + " - " + ps->paused + ")";
                     } else if (is_paused) {
-                        desired.state = desired.state.empty() ? (g_is_spanish ? "En pausa" : "Paused")
-                                                              : desired.state + (g_is_spanish ? " (En pausa)" : " (Paused)");
+                        desired.state = desired.state.empty()
+                                            ? std::string(ps->paused)
+                                            : desired.state + " (" + ps->paused + ")";
                     } else if (is_chooser) {
-                        desired.state =
-                            desired.state.empty() ? (g_is_spanish ? "Eligiendo plantas" : "Choosing seeds")
-                                                  : desired.state + (g_is_spanish ? " (Eligiendo plantas)" : " (Choosing seeds)");
+                        desired.state = desired.state.empty()
+                                            ? std::string(ps->choosing_seeds)
+                                            : desired.state + " (" + ps->choosing_seeds + ")";
                     }
                 }
             }
@@ -818,7 +882,16 @@ void pvz2_presence_start(void) {
     }
     if (g_thread.joinable()) return;
 
-    g_is_spanish = (cfg->user_locale[0] != '\0' && std::strncmp(cfg->user_locale, "es", 2) == 0);
+    if (cfg->user_locale[0] != '\0') {
+        if (std::strncmp(cfg->user_locale, "es", 2) == 0) g_lang = PresLang::ES;
+        else if (std::strncmp(cfg->user_locale, "fr", 2) == 0) g_lang = PresLang::FR;
+        else if (std::strncmp(cfg->user_locale, "de", 2) == 0) g_lang = PresLang::DE;
+        else if (std::strncmp(cfg->user_locale, "pt", 2) == 0) g_lang = PresLang::PT;
+        else if (std::strncmp(cfg->user_locale, "it", 2) == 0) g_lang = PresLang::IT;
+        else g_lang = PresLang::EN;
+    } else {
+        g_lang = PresLang::EN;
+    }
     g_client_id = cfg->discord_client_id;
     g_image = cfg->discord_image;
     g_trace = cfg->discord_trace != 0;
@@ -827,7 +900,7 @@ void pvz2_presence_start(void) {
         std::strcmp(cfg->discord_rules, "presence_rules.txt") != 0) {
         g_rules_path = resolve(cfg->discord_rules);
     } else {
-        const std::string pref = g_is_spanish ? "presence_rules_es.txt" : "presence_rules_en.txt";
+        const std::string pref = pres_str()->rules_file;
         const std::string rpref = resolve(pref);
         FILE *f = std::fopen(rpref.c_str(), "rb");
         if (f) {

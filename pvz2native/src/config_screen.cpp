@@ -15,6 +15,7 @@
 #include <pvz2native/config_screen.h>
 #include <pvz2native/config.h>
 #include <pvz2native/achievements.h>
+#include <pvz2native/cloud_save.h>
 #include <pvz2native/dex/config_store.h>
 #include <pvz2native/gfx/frame_limiter.h>
 #include <pvz2native/host_assets.h>
@@ -197,6 +198,24 @@ struct Strings {
 	const char *events_config;  /* "Events" row label / panel title */
 	const char *events_enable;  /* checkbox: read events from the (emulated) CDN */
 	const char *events_force_local; /* checkbox: re-copy the OBB event files at every launch */
+	const char *cloud_save;
+	const char *cloud_provider;
+	const char *cloud_prov_private;
+	const char *cloud_server_url_title;
+	const char *cloud_server_prefix;
+	const char *cloud_acc_discord;
+	const char *cloud_signin_discord;
+	const char *cloud_acc_google;
+	const char *cloud_signin_google;
+	const char *cloud_acc_github;
+	const char *cloud_signin_github;
+	const char *cloud_upload;
+	const char *cloud_download;
+	const char *cloud_autosync;
+	const char *cloud_restart_now;
+	const char *cloud_edit_hint;
+	const char *cloud_export_local;
+	const char *cloud_import_local;
 };
 
 static const Strings kStringsEN = {
@@ -219,7 +238,15 @@ static const Strings kStringsEN = {
 	"quit the game?",
 	"QUIT", "CANCEL",
 	"Display",
-	"Events", "Enable Events", "Force Local Events"
+	"Events", "Enable Events", "Force Local Events",
+	"Cloud Save", "Provider", "Private Server (HTTP)", "Server URL", "Server: ",
+	"Discord Account", "Sign in with Discord",
+	"Google Account", "Sign in with Google",
+	"GitHub Account", "Sign in with GitHub",
+	"Upload save to cloud", "Download save from cloud", "Auto-sync on exit",
+	"Restart game now to load save",
+	"Type with keyboard or press Ctrl+V to paste from clipboard",
+	"Export save to JSON", "Import save from JSON"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -241,7 +268,15 @@ static const Strings kStringsES = {
 	"salir del juego?",
 	"SALIR", "CANCELAR",
 	"Pantalla",
-	"Eventos", "Activar eventos", "Forzar eventos locales"
+	"Eventos", "Activar eventos", "Forzar eventos locales",
+	"Guardado en la Nube", "Proveedor", "Servidor Privado (HTTP)", "URL del Servidor", "Servidor: ",
+	"Cuenta Discord", "Iniciar sesión con Discord",
+	"Cuenta Google", "Iniciar sesión con Google",
+	"Cuenta GitHub", "Iniciar sesión con GitHub",
+	"Subir partida a la nube", "Descargar partida de la nube", "Sincronizar al salir",
+	"Reiniciar juego ahora para cargar partida",
+	"Escribe con el teclado o pulsa Ctrl+V para pegar del portapapeles",
+	"Exportar partida a JSON", "Importar partida desde JSON"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -263,7 +298,15 @@ static const Strings kStringsFR = {
 	"quitter le jeu ?",
 	"QUITTER", "ANNULER",
 	"Écran",
-	"Événements", "Activer les événements", "Forcer les événements locaux"
+	"Événements", "Activer les événements", "Forcer les événements locaux",
+	"Sauvegarde Cloud", "Fournisseur", "Serveur privé (HTTP)", "URL du serveur", "Serveur : ",
+	"Compte Discord", "Se connecter avec Discord",
+	"Compte Google", "Se connecter avec Google",
+	"Compte GitHub", "Se connecter avec GitHub",
+	"Envoyer la sauvegarde dans le cloud", "Télécharger la sauvegarde du cloud", "Synchroniser en quittant",
+	"Redémarrer le jeu pour charger la sauvegarde",
+	"Tapez au clavier ou appuyez sur Ctrl+V pour coller",
+	"Exporter la sauvegarde en JSON", "Importer la sauvegarde depuis JSON"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -285,7 +328,15 @@ static const Strings kStringsDE = {
 	"wirklich beenden?",
 	"BEENDEN", "ABBRECHEN",
 	"Bildschirm",
-	"Events", "Events aktivieren", "Lokale Events erzwingen"
+	"Events", "Events aktivieren", "Lokale Events erzwingen",
+	"Cloud-Speicher", "Anbieter", "Privater Server (HTTP)", "Server-URL", "Server: ",
+	"Discord-Konto", "Mit Discord anmelden",
+	"Google-Konto", "Mit Google anmelden",
+	"GitHub-Konto", "Mit GitHub anmelden",
+	"Spielstand in die Cloud hochladen", "Spielstand aus der Cloud herunterladen", "Beim Beenden synchronisieren",
+	"Spiel neu starten, um Spielstand zu laden",
+	"Mit der Tastatur eingeben oder Strg+V zum Einfügen drücken",
+	"Spielstand als JSON exportieren", "Spielstand aus JSON importieren"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -307,7 +358,15 @@ static const Strings kStringsPT = {
 	"sair do jogo?",
 	"SAIR", "CANCELAR",
 	"Tela",
-	"Eventos", "Ativar eventos", "Forçar eventos locais"
+	"Eventos", "Ativar eventos", "Forçar eventos locais",
+	"Salvamento na Nuvem", "Provedor", "Servidor Privado (HTTP)", "URL do Servidor", "Servidor: ",
+	"Conta Discord", "Entrar com o Discord",
+	"Conta Google", "Entrar com o Google",
+	"Conta GitHub", "Entrar com o GitHub",
+	"Enviar jogo salvo para a nuvem", "Baixar jogo salvo da nuvem", "Sincronizar ao sair",
+	"Reiniciar o jogo agora para carregar",
+	"Digite com o teclado ou pressione Ctrl+V para colar",
+	"Exportar jogo salvo para JSON", "Importar jogo salvo de JSON"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -329,7 +388,15 @@ static const Strings kStringsIT = {
 	"uscire dal gioco?",
 	"ESCI", "ANNULLA",
 	"Schermo",
-	"Eventi", "Attiva eventi", "Forza eventi locali"
+	"Eventi", "Attiva eventi", "Forza eventi locali",
+	"Salvataggio nel Cloud", "Provider", "Server privato (HTTP)", "URL del server", "Server: ",
+	"Account Discord", "Accedi con Discord",
+	"Account Google", "Accedi con Google",
+	"Account GitHub", "Accedi con GitHub",
+	"Carica salvataggio nel cloud", "Scarica salvataggio dal cloud", "Sincronizza all'uscita",
+	"Riavvia il gioco per caricare il salvataggio",
+	"Digita con la tastiera o premi Ctrl+V per incollare",
+	"Esporta salvataggio in JSON", "Importa salvataggio da JSON"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -1332,7 +1399,8 @@ struct EditConfig {
  * Menu navigation
  * ========================================================================= */
 enum class Screen { Main, Resolution, Fps, Language, Currency, Bindings, BindEdit,
-                    GamepadBinds, GamepadBindPick, GamepadDevicePick, DisplayPick, Events };
+                    GamepadBinds, GamepadBindPick, GamepadDevicePick, DisplayPick, Events,
+                    CloudSave, CloudProviderPick, CloudTextEdit };
 
 /* =========================================================================
  * Global state
@@ -1341,7 +1409,12 @@ namespace {
 
 bool g_open = false;
 bool g_open_requested = false;
+bool g_open_cloud_requested = false;
+bool g_opened_directly_to_cloud = false;
 bool g_quit_confirm = false;
+char g_cloud_status[256] = "";
+int  g_cloud_edit_field = 0; /* 0=nas_path, 1=gdrive_path, 2=server_url, 3=gist_token, 4=gist_id */
+char g_cloud_text_buf[512] = "";
 SDL_Window *g_window = nullptr;
 
 Tex g_tex_panel{}, g_tex_list_bg{}, g_tex_list_item{};
@@ -1539,7 +1612,7 @@ Uint32  g_trans_start_ms = 0;
 float   g_trans_t        = 1.0f;   /* normalised [0,1], 1 = complete */
 
 /* Saved scroll position per screen – restored when navigating back */
-static const int kNumScreens = 12; /* must match Screen enum count */
+static const int kNumScreens = 15; /* must match Screen enum count */
 float   g_saved_scroll[kNumScreens] = {};
 
 /* Remappable pad buttons shown in Gamepad Configuration (Start/A/Back/L-R fixed). */
@@ -1718,6 +1791,42 @@ static void draw_item_slider(float item_x, float iy, float item_w, float item_h,
 /* -------------------------------------------------------------------------
  * Build item list for a given screen (shared by draw and hit-test)
  * ---------------------------------------------------------------------- */
+
+static bool screen_uses_close_btn(Screen s) {
+	return s == Screen::Main || (s == Screen::CloudSave && g_opened_directly_to_cloud);
+}
+
+static bool g_prev_auth_in_progress = false;
+
+static const char *cloud_provider_name(int provider, const Strings *str) {
+	switch (provider) {
+		case PVZ2_CLOUD_NAS:    return "Cloud";
+		case PVZ2_CLOUD_GDRIVE: return "Google Drive";
+		case PVZ2_CLOUD_SERVER: return str ? str->cloud_prov_private : "Private Server (HTTP)";
+		case PVZ2_CLOUD_GIST:   return "GitHub Gist";
+		default:                return "Cloud";
+	}
+}
+
+static const char *cloud_field_title(int field, const Strings *str) {
+	(void)field;
+	return str ? str->cloud_server_url_title : "Server URL";
+}
+
+static void begin_cloud_text_edit(int field) {
+	Pvz2CloudConfig *cc = pvz2_cloud_config();
+	g_cloud_edit_field = field;
+	SDL_strlcpy(g_cloud_text_buf, cc->server_url, sizeof(g_cloud_text_buf));
+	SDL_StartTextInput();
+}
+
+static void save_cloud_text_edit(void) {
+	Pvz2CloudConfig *cc = pvz2_cloud_config();
+	SDL_strlcpy(cc->server_url, g_cloud_text_buf, sizeof(cc->server_url));
+	pvz2_cloud_save_config();
+	SDL_StopTextInput();
+}
+
 static std::vector<Item> build_items(Screen screen, const Strings *str) {
     std::vector<Item> items;
     if (screen == Screen::Main) {
@@ -1759,6 +1868,7 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->achievement_notify, false, false,
                          g_edit.achievement_notifications != 0, ""});
         items.push_back({str->iap, false, false, g_edit.emulate_iap != 0, ""});
+        items.push_back({str->cloud_save, true, false, false, ""});
         items.push_back({str->exit_program, true, false, false, ""});
 
     } else if (screen == Screen::Resolution) {
@@ -1870,6 +1980,74 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
             std::string display = bind_display_name(cfg->shortcuts[i].name, g_edit.locale);
             bool sel = gamepad_bind_names_equal(cur, cfg->shortcuts[i].name);
             items.push_back({display, false, false, sel, ""});
+        }
+    } else if (screen == Screen::CloudSave) {
+        Pvz2CloudConfig *cc = pvz2_cloud_config();
+        pvz2_cloud_sync_local_discord(false, nullptr, 0, g_edit.locale);
+
+        const bool auth_now = pvz2_cloud_is_auth_in_progress();
+        if (g_prev_auth_in_progress && !auth_now && pvz2_cloud_is_provider_authenticated()) {
+            g_cloud_status[0] = '\0';
+        }
+        g_prev_auth_in_progress = auth_now;
+
+        /* Top row: Account authentication for the selected provider */
+        std::string top_lbl, top_val;
+        if (cc->provider == PVZ2_CLOUD_NAS || cc->provider == PVZ2_CLOUD_SERVER) {
+            if (cc->auth_discord_id[0] != '\0') {
+                top_lbl = str->cloud_acc_discord;
+                top_val = std::string(cc->auth_discord_name[0] ? cc->auth_discord_name : "Discord") +
+                          " (" + cc->auth_discord_id + ")";
+            } else {
+                top_lbl = str->cloud_signin_discord;
+            }
+        } else if (cc->provider == PVZ2_CLOUD_GDRIVE) {
+            if (cc->gdrive_token[0] != '\0') {
+                top_lbl = str->cloud_acc_google;
+                top_val = cc->gdrive_user[0] ? cc->gdrive_user : "Google Drive";
+            } else {
+                top_lbl = str->cloud_signin_google;
+            }
+        } else if (cc->provider == PVZ2_CLOUD_GIST) {
+            if (cc->gist_token[0] != '\0') {
+                top_lbl = str->cloud_acc_github;
+                top_val = cc->github_user[0] ? cc->github_user : "GitHub";
+            } else {
+                top_lbl = str->cloud_signin_github;
+            }
+        }
+        items.push_back({top_lbl, true, false, false, top_val});
+
+        items.push_back({str->cloud_provider, true, false, false,
+                         cloud_provider_name(cc->provider, str)});
+
+        /* Only Private Server shows a custom URL field; Cloud, Google Drive & Gist don't */
+        if (cc->provider == PVZ2_CLOUD_SERVER) {
+            items.push_back({std::string(str->cloud_server_prefix) + cc->server_url,
+                             false, true, false, ""});
+        }
+
+        items.push_back({str->cloud_upload, true, false, false, ""});
+        items.push_back({str->cloud_download, true, false, false, ""});
+        items.push_back({str->cloud_autosync, false, false, cc->auto_sync != 0, ""});
+        items.push_back({str->cloud_export_local, true, false, false, ""});
+        items.push_back({str->cloud_import_local, true, false, false, ""});
+
+        if (pvz2_cloud_writes_locked()) {
+            items.push_back({str->cloud_restart_now, true, false, false, ""});
+        }
+        if (g_cloud_status[0] != '\0') {
+            items.push_back({g_cloud_status, true, false, false, ""});
+        }
+
+        /* Bottom row: Local Discord desktop status (stays at the bottom) */
+        char local_disc_line[256] = {};
+        pvz2_cloud_sync_local_discord(false, local_disc_line, sizeof(local_disc_line), g_edit.locale);
+        items.push_back({local_disc_line, true, false, false, ""});
+    } else if (screen == Screen::CloudProviderPick) {
+        Pvz2CloudConfig *cc = pvz2_cloud_config();
+        for (int p = 0; p < PVZ2_CLOUD_PROVIDER_COUNT; ++p) {
+            items.push_back({cloud_provider_name(p, str), false, false, cc->provider == p, ""});
         }
     }
     return items;
@@ -2394,7 +2572,7 @@ static void draw_panel_content(Screen screen, float dx,
 
     /* --- close / back button (only for the "current" live screen) --- */
     if (is_current_screen) {
-        if (screen == Screen::Main) {
+        if (screen_uses_close_btn(screen)) {
             float bw = sc((float)g_tex_close_up.w, s);
             float bh = sc((float)g_tex_close_up.h, s);
             float bx = px + pw - sc(kCloseBtnFromRight, s) - bw + dx;
@@ -2422,6 +2600,9 @@ static void draw_panel_content(Screen screen, float dx,
     else if (screen == Screen::GamepadDevicePick) title = str->gamepad_selected;
     else if (screen == Screen::DisplayPick) title = str->display_config;
     else if (screen == Screen::Events)     title = str->events_config;
+    else if (screen == Screen::CloudSave)  title = str->cloud_save;
+    else if (screen == Screen::CloudProviderPick) title = str->cloud_provider;
+    else if (screen == Screen::CloudTextEdit) title = cloud_field_title(g_cloud_edit_field, str);
 
     /* BindEdit: use the bind's display name as the title */
     static char s_bind_edit_title[128];
@@ -2447,12 +2628,12 @@ static void draw_panel_content(Screen screen, float dx,
         const float gap = sc(14.0f, s);
         float left_lim = px + gap + dx;
         float right_lim = px + pw - gap + dx;
-        if (screen == Screen::Main && g_tex_close_up.id) {
+        if (screen_uses_close_btn(screen) && g_tex_close_up.id) {
             float bw = sc((float)g_tex_close_up.w, s);
             right_lim = px + pw - sc(kCloseBtnFromRight, s) - bw - gap + dx;
             /* Keep the title visually centered: mirror the same clearance on the left. */
             left_lim = px + sc(kCloseBtnFromRight, s) + bw + gap + dx;
-        } else if (screen != Screen::Main && g_tex_back_up.id) {
+        } else if (!screen_uses_close_btn(screen) && g_tex_back_up.id) {
             float bw = sc((float)g_tex_back_up.w, s);
             left_lim = px + sc(kBackBtnFromLeft, s) + bw + gap + dx;
             right_lim = px + pw - (sc(kBackBtnFromLeft, s) + bw + gap) + dx;
@@ -2595,6 +2776,59 @@ static void draw_panel_content(Screen screen, float dx,
         return;
     }
 
+    if (screen == Screen::CloudTextEdit) {
+        if (g_tex_bind_input.id) {
+            float biw = sc(std::max((float)g_tex_bind_input.w, 860.0f), s);
+            float bih = sc((float)g_tex_bind_input.h, s);
+            float bix = px + (pw - biw) * 0.5f + dx;
+            float biy = py + sc(220.0f, s);
+            draw_tex(g_tex_bind_input, bix, biy, biw, bih);
+
+            if (g_font.ok) {
+                std::string disp = g_cloud_text_buf;
+                if (((SDL_GetTicks() / 500) % 2) == 0) disp.push_back('|');
+                float max_tw = biw - sc(48.0f, s);
+                while (disp.size() > 4 && measure_string(g_font, disp.c_str(), false, win_w, win_h) > max_tw) {
+                    disp.erase(0, 1);
+                }
+                float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+                float tw2 = measure_string(g_font, disp.c_str(), false, win_w, win_h);
+                float tx2 = bix + (biw - tw2) * 0.5f;
+                float ty2 = biy + bih * 0.5f + cap_h * 0.35f;
+                draw_string(g_font, disp.c_str(), false, tx2, ty2,
+                            0x48/255.f, 0x3e/255.f, 0x00/255.f, win_w, win_h);
+
+                const char *hint = str->cloud_edit_hint;
+                float htw = measure_string(g_font, hint, false, win_w, win_h, 0.72f);
+                draw_string(g_font, hint, false,
+                            px + (pw - htw) * 0.5f + dx, biy + bih + sc(75.0f, s),
+                            1.0f, 1.0f, 1.0f, win_w, win_h,
+                            true, sc(2,s), sc(2,s), 0, 0.55f, 1.0f, 0, 0, 0, 0, 0.72f);
+            }
+
+            if (g_tex_save_up.id) {
+                float sv_y_top = biy + bih + sc(140.0f, s);
+                float svw = sc((float)g_tex_save_up.w, s);
+                float svh = sc((float)g_tex_save_up.h, s);
+                float svx = px + (pw - svw) * 0.5f + dx;
+                Tex &st = g_save_pressed ? g_tex_save_down : g_tex_save_up;
+                draw_tex(st, svx, sv_y_top, svw, svh);
+                if (g_font.ok) {
+                    float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+                    float tw3 = measure_string(g_font, str->save, false, win_w, win_h);
+                    float tx3 = svx + (svw - tw3) * 0.5f;
+                    float ty3 = sv_y_top + svh * 0.5f + cap_h * 0.35f;
+                    draw_string(g_font, str->save, false,
+                                tx3, ty3,
+                                1.0f, 1.0f, 1.0f, win_w, win_h,
+                                true, sc(1,s), sc(1,s), 0, 0.50f);
+                }
+            }
+        }
+        glDisable(GL_SCISSOR_TEST);
+        return;
+    }
+
     /* Stamp list_bg into the stencil buffer (opaque texels only) so items
      * cannot draw into the magenta-keyed rounded corners, then paint list_bg. */
     glEnable(GL_STENCIL_TEST);
@@ -2659,7 +2893,7 @@ static void draw_panel_content(Screen screen, float dx,
                 icon_margin = sc(kSliderFromRight, s);
             } else if (items[i].is_arrow) {
                 icon_w = sc((float)g_tex_arrow_up.w, s);
-                if (screen == Screen::Main && (int)i == 11 && g_tex_exit_up.id)
+                if (screen == Screen::Main && (int)i == 12 && g_tex_exit_up.id)
                     icon_w = sc((float)g_tex_exit_up.w, s);
             } else if (items[i].is_edit) {
                 icon_w = sc((float)g_tex_edit_up.w, s);
@@ -2693,7 +2927,7 @@ static void draw_panel_content(Screen screen, float dx,
         if (items[i].is_slider) {
             draw_item_slider(item_x, iy, item_w, item_h, s, items[i].slider_t);
         } else if (items[i].is_arrow) {
-            bool is_exit_row = (screen == Screen::Main && (int)i == 11 && g_tex_exit_up.id && g_tex_exit_down.id);
+            bool is_exit_row = (screen == Screen::Main && (int)i == 12 && g_tex_exit_up.id && g_tex_exit_down.id);
             Tex &at = is_exit_row
                 ? (((int)i == g_arrow_pressed_idx) ? g_tex_exit_down : g_tex_exit_up)
                 : (((int)i == g_arrow_pressed_idx) ? g_tex_arrow_down : g_tex_arrow_up);
@@ -2755,9 +2989,18 @@ static void draw_panel_content(Screen screen, float dx,
  * ========================================================================= */
 static void draw(SDL_Window *window) {
 	/* Handle deferred open request (from hooks that lack the window pointer) */
-	if (g_open_requested && !g_open) {
+	if ((g_open_requested || g_open_cloud_requested) && !g_open) {
+		const bool to_cloud = g_open_cloud_requested;
 		g_open_requested = false;
+		g_open_cloud_requested = false;
 		config_screen_open(window);
+		if (to_cloud) {
+			g_screen = Screen::CloudSave;
+			g_opened_directly_to_cloud = true;
+			pvz2_cloud_init();
+			g_cloud_status[0] = '\0';
+			pvz2_cloud_sync_local_discord(false, nullptr, 0, g_edit.locale);
+		}
 	}
 	if (!g_open && !g_quit_confirm) return;
 
@@ -2941,6 +3184,7 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* achievements */
 		ritems.push_back({false,false,false,g_edit.achievement_notifications!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* cloud save */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* exit */
 	} else if (g_screen == Screen::Resolution) {
 		const std::vector<ResOpt> opts = filtered_res_opts(
@@ -2987,6 +3231,31 @@ static void handle_event(const SDL_Event *e) {
 		const pvz2_config_t *cfg = pvz2_config();
 		for (unsigned i = 0; i < cfg->shortcut_count; ++i)
 			ritems.push_back({false,false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
+	} else if (g_screen == Screen::CloudSave) {
+		Pvz2CloudConfig *cc = pvz2_cloud_config();
+		/* 1=Top Provider Auth (arrow), 2=Provider Picker (arrow) */
+		ritems.push_back({true, false,false,false, 1,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({true, false,false,false, 2,0,0,0,0,nullptr,nullptr,nullptr});
+		if (cc->provider == PVZ2_CLOUD_SERVER) {
+			ritems.push_back({false,true, false,false, 3,0,0,0,0,nullptr,nullptr,nullptr});
+		}
+		/* 5=Upload, 6=Download, 7=Auto-sync, 11=Export JSON, 12=Import JSON */
+		ritems.push_back({true, false,false,false, 5,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({true, false,false,false, 6,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({false,false,false,cc->auto_sync!=0, 7,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({true, false,false,false, 11,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({true, false,false,false, 12,0,0,0,0,nullptr,nullptr,nullptr});
+		if (pvz2_cloud_writes_locked()) {
+			ritems.push_back({true, false,false,false, 8,0,0,0,0,nullptr,nullptr,nullptr});
+		}
+		if (g_cloud_status[0] != '\0') {
+			ritems.push_back({true, false,false,false, 9,0,0,0,0,nullptr,nullptr,nullptr});
+		}
+		/* 10=Bottom Local Discord IPC status */
+		ritems.push_back({true, false,false,false, 10,0,0,0,0,nullptr,nullptr,nullptr});
+	} else if (g_screen == Screen::CloudProviderPick) {
+		for (int p = 0; p < PVZ2_CLOUD_PROVIDER_COUNT; ++p)
+			ritems.push_back({false,false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
 	}
 	float item_w = sc((float)g_tex_list_item.w, ui_scale(win_w, win_h));
 	float item_h = sc((float)g_tex_list_item.h, ui_scale(win_w, win_h));
@@ -2996,7 +3265,7 @@ static void handle_event(const SDL_Event *e) {
 	/* Close / back button rects */
 	float close_x=0,close_y=0,close_w=0,close_h=0;
 	float back_x=0,back_y=0,back_w=0,back_h=0;
-	if (g_screen == Screen::Main) {
+	if (screen_uses_close_btn(g_screen)) {
 		close_w = sc((float)g_tex_close_up.w, ui_scale(win_w,win_h));
 		close_h = sc((float)g_tex_close_up.h, ui_scale(win_w,win_h));
 		close_x = px+pw-sc(kCloseBtnFromRight,ui_scale(win_w,win_h))-close_w;
@@ -3056,7 +3325,44 @@ static void handle_event(const SDL_Event *e) {
 				if (g_scroll_offset > max_scroll) g_scroll_offset = max_scroll;
 			}
 		}
+	} else if (e->type == SDL_TEXTINPUT) {
+		if (g_screen == Screen::CloudTextEdit) {
+			std::size_t cur = std::strlen(g_cloud_text_buf);
+			std::size_t add = std::strlen(e->text.text);
+			if (cur + add + 1 < sizeof(g_cloud_text_buf)) {
+				std::memcpy(g_cloud_text_buf + cur, e->text.text, add + 1);
+			}
+		}
 	} else if (e->type == SDL_KEYDOWN) {
+		if (g_screen == Screen::CloudTextEdit) {
+			SDL_Keycode kc = e->key.keysym.sym;
+			const Uint16 mod = e->key.keysym.mod;
+			if (kc == SDLK_BACKSPACE) {
+				std::size_t len = std::strlen(g_cloud_text_buf);
+				while (len > 0) {
+					unsigned char c = (unsigned char)g_cloud_text_buf[--len];
+					g_cloud_text_buf[len] = '\0';
+					if ((c & 0xC0) != 0x80) break;
+				}
+			} else if ((kc == SDLK_v) && (mod & KMOD_CTRL)) {
+				if (SDL_HasClipboardText()) {
+					char *clip = SDL_GetClipboardText();
+					if (clip) {
+						std::string cleaned;
+						for (const char *p = clip; *p; ++p) {
+							if (*p != '\r' && *p != '\n') cleaned.push_back(*p);
+						}
+						SDL_strlcpy(g_cloud_text_buf, cleaned.c_str(), sizeof(g_cloud_text_buf));
+						SDL_free(clip);
+					}
+				}
+			} else if (kc == SDLK_RETURN || kc == SDLK_KP_ENTER) {
+				play_sound(g_snd_confirm);
+				save_cloud_text_edit();
+				begin_transition(Screen::CloudSave, false);
+			}
+			return;
+		}
 		/* Key capture for BindEdit screen */
 		if (g_screen == Screen::BindEdit) {
 			SDL_Keycode kc = e->key.keysym.sym;
@@ -3079,11 +3385,21 @@ static void handle_event(const SDL_Event *e) {
 		g_mouse_y = (float)e->button.y;
 		g_mouse_down = true;
 
-		if (g_screen == Screen::Main && hit(close_x,close_y,close_w,close_h,g_mouse_x,g_mouse_y))
+		if (screen_uses_close_btn(g_screen) && hit(close_x,close_y,close_w,close_h,g_mouse_x,g_mouse_y))
 			g_close_pressed = true;
-		else if (g_screen != Screen::Main && hit(back_x,back_y,back_w,back_h,g_mouse_x,g_mouse_y))
+		else if (!screen_uses_close_btn(g_screen) && hit(back_x,back_y,back_w,back_h,g_mouse_x,g_mouse_y))
 			g_back_pressed = true;
-		else if (g_screen == Screen::BindEdit && g_tex_bind_container.id) {
+		else if (g_screen == Screen::CloudTextEdit && g_tex_bind_input.id && g_tex_save_up.id) {
+			float s2 = ui_scale(win_w, win_h);
+			float bih = sc((float)g_tex_bind_input.h, s2);
+			float biy = py + sc(220.0f, s2);
+			float sv_y = biy + bih + sc(140.0f, s2);
+			float svw2 = sc((float)g_tex_save_up.w, s2);
+			float svh2 = sc((float)g_tex_save_up.h, s2);
+			float svx2 = px + (pw - svw2) * 0.5f;
+			if (hit(svx2, sv_y, svw2, svh2, g_mouse_x, g_mouse_y))
+				g_save_pressed = true;
+		} else if (g_screen == Screen::BindEdit && g_tex_bind_container.id) {
 			/* Save button hit detection */
 			float s2 = ui_scale(win_w, win_h);
 			float cw2 = sc((float)g_tex_bind_container.w, s2);
@@ -3219,6 +3535,11 @@ static void handle_event(const SDL_Event *e) {
 			if (g_screen == Screen::BindEdit) {
 				/* Cancel: return to Bindings without saving */
 				begin_transition(Screen::Bindings, false);
+			} else if (g_screen == Screen::CloudTextEdit) {
+				SDL_StopTextInput();
+				begin_transition(Screen::CloudSave, false);
+			} else if (g_screen == Screen::CloudProviderPick) {
+				begin_transition(Screen::CloudSave, false);
 			} else if (g_screen == Screen::GamepadBindPick ||
 			           g_screen == Screen::GamepadDevicePick) {
 				begin_transition(Screen::GamepadBinds, false);
@@ -3230,6 +3551,15 @@ static void handle_event(const SDL_Event *e) {
 			return;
 		}
 		g_back_pressed = false;
+
+		/* Save button (CloudTextEdit) */
+		if (g_screen == Screen::CloudTextEdit && g_save_pressed) {
+			g_save_pressed = false;
+			play_sound(g_snd_confirm);
+			save_cloud_text_edit();
+			begin_transition(Screen::CloudSave, false);
+			return;
+		}
 
 		/* Save button (BindEdit only) */
 		if (g_screen == Screen::BindEdit && g_save_pressed && g_tex_bind_container.id) {
@@ -3244,8 +3574,8 @@ static void handle_event(const SDL_Event *e) {
 		}
 		g_save_pressed = false;
 
-		/* BindEdit: no item list clicks */
-		if (g_screen == Screen::BindEdit) return;
+		/* BindEdit / CloudTextEdit: no item list clicks */
+		if (g_screen == Screen::BindEdit || g_screen == Screen::CloudTextEdit) return;
 
 		/* Item click */
 		/* Block item clicks when mouse is over the scrollbar */
@@ -3271,7 +3601,7 @@ static void handle_event(const SDL_Event *e) {
 
 			if (ritems[i].is_arrow) {
 				if (g_screen == Screen::Main) {
-					if (i == 11) {
+					if (i == 12) {
 						/* Exit: no menu click SFX — dialog open plays exit_click. */
 						show_quit_confirm();
 					} else if (i == 8) {
@@ -3288,7 +3618,43 @@ static void handle_event(const SDL_Event *e) {
 						else if (i == 5) to = Screen::Bindings;
 						else if (i == 6) to = Screen::GamepadBinds;
 						else if (i == 7) to = Screen::Events;
+						else if (i == 11) {
+							g_opened_directly_to_cloud = false;
+							pvz2_cloud_init();
+							g_cloud_status[0] = '\0';
+							pvz2_cloud_sync_local_discord(false, nullptr, 0, g_edit.locale);
+							to = Screen::CloudSave;
+						}
 						if (to != Screen::Main) begin_transition(to, true);
+					}
+				} else if (g_screen == Screen::CloudSave) {
+					const int act = ritems[i].slider_id;
+					if (act == 1) {
+						play_sound(g_snd_confirm);
+						pvz2_cloud_start_provider_auth(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+					} else if (act == 2) {
+						play_sound(g_snd_next);
+						begin_transition(Screen::CloudProviderPick, true);
+					} else if (act == 5) {
+						play_sound(g_snd_confirm);
+						pvz2_cloud_upload(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+					} else if (act == 6) {
+						play_sound(g_snd_confirm);
+						pvz2_cloud_download(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+					} else if (act == 11) {
+						play_sound(g_snd_confirm);
+						pvz2_cloud_export_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+					} else if (act == 12) {
+						play_sound(g_snd_confirm);
+						pvz2_cloud_import_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+					} else if (act == 8) {
+						play_sound(g_snd_confirm);
+						pvz2_cloud_restart_game();
+					} else if (act == 10) {
+						play_sound(g_snd_confirm);
+						pvz2_cloud_sync_local_discord(true, nullptr, 0, g_edit.locale);
+					} else {
+						play_sound(g_snd_check);
 					}
 				} else if (g_screen == Screen::GamepadBinds) {
 					/* Row 0: selected gamepad picker */
@@ -3316,6 +3682,9 @@ static void handle_event(const SDL_Event *e) {
 						            sizeof(g_edit_gamepad_btn));
 						begin_transition(Screen::GamepadBindPick, true);
 					}
+				} else if (g_screen == Screen::CloudSave) {
+					begin_cloud_text_edit(2);
+					begin_transition(Screen::CloudTextEdit, true);
 				}
 			} else {
 				play_sound(g_snd_check);
@@ -3402,6 +3771,18 @@ static void handle_event(const SDL_Event *e) {
 						}
 					}
 					pvz2_gamepad_reload();
+				} else if (g_screen == Screen::CloudSave) {
+					if (ritems[i].slider_id == 7) {
+						Pvz2CloudConfig *cc = pvz2_cloud_config();
+						cc->auto_sync = !cc->auto_sync;
+						pvz2_cloud_save_config();
+					}
+				} else if (g_screen == Screen::CloudProviderPick) {
+					if ((int)i >= 0 && (int)i < PVZ2_CLOUD_PROVIDER_COUNT) {
+						Pvz2CloudConfig *cc = pvz2_cloud_config();
+						cc->provider = (int)i;
+						pvz2_cloud_save_config();
+					}
 				}
 			}
 			break;
@@ -3439,6 +3820,7 @@ void config_screen_open(SDL_Window *window) {
 
 	g_edit.load_from_live();
 	g_screen = Screen::Main;
+	g_opened_directly_to_cloud = false;
 	g_scroll_offset = 0;
 	g_scrollbar_dragging = false;
 	g_list_drag_armed = false;
@@ -3458,6 +3840,10 @@ void config_screen_open(SDL_Window *window) {
 
 void config_screen_request_open(void) {
     if (!g_open) g_open_requested = true;
+}
+
+void config_screen_request_open_cloud(void) {
+    if (!g_open) g_open_cloud_requested = true;
 }
 
 void config_screen_request_quit_confirm(void) {
@@ -3481,7 +3867,7 @@ void config_screen_request_escape(void) {
 		dismiss_quit_confirm();
 		return;
 	}
-	if (g_open || g_open_requested) {
+	if (g_open || g_open_requested || g_open_cloud_requested) {
 		show_quit_confirm();
 		return;
 	}
@@ -3501,7 +3887,7 @@ void config_screen_shutdown(void) {
 }
 
 int config_screen_is_open(void) {
-	return (g_open || g_open_requested || g_quit_confirm) ? 1 : 0;
+	return (g_open || g_open_requested || g_open_cloud_requested || g_quit_confirm) ? 1 : 0;
 }
 
 void config_screen_handle_event(const SDL_Event *e) {
@@ -3517,7 +3903,7 @@ void config_screen_draw(SDL_Window *window) {
 	/* Hide settings while the achievements overlay is up; g_open stays true so
 	 * closing achievements restores this screen as it was. */
 	if (achievements_screen_is_open()) return;
-	if ((!g_open && !g_open_requested && !g_quit_confirm) || !window) return;
+	if ((!g_open && !g_open_requested && !g_open_cloud_requested && !g_quit_confirm) || !window) return;
 	draw(window);
 }
 

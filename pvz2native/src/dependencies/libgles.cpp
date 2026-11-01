@@ -21,6 +21,7 @@
 #include <pvz2native/config.h>
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/gfx/gl_requirements.h>
+#include <pvz2native/gfx/cloud_icon.h>
 #include <pvz2native/surface.h>
 
 #include <glad/gl.h>
@@ -970,6 +971,8 @@ void gl_glCompressedTexImage2D(GuestCall &c) {
     const GLint level = (GLint)c.arg(1);
     const GLsizei imageSize = (GLsizei)c.arg(6);
     const void *data = c.ptr(c.arg(7));
+    if (internalformat == 0x8D64 /* GL_ETC1_RGB8_OES */ && level == 0)
+        data = pvz2native::cloud_icon_filter_etc1(data, imageSize, width, height);
 
     /* ETC1: decode to RGB8 on the CPU and upload uncompressed, so it no longer
      * matters whether this driver exposes ETC1/ETC2 at all. Every non-RGBA PvZ2
@@ -1288,8 +1291,12 @@ void gl_glTexEnvf(GuestCall &c) {
 }
 
 void gl_glTexImage2D(GuestCall &c) {
+    const void *pixels = c.ptr(c.arg(8));
+    /* The main menu atlas carries its alpha as a separate GL_ALPHA image. */
+    if (c.arg(1) == 0 && c.arg(6) == 0x1906 /* GL_ALPHA */ && c.arg(7) == 0x1401 /* GL_UNSIGNED_BYTE */)
+        pixels = pvz2native::cloud_icon_filter_alpha(pixels, (int)c.arg(3), (int)c.arg(4));
     glTexImage2D(c.arg(0), c.arg(1), c.arg(2), c.arg(3), c.arg(4), c.arg(5),
-                              c.arg(6), c.arg(7), c.ptr(c.arg(8)));
+                              c.arg(6), c.arg(7), pixels);
 }
 
 void gl_glTexParameteri(GuestCall &c) {
@@ -1297,8 +1304,13 @@ void gl_glTexParameteri(GuestCall &c) {
 }
 
 void gl_glTexSubImage2D(GuestCall &c) {
+    const void *pixels = c.ptr(c.arg(8));
+    /* Atlas alpha arrives as one full-size sub-upload into a texture allocated empty. */
+    if (c.arg(1) == 0 && c.arg(2) == 0 && c.arg(3) == 0 && c.arg(6) == 0x1906 /* GL_ALPHA */ &&
+        c.arg(7) == 0x1401 /* GL_UNSIGNED_BYTE */)
+        pixels = pvz2native::cloud_icon_filter_alpha(pixels, (int)c.arg(4), (int)c.arg(5));
     glTexSubImage2D(c.arg(0), c.arg(1), c.arg(2), c.arg(3), c.arg(4), c.arg(5),
-                                  c.arg(6), c.arg(7), c.ptr(c.arg(8)));
+                                  c.arg(6), c.arg(7), pixels);
 }
 
 void gl_glUniform1i(GuestCall &c) {

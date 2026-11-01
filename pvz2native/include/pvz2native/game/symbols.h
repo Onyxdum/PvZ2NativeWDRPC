@@ -276,6 +276,8 @@ struct GameSymbols {
         std::uint32_t zomboss_setup_stage;
         std::uint32_t zomboss_stage_init_call;
         std::uint32_t zomboss_stage_change_call;
+        std::uint32_t company_link_allowed_fn;
+        std::uint32_t company_button_skip_branch;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.
