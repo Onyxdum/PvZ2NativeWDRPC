@@ -15,6 +15,7 @@
 #include <pvz2native/config_screen.h>
 #include <pvz2native/config.h>
 #include <pvz2native/achievements.h>
+#include <pvz2native/credits_screen.h>
 #include <pvz2native/cloud_save.h>
 #include <pvz2native/dex/config_store.h>
 #include <pvz2native/gfx/frame_limiter.h>
@@ -220,6 +221,7 @@ struct Strings {
 	const char *cloud_import_local;
 	const char *steam_add;
 	const char *cloud_discord_rpc;
+	const char *view_credits;
 };
 
 static const Strings kStringsEN = {
@@ -252,7 +254,8 @@ static const Strings kStringsEN = {
 	"Type with keyboard or press Ctrl+V to paste from clipboard",
 	"Export save to JSON", "Import save from JSON",
 	"Add game to Steam",
-	"Discord Rich Presence"
+	"Discord Rich Presence",
+	"Credits"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -284,7 +287,8 @@ static const Strings kStringsES = {
 	"Escribe con el teclado o pulsa Ctrl+V para pegar del portapapeles",
 	"Exportar partida a JSON", "Importar partida desde JSON",
 	"Añadir juego a Steam",
-	"Discord Rich Presence"
+	"Discord Rich Presence",
+	"Créditos"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -316,7 +320,8 @@ static const Strings kStringsFR = {
 	"Tapez au clavier ou appuyez sur Ctrl+V pour coller",
 	"Exporter la sauvegarde en JSON", "Importer la sauvegarde depuis JSON",
 	"Ajouter le jeu à Steam",
-	"Discord Rich Presence"
+	"Discord Rich Presence",
+	"Crédits"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -348,7 +353,8 @@ static const Strings kStringsDE = {
 	"Mit der Tastatur eingeben oder Strg+V zum Einfügen drücken",
 	"Spielstand als JSON exportieren", "Spielstand aus JSON importieren",
 	"Spiel zu Steam hinzufügen",
-	"Discord Rich Presence"
+	"Discord Rich Presence",
+	"Credits"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -380,7 +386,8 @@ static const Strings kStringsPT = {
 	"Digite com o teclado ou pressione Ctrl+V para colar",
 	"Exportar jogo salvo para JSON", "Importar jogo salvo de JSON",
 	"Adicionar jogo à Steam",
-	"Discord Rich Presence"
+	"Discord Rich Presence",
+	"Créditos"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -412,7 +419,8 @@ static const Strings kStringsIT = {
 	"Digita con la tastiera o premi Ctrl+V per incollare",
 	"Esporta salvataggio in JSON", "Importa salvataggio da JSON",
 	"Aggiungi gioco a Steam",
-	"Discord Rich Presence"
+	"Discord Rich Presence",
+	"Riconoscimenti"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -1885,6 +1893,7 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
                          g_edit.achievement_notifications != 0, ""});
         items.push_back({str->iap, false, false, g_edit.emulate_iap != 0, ""});
         items.push_back({str->cloud_save, true, false, false, ""});
+        items.push_back({str->view_credits, true, false, false, ""});
         items.push_back({str->exit_program, true, false, false, ""});
 
     } else if (screen == Screen::Resolution) {
@@ -2913,7 +2922,7 @@ static void draw_panel_content(Screen screen, float dx,
                 icon_margin = sc(kSliderFromRight, s);
             } else if (items[i].is_arrow) {
                 icon_w = sc((float)g_tex_arrow_up.w, s);
-                if (screen == Screen::Main && (int)i == 12 && g_tex_exit_up.id)
+                if (screen == Screen::Main && (int)i == 13 && g_tex_exit_up.id)
                     icon_w = sc((float)g_tex_exit_up.w, s);
             } else if (items[i].is_edit) {
                 icon_w = sc((float)g_tex_edit_up.w, s);
@@ -2947,7 +2956,7 @@ static void draw_panel_content(Screen screen, float dx,
         if (items[i].is_slider) {
             draw_item_slider(item_x, iy, item_w, item_h, s, items[i].slider_t);
         } else if (items[i].is_arrow) {
-            bool is_exit_row = (screen == Screen::Main && (int)i == 12 && g_tex_exit_up.id && g_tex_exit_down.id);
+            bool is_exit_row = (screen == Screen::Main && (int)i == 13 && g_tex_exit_up.id && g_tex_exit_down.id);
             Tex &at = is_exit_row
                 ? (((int)i == g_arrow_pressed_idx) ? g_tex_exit_down : g_tex_exit_up)
                 : (((int)i == g_arrow_pressed_idx) ? g_tex_arrow_down : g_tex_arrow_up);
@@ -3205,6 +3214,7 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({false,false,false,g_edit.achievement_notifications!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* cloud save */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* credits */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* exit */
 	} else if (g_screen == Screen::Resolution) {
 		const std::vector<ResOpt> opts = filtered_res_opts(
@@ -3625,12 +3635,16 @@ static void handle_event(const SDL_Event *e) {
 
 			if (ritems[i].is_arrow) {
 				if (g_screen == Screen::Main) {
-					if (i == 12) {
+					if (i == 13) {
 						/* Exit: no menu click SFX — dialog open plays exit_click. */
 						show_quit_confirm();
 					} else if (i == 8) {
 						/* View Achievements — open SFX is exit_click (same as quit). */
 						achievements_screen_request_open();
+					} else if (i == 12) {
+						/* View Credits */
+						play_sound(g_snd_confirm);
+						credits_screen_request_open();
 					} else {
 						play_sound(g_snd_next);
 						Screen to = Screen::Main;

@@ -23,6 +23,7 @@
 #include <pvz2native/surface.h>
 #include <pvz2native/config_screen.h>
 #include <pvz2native/achievements.h>
+#include <pvz2native/credits_screen.h>
 #include <pvz2native/host_assets.h>
 #include <pvz2native/host_paths.h>
 #include <pvz2native/input/gamepad.h>
@@ -1597,7 +1598,9 @@ static void host_pump(void) {
         /* Stick/A/Back must work on quit-confirm even mid-boot. */
         if (pvz2_gamepad_handle_event(&event))
             continue;
-        if (achievements_screen_is_open()) {
+        if (credits_screen_is_open()) {
+            credits_screen_handle_event(&event);
+        } else if (achievements_screen_is_open()) {
             achievements_screen_handle_event(&event);
         } else if (config_screen_is_open()) {
             config_screen_handle_event(&event);
@@ -2034,8 +2037,10 @@ int main(int argc, char **argv) {
                  * OS cursor + A click + Back; in-game actions stay suppressed. */
                 if (pvz2_gamepad_handle_event(&event))
                     continue;
-                /* Achievements screen takes priority over config screen for input. */
-                if (achievements_screen_is_open()) {
+                /* Credits screen takes priority over everything when open. */
+                if (credits_screen_is_open()) {
+                    credits_screen_handle_event(&event);
+                } else if (achievements_screen_is_open()) {
                     achievements_screen_handle_event(&event);
                 } else if (config_screen_is_open()) {
                     config_screen_handle_event(&event);
@@ -2055,7 +2060,7 @@ int main(int argc, char **argv) {
                 s_last_gp_ms = now;
                 pvz2_gamepad_tick(dt);
             }
-            if (!config_screen_is_open() && !achievements_screen_is_open()) {
+            if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
                 process_mouse_wheel_scroll();
                 maybe_force_touch_recovery();
                 sync_text_input();
@@ -2080,11 +2085,20 @@ int main(int argc, char **argv) {
              * the swap -- not on a worker. */
             if (!pvz2_session_frame(session)) break;
             maybe_finish_pending_keyboard_hide();
+            if (credits_screen_consume_open_request()) {
+                credits_screen_open(window);
+            }
             if (g_boot_overlay_active) draw_boot_splash_fade(window);
+            /* Reward screen button overlay ("Ver los creditos") */
+            if (credits_is_modern34_reward_active() && !credits_screen_is_open()) {
+                credits_screen_draw_reward_button_overlay(window);
+            }
             /* Draw config screen overlay on top of the game frame (before swap) */
             if (config_screen_is_open()) config_screen_draw(window);
             /* Achievements: popup draws always (if animating), screen on top of config */
             achievements_draw(window);
+            /* Credits roll overlay on top of everything */
+            if (credits_screen_is_open()) credits_screen_draw(window);
             SDL_GL_SwapWindow(window);
             update_fps_title();
             /* After the swap and the title, so the wait is the last thing in the
@@ -2096,6 +2110,7 @@ int main(int argc, char **argv) {
     pvz2_presence_stop();
 
     pvz2_gamepad_shutdown();
+    credits_screen_shutdown();
     achievements_shutdown();
     /* Cursor / UI audio must go before DestroyWindow + SDL_Quit (X11/Pulse). */
     pvz2_host_pre_sdl_quit();

@@ -11,6 +11,7 @@
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/log.h>
 #include <pvz2native/presence.h>
+#include <pvz2native/credits_screen.h>
 
 #include <atomic>
 #include <chrono>
@@ -717,6 +718,9 @@ void scr_create(GuestCall &c) {
     pvz2native::diagnostics::vlog("screen", "CREATE  reward-screen singleton, caller .so+0x%x "
                                   "(board='%s', live=0x%08x)", c.lr() - c.img->so_base,
                                   dex::current_board_level().c_str(), live);
+    if (dex::current_board_level() == "modern34") {
+        credits_notify_modern34_reward_create();
+    }
     emulate_push(c, {4, 5, 6, 7, 11}, c.lr());
     c.no_return();
 }
@@ -745,6 +749,10 @@ void scr_destroy(GuestCall &c) {
     }
     pvz2native::diagnostics::vlog("screen", "DESTROY reward-screen singleton, caller .so+0x%x "
                                   "(live=0x%08x)", c.lr() - c.img->so_base, live);
+    if (credits_is_modern34_reward_active()) {
+        credits_notify_modern34_reward_destroy();
+        credits_screen_request_open();
+    }
     emulate_push(c, {4, 5, 6}, c.lr());
     c.no_return();
 }
