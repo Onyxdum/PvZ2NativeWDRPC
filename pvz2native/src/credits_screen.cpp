@@ -430,6 +430,47 @@ int credits_is_modern34_reward_active(void) {
     return g_modern34_reward_active ? 1 : 0;
 }
 
+int credits_screen_handle_reward_button_event(const SDL_Event *e) {
+    if (!g_modern34_reward_active || g_credits_open || !e) return 0;
+
+    int ww = 1920, wh = 1080;
+    SDL_Window *win = SDL_GL_GetCurrentWindow();
+    if (win) SDL_GL_GetDrawableSize(win, &ww, &wh);
+    float win_w = (float)ww, win_h = (float)wh;
+    float s = win_h / 1080.0f;
+
+    float btn_w = 340.0f * s;
+    float btn_h = 76.0f * s;
+    float btn_x = (win_w - btn_w) * 0.5f;
+    float btn_y = win_h * 0.805f;
+
+    if (e->type == SDL_MOUSEBUTTONDOWN && e->button.button == SDL_BUTTON_LEFT) {
+        float mx = (float)e->button.x;
+        float my = (float)e->button.y;
+        if (hit(btn_x, btn_y, btn_w, btn_h, mx, my)) {
+            g_modern34_reward_active = false;
+            credits_screen_request_open();
+            return 1;
+        }
+    } else if (e->type == SDL_FINGERDOWN) {
+        float mx = e->tfinger.x * win_w;
+        float my = e->tfinger.y * win_h;
+        if (hit(btn_x, btn_y, btn_w, btn_h, mx, my)) {
+            g_modern34_reward_active = false;
+            credits_screen_request_open();
+            return 1;
+        }
+    } else if (e->type == SDL_KEYDOWN) {
+        if (e->key.keysym.sym == SDLK_RETURN || e->key.keysym.sym == SDLK_KP_ENTER ||
+            e->key.keysym.sym == SDLK_SPACE) {
+            g_modern34_reward_active = false;
+            credits_screen_request_open();
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void credits_screen_shutdown(void) {
     if (g_font_loaded) {
         g_font.unload();

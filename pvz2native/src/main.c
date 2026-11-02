@@ -1598,8 +1598,14 @@ static void host_pump(void) {
         /* Stick/A/Back must work on quit-confirm even mid-boot. */
         if (pvz2_gamepad_handle_event(&event))
             continue;
+        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F8) {
+            credits_screen_request_open();
+            continue;
+        }
         if (credits_screen_is_open()) {
             credits_screen_handle_event(&event);
+        } else if (credits_is_modern34_reward_active() && credits_screen_handle_reward_button_event(&event)) {
+            /* Handled "Ver los creditos" button */
         } else if (achievements_screen_is_open()) {
             achievements_screen_handle_event(&event);
         } else if (config_screen_is_open()) {
@@ -2038,8 +2044,14 @@ int main(int argc, char **argv) {
                 if (pvz2_gamepad_handle_event(&event))
                     continue;
                 /* Credits screen takes priority over everything when open. */
+                if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F8) {
+                    credits_screen_request_open();
+                    continue;
+                }
                 if (credits_screen_is_open()) {
                     credits_screen_handle_event(&event);
+                } else if (credits_is_modern34_reward_active() && credits_screen_handle_reward_button_event(&event)) {
+                    /* Handled "Ver los creditos" button */
                 } else if (achievements_screen_is_open()) {
                     achievements_screen_handle_event(&event);
                 } else if (config_screen_is_open()) {

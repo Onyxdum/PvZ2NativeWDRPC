@@ -16,6 +16,7 @@ int  credits_screen_consume_open_request(void);
 void credits_screen_handle_event(const SDL_Event *e);
 void credits_screen_draw(SDL_Window *window);
 void credits_screen_draw_reward_button_overlay(SDL_Window *window);
+int  credits_screen_handle_reward_button_event(const SDL_Event *e);
 void credits_screen_shutdown(void);
 
 /* Notifications from game engine when Modern Day Day 34 reward dialog is active */

@@ -9,6 +9,8 @@
 
 #include <pvz2native/dependencies/libc_internal.h>
 #include <pvz2native/presence.h>
+#include <pvz2native/credits_screen.h>
+#include <pvz2native/dex/dex.h>
 
 #include <mutex>
 #include <string>
@@ -51,6 +53,12 @@ void guest_log(GuestCall &c, const char *prio, const std::string &tag, const std
     /* Discord Rich Presence tap. Before the dedupe below on purpose: the rules
      * file decides what matters, and a no-op when presence is off. */
     if (pvz2_presence_enabled()) pvz2_presence_note("log", (tag + ": " + text).c_str());
+    if (tag == "PvZ2Debug" && text.find("Play_WinMusic") != std::string::npos) {
+        if (dex::current_board_level() == "modern34") {
+            c.log("[credits] Modern Day 34 win audio event detected -- arming credits");
+            credits_notify_modern34_reward_create();
+        }
+    }
 
     std::string line = std::string("[guest ") + prio + "] " + tag + ": " + text;
     std::lock_guard<std::mutex> lk(lock);

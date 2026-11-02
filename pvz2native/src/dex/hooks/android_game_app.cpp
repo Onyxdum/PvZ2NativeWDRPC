@@ -16,6 +16,8 @@
 #include <pvz2native/presence.h>
 #include <pvz2native/cloud_save.h>
 #include <pvz2native/config_screen.h>
+#include <pvz2native/credits_screen.h>
+#include <pvz2native/log.h>
 
 #include <SDL.h>
 
@@ -981,7 +983,7 @@ void crashlytics_set_string(DexCall &d) {
                     g_in_seed_chooser = false;
                     pvz2_presence_note("state", "Board Chooser=false");
                 }
-            } else if (val == "PlayerWonOutro" || val == "PlayerLostOutro" || val == "EndLevel" || val == "Initial") {
+            } else if (val == "PlayerWonOutro") {
                 g_has_seed_chooser = false;
                 g_in_seed_chooser = false;
                 g_has_protect_plant = false;
@@ -989,6 +991,23 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
+                if (g_last_board_level == "modern34" || dex::current_board_level() == "modern34") {
+                    pvz2_log("[credits] Modern Day 34 victory detected (PlayerWonOutro) -- arming credits");
+                    credits_notify_modern34_reward_create();
+                }
+            } else if (val == "PlayerLostOutro" || val == "EndLevel" || val == "Initial") {
+                g_has_seed_chooser = false;
+                g_in_seed_chooser = false;
+                g_has_protect_plant = false;
+                g_last_goals_count = 0;
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+                pvz2_presence_note("state", "Board Goals=0");
+                if (val != "PlayerLostOutro" && credits_is_modern34_reward_active()) {
+                    pvz2_log("[credits] Modern Day 34 ended (%s) -- opening credits screen", val.c_str());
+                    credits_notify_modern34_reward_destroy();
+                    credits_screen_request_open();
+                }
             }
 
             if (!g_last_board_level.empty()) {
@@ -1037,6 +1056,11 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
+                if (credits_is_modern34_reward_active()) {
+                    pvz2_log("[credits] Leaving Modern Day 34 to WorldMap -- opening credits screen");
+                    credits_notify_modern34_reward_destroy();
+                    credits_screen_request_open();
+                }
                 if (!g_last_world.empty()) {
                     const std::string w = "WorldMap Current World=" + g_last_world;
                     pvz2_presence_note("state", w.c_str());
