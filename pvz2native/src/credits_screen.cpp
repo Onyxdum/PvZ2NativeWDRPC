@@ -339,6 +339,7 @@ static void update_starfield(float dt) {
 static bool g_credits_open = false;
 static bool g_open_requested = false;
 static bool g_modern34_reward_active = false;
+static bool g_modern34_level_active = false;
 
 static float g_scroll_y = 0.0f;
 static float g_scroll_speed = 62.0f;  /* pixels per second */
@@ -416,6 +417,14 @@ int credits_screen_consume_open_request(void) {
         return 1;
     }
     return 0;
+}
+
+void credits_set_modern34_active(int active) {
+    g_modern34_level_active = (active != 0);
+}
+
+int credits_get_modern34_active(void) {
+    return g_modern34_level_active ? 1 : 0;
 }
 
 void credits_notify_modern34_reward_create(void) {

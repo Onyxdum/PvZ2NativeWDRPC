@@ -4,6 +4,7 @@
 #include <pvz2native/dependencies/vfs.h>
 
 #include <pvz2native/config.h>
+#include <pvz2native/credits_screen.h>
 
 #include <cctype>
 #include <fcntl.h>
@@ -58,6 +59,12 @@ std::string translate(GuestRuntime *rt, std::string p) {
     for (std::size_t at = p.find(kEngineDataDir); at != std::string::npos;
          at = p.find(kEngineDataDir, at + sizeof(kHostDataDir) - 1)) {
         p.replace(at, sizeof(kEngineDataDir) - 1, kHostDataDir);
+    }
+
+    if (p.find("modern34") != std::string::npos || p.find("Modern34") != std::string::npos) {
+        credits_set_modern34_active(1);
+    } else if (p.find("save_Board") != std::string::npos || p.find("_modern") != std::string::npos) {
+        credits_set_modern34_active(0);
     }
 
     std::size_t slash = p.find_last_of('/');

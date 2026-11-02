@@ -54,7 +54,11 @@ void guest_log(GuestCall &c, const char *prio, const std::string &tag, const std
      * file decides what matters, and a no-op when presence is off. */
     if (pvz2_presence_enabled()) pvz2_presence_note("log", (tag + ": " + text).c_str());
     if (tag == "PvZ2Debug" && text.find("Play_WinMusic") != std::string::npos) {
-        if (dex::current_board_level() == "modern34") {
+        const std::string b_lvl = dex::current_board_level();
+        const bool is_m34 = credits_get_modern34_active() ||
+                            b_lvl == "modern34" ||
+                            (b_lvl.rfind("modern_zomboss_", 0) == 0 && credits_get_modern34_active());
+        if (is_m34) {
             c.log("[credits] Modern Day 34 win audio event detected -- arming credits");
             credits_notify_modern34_reward_create();
         }

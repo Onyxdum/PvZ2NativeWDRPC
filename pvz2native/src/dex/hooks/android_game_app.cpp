@@ -950,6 +950,9 @@ void crashlytics_set_string(DexCall &d) {
             } else {
                 g_last_level_num = 0;
             }
+            if (val == "modern34" || (val.rfind("modern_zomboss_", 0) == 0 && (num == 34 || credits_get_modern34_active()))) {
+                credits_set_modern34_active(1);
+            }
             int goals = count_level_challenges(val);
             if (goals == 0 && g_has_protect_plant) goals = 1;
             g_last_goals_count = goals;
@@ -991,7 +994,12 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
-                if (g_last_board_level == "modern34" || dex::current_board_level() == "modern34") {
+                const bool is_modern34_win = credits_get_modern34_active() ||
+                                             g_last_board_level == "modern34" ||
+                                             dex::current_board_level() == "modern34" ||
+                                             (g_last_board_level.rfind("modern_zomboss_", 0) == 0 &&
+                                              (g_last_level_num == 34 || credits_get_modern34_active()));
+                if (is_modern34_win) {
                     pvz2_log("[credits] Modern Day 34 victory detected (PlayerWonOutro) -- arming credits");
                     credits_notify_modern34_reward_create();
                 }
@@ -1007,6 +1015,7 @@ void crashlytics_set_string(DexCall &d) {
                     pvz2_log("[credits] Modern Day 34 ended (%s) -- opening credits screen", val.c_str());
                     credits_notify_modern34_reward_destroy();
                     credits_screen_request_open();
+                    credits_set_modern34_active(0);
                 }
             }
 
@@ -1060,6 +1069,7 @@ void crashlytics_set_string(DexCall &d) {
                     pvz2_log("[credits] Leaving Modern Day 34 to WorldMap -- opening credits screen");
                     credits_notify_modern34_reward_destroy();
                     credits_screen_request_open();
+                    credits_set_modern34_active(0);
                 }
                 if (!g_last_world.empty()) {
                     const std::string w = "WorldMap Current World=" + g_last_world;

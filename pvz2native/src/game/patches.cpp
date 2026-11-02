@@ -718,7 +718,9 @@ void scr_create(GuestCall &c) {
     pvz2native::diagnostics::vlog("screen", "CREATE  reward-screen singleton, caller .so+0x%x "
                                   "(board='%s', live=0x%08x)", c.lr() - c.img->so_base,
                                   dex::current_board_level().c_str(), live);
-    if (dex::current_board_level() == "modern34") {
+    const std::string b_lvl = dex::current_board_level();
+    if (b_lvl == "modern34" || credits_get_modern34_active() ||
+        (b_lvl.rfind("modern_zomboss_", 0) == 0 && credits_get_modern34_active())) {
         credits_notify_modern34_reward_create();
     }
     emulate_push(c, {4, 5, 6, 7, 11}, c.lr());

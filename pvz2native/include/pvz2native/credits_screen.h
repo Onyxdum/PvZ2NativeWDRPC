@@ -20,6 +20,8 @@ int  credits_screen_handle_reward_button_event(const SDL_Event *e);
 void credits_screen_shutdown(void);
 
 /* Notifications from game engine when Modern Day Day 34 reward dialog is active */
+void credits_set_modern34_active(int active);
+int  credits_get_modern34_active(void);
 void credits_notify_modern34_reward_create(void);
 void credits_notify_modern34_reward_destroy(void);
 int  credits_is_modern34_reward_active(void);
