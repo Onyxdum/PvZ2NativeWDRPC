@@ -61,9 +61,11 @@ std::string translate(GuestRuntime *rt, std::string p) {
         p.replace(at, sizeof(kEngineDataDir) - 1, kHostDataDir);
     }
 
-    if (p.find("modern34") != std::string::npos || p.find("Modern34") != std::string::npos) {
+    if (p.find("modern34") != std::string::npos || p.find("Modern34") != std::string::npos ||
+        p.find("modern_34") != std::string::npos) {
         credits_set_modern34_active(1);
-    } else if (p.find("save_Board") != std::string::npos || p.find("_modern") != std::string::npos) {
+    } else if (p.find("modern32") != std::string::npos || p.find("modern33") != std::string::npos ||
+               p.find("Modern32") != std::string::npos || p.find("Modern33") != std::string::npos) {
         credits_set_modern34_active(0);
     }
 

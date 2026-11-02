@@ -2089,6 +2089,7 @@ int main(int argc, char **argv) {
              * the swap -- not on a worker. */
             if (!pvz2_session_frame(session)) break;
             maybe_finish_pending_keyboard_hide();
+            credits_update_frame();
             if (credits_screen_consume_open_request()) {
                 credits_screen_open(window);
             }

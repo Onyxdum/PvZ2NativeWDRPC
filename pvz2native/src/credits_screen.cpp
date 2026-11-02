@@ -340,6 +340,8 @@ static bool g_credits_open = false;
 static bool g_open_requested = false;
 static bool g_modern34_reward_active = false;
 static bool g_modern34_level_active = false;
+static bool g_modern34_won = false;
+static Uint32 g_modern34_won_time_ms = 0;
 
 static float g_scroll_y = 0.0f;
 static float g_scroll_speed = 62.0f;  /* pixels per second */
@@ -385,6 +387,9 @@ void credits_screen_open(SDL_Window *window) {
 
     g_credits_open = true;
     g_open_requested = false;
+    g_modern34_won = false;
+    g_modern34_reward_active = false;
+    g_modern34_level_active = false;
     g_scroll_y = -100.0f; /* Start slightly below top */
     g_paused = false;
     g_fade_alpha = 0.0f;
@@ -439,6 +444,26 @@ int credits_is_modern34_reward_active(void) {
     return g_modern34_reward_active ? 1 : 0;
 }
 
+void credits_mark_modern34_won(void) {
+    g_modern34_won = true;
+    g_modern34_won_time_ms = SDL_GetTicks();
+}
+
+int credits_is_modern34_won(void) {
+    return g_modern34_won ? 1 : 0;
+}
+
+void credits_update_frame(void) {
+    if (g_modern34_won && !g_credits_open) {
+        /* Auto-roll credits 5.5s after victory if outro finishes or user does not interact */
+        if (SDL_GetTicks() - g_modern34_won_time_ms >= 5500) {
+            g_modern34_won = false;
+            g_modern34_reward_active = false;
+            credits_screen_request_open();
+        }
+    }
+}
+
 int credits_screen_handle_reward_button_event(const SDL_Event *e) {
     if (!g_modern34_reward_active || g_credits_open || !e) return 0;
 
@@ -457,6 +482,7 @@ int credits_screen_handle_reward_button_event(const SDL_Event *e) {
         float mx = (float)e->button.x;
         float my = (float)e->button.y;
         if (hit(btn_x, btn_y, btn_w, btn_h, mx, my)) {
+            g_modern34_won = false;
             g_modern34_reward_active = false;
             credits_screen_request_open();
             return 1;
@@ -465,6 +491,7 @@ int credits_screen_handle_reward_button_event(const SDL_Event *e) {
         float mx = e->tfinger.x * win_w;
         float my = e->tfinger.y * win_h;
         if (hit(btn_x, btn_y, btn_w, btn_h, mx, my)) {
+            g_modern34_won = false;
             g_modern34_reward_active = false;
             credits_screen_request_open();
             return 1;
@@ -472,6 +499,7 @@ int credits_screen_handle_reward_button_event(const SDL_Event *e) {
     } else if (e->type == SDL_KEYDOWN) {
         if (e->key.keysym.sym == SDLK_RETURN || e->key.keysym.sym == SDLK_KP_ENTER ||
             e->key.keysym.sym == SDLK_SPACE) {
+            g_modern34_won = false;
             g_modern34_reward_active = false;
             credits_screen_request_open();
             return 1;

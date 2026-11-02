@@ -25,6 +25,9 @@ int  credits_get_modern34_active(void);
 void credits_notify_modern34_reward_create(void);
 void credits_notify_modern34_reward_destroy(void);
 int  credits_is_modern34_reward_active(void);
+void credits_mark_modern34_won(void);
+int  credits_is_modern34_won(void);
+void credits_update_frame(void);
 
 #ifdef __cplusplus
 }

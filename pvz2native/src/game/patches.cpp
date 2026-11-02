@@ -719,9 +719,12 @@ void scr_create(GuestCall &c) {
                                   "(board='%s', live=0x%08x)", c.lr() - c.img->so_base,
                                   dex::current_board_level().c_str(), live);
     const std::string b_lvl = dex::current_board_level();
-    if (b_lvl == "modern34" || credits_get_modern34_active() ||
-        (b_lvl.rfind("modern_zomboss_", 0) == 0 && credits_get_modern34_active())) {
+    const std::int32_t known_num = dex::current_board_level_number();
+    const bool is_zomboss = (b_lvl.rfind("modern_zomboss_", 0) == 0);
+    if (b_lvl == "modern34" || credits_get_modern34_active() || credits_is_modern34_won() ||
+        (is_zomboss && (credits_get_modern34_active() || known_num == 34 || (known_num != 32 && known_num != 33)))) {
         credits_notify_modern34_reward_create();
+        credits_mark_modern34_won();
     }
     emulate_push(c, {4, 5, 6, 7, 11}, c.lr());
     c.no_return();
@@ -751,7 +754,8 @@ void scr_destroy(GuestCall &c) {
     }
     pvz2native::diagnostics::vlog("screen", "DESTROY reward-screen singleton, caller .so+0x%x "
                                   "(live=0x%08x)", c.lr() - c.img->so_base, live);
-    if (credits_is_modern34_reward_active()) {
+    if (credits_is_modern34_reward_active() || credits_is_modern34_won()) {
+        pvz2_log("[screen] Modern 34 reward screen dismissed -- opening credits screen");
         credits_notify_modern34_reward_destroy();
         credits_screen_request_open();
     }

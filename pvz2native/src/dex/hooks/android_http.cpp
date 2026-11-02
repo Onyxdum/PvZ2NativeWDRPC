@@ -28,6 +28,7 @@
 
 #include <pvz2native/dex/dex.h>
 #include <pvz2native/config.h>
+#include <pvz2native/credits_screen.h>
 #include <pvz2native/dependencies/vfs.h>
 #include <pvz2native/game/symbols.h>
 #include <pvz2native/host_files.h>
@@ -529,6 +530,14 @@ void ctor(DexCall &d) {
     info.native = d.arg(0);
     info.method = d.string_arg(2);
     info.url = d.string_arg(3);
+    if (info.url.find("LstPlayWorld=modern") != std::string::npos) {
+        if (info.url.find("LstPlayLvl=34") != std::string::npos) {
+            credits_set_modern34_active(1);
+        } else if (info.url.find("LstPlayLvl=32") != std::string::npos ||
+                   info.url.find("LstPlayLvl=33") != std::string::npos) {
+            credits_set_modern34_active(0);
+        }
+    }
     std::lock_guard<std::mutex> lk(g_lock);
     g_tx[d.thiz] = std::move(info);
 }

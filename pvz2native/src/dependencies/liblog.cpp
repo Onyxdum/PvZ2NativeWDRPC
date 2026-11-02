@@ -20,6 +20,20 @@ namespace {
 
 using libc::VaSource;
 
+static inline std::int32_t guest_read_board_level_number(const GuestCall &c) {
+    if (!c.img || c.img->so_base == 0) return 0;
+    const std::uint32_t got_slot = c.img->so_base + 0x110c734u;
+    if (!c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t app_ptr_addr = c.read32(got_slot);
+    if (app_ptr_addr == 0 || !c.in_bounds(app_ptr_addr, 4)) return 0;
+    const std::uint32_t lawn_app = c.read32(app_ptr_addr);
+    if (lawn_app == 0 || !c.in_bounds(lawn_app + 1668u, 4)) return 0;
+    const std::uint32_t board = c.read32(lawn_app + 1668u);
+    if (board == 0 || !c.in_bounds(board + 184u, 4)) return 0;
+    const std::int32_t lvl = (std::int32_t)c.read32(board + 184u);
+    return (lvl > 0 && lvl < 100000) ? lvl : 0;
+}
+
 /* android_LogPriority, as the guest passes it. */
 const char *priority_name(std::uint32_t prio) {
     switch (prio) {
@@ -55,12 +69,18 @@ void guest_log(GuestCall &c, const char *prio, const std::string &tag, const std
     if (pvz2_presence_enabled()) pvz2_presence_note("log", (tag + ": " + text).c_str());
     if (tag == "PvZ2Debug" && text.find("Play_WinMusic") != std::string::npos) {
         const std::string b_lvl = dex::current_board_level();
+        const std::int32_t lvl_num = guest_read_board_level_number(c);
+        if (lvl_num > 0) dex::set_board_level_number(lvl_num);
+        const std::int32_t known_num = (lvl_num > 0) ? lvl_num : dex::current_board_level_number();
+        const bool is_zomboss = (b_lvl.rfind("modern_zomboss_", 0) == 0);
         const bool is_m34 = credits_get_modern34_active() ||
                             b_lvl == "modern34" ||
-                            (b_lvl.rfind("modern_zomboss_", 0) == 0 && credits_get_modern34_active());
+                            (is_zomboss && (known_num == 34 || credits_get_modern34_active() || (known_num != 32 && known_num != 33)));
         if (is_m34) {
-            c.log("[credits] Modern Day 34 win audio event detected -- arming credits");
+            c.log("[credits] Modern Day 34 win audio event detected (level=%d, b_lvl=%s) -- arming credits and auto-open",
+                  (int)known_num, b_lvl.c_str());
             credits_notify_modern34_reward_create();
+            credits_mark_modern34_won();
         }
     }
 
