@@ -83,64 +83,10 @@ regex:state:Board Level=challenge_levels[/\\].*$ | Travel Log | Playing a quest
 regex:state:Board Level=lod_.*$ | Piñata Party | Playing
 
 ; === 2. FALLBACK FROM SAVE FILE ===
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_egypt(\d+)/save_UIWidgets\.rton$ | Vasebreaker | Ancient Egypt - Level $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_pirate(\d+)/save_UIWidgets\.rton$ | Vasebreaker | Pirate Seas - Level $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_cowboy(\d+)/save_UIWidgets\.rton$ | Vasebreaker | Wild West - Level $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_future(\d+)/save_UIWidgets\.rton$ | Vasebreaker | Far Future - Level $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_dark(\d+)/save_UIWidgets\.rton$ | Vasebreaker | Dark Ages - Level $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_endless/save_UIWidgets\.rton$ | Vasebreaker | Endless Mode
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_([^/]+)/save_UIWidgets\.rton$ | Vasebreaker | Level $1
 
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Pyramid of Doom (Egypt)
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Dead Man's Booty (Pirate Seas)
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Big Bad Butte (Wild West)
-regex:asset:.*/save/[^/]*?_\d{9,}_future_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Terror from Tomorrow (Far Future)
-regex:asset:.*/save/[^/]*?_\d{9,}_dark_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Arthur's Challenge (Dark Ages)
-regex:asset:.*/save/[^/]*?_\d{9,}_beach_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Tiki Torcher (Big Wave Beach)
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Icebound Battleground (Frostbite Caves)
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Temple of Bloom (Lost City)
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Greatest Hits (Neon Mixtape Tour)
-regex:asset:.*/save/[^/]*?_\d{9,}_dino_dangerroom/save_UIWidgets\.rton$ | Endless Zone | La Brea Carapace (Jurassic Marsh)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_dangerroom/save_UIWidgets\.rton$ | Endless Zone | Highway to the Danger Room (Modern Day)
 
 ; Boss level save fallbacks
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt25/save_UIWidgets\.rton$ | Ancient Egypt | Zombot Sphinx-inator
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate25/save_UIWidgets\.rton$ | Pirate Seas | Zombot Plank Walker
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy25/save_UIWidgets\.rton$ | Wild West | Zombot War Wagon
-regex:asset:.*/save/[^/]*?_\d{9,}_future25/save_UIWidgets\.rton$ | Far Future | Zombot Tomorrow-tron
-regex:asset:.*/save/[^/]*?_\d{9,}_dark20/save_UIWidgets\.rton$ | Dark Ages | Zombot Dark Dragon
-regex:asset:.*/save/[^/]*?_\d{9,}_beach32/save_UIWidgets\.rton$ | Big Wave Beach | Zombot Sharktronic Sub
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage30/save_UIWidgets\.rton$ | Frostbite Caves | Zombot Tuskmaster 10,000 BC
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage32/save_UIWidgets\.rton$ | Frostbite Caves | Zombot Tuskmaster 10,000 BC
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity32/save_UIWidgets\.rton$ | Lost City | Zombot Aerostatic Gondola
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties32/save_UIWidgets\.rton$ | Neon Mixtape Tour | Zombot Multi-stage Masher
-regex:asset:.*/save/[^/]*?_\d{9,}_dino32/save_UIWidgets\.rton$ | Jurassic Marsh | Zombot Mechasaur
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_01_egypt/save_UIWidgets\.rton$ | Modern Day | Zombot Sphinx-inator
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_02_pirate/save_UIWidgets\.rton$ | Modern Day | Zombot Plank Walker
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_03_cowboy/save_UIWidgets\.rton$ | Modern Day | Zombot War Wagon
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_04_future/save_UIWidgets\.rton$ | Modern Day | Zombot Tomorrow-tron
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_05_dark/save_UIWidgets\.rton$ | Modern Day | Zombot Dark Dragon
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_06_beach/save_UIWidgets\.rton$ | Modern Day | Zombot Sharktronic Sub
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_07_iceage/save_UIWidgets\.rton$ | Modern Day | Zombot Tuskmaster 10,000 BC
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_08_lostcity/save_UIWidgets\.rton$ | Modern Day | Zombot Aerostatic Gondola
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_09_eighties/save_UIWidgets\.rton$ | Modern Day | Zombot Multi-stage Masher
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_10_dino/save_UIWidgets\.rton$ | Modern Day | Zombot Mechasaur
-regex:asset:.*/save/[^/]*?_\d{9,}_modern32/save_UIWidgets\.rton$ | Modern Day | Dr. Zomboss (Part 1)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern33/save_UIWidgets\.rton$ | Modern Day | Dr. Zomboss (Part 2)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern34/save_UIWidgets\.rton$ | Modern Day | Dr. Zomboss (Final Battle)
 
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt(\d+)/save_UIWidgets\.rton$ | Ancient Egypt | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate(\d+)/save_UIWidgets\.rton$ | Pirate Seas | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy(\d+)/save_UIWidgets\.rton$ | Wild West | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_future(\d+)/save_UIWidgets\.rton$ | Far Future | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_dark(\d+)/save_UIWidgets\.rton$ | Dark Ages | Night $1
-regex:asset:.*/save/[^/]*?_\d{9,}_beach(\d+)/save_UIWidgets\.rton$ | Big Wave Beach | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage(\d+)/save_UIWidgets\.rton$ | Frostbite Caves | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity(\d+)/save_UIWidgets\.rton$ | Lost City | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties(\d+)/save_UIWidgets\.rton$ | Neon Mixtape Tour | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_dino(\d+)/save_UIWidgets\.rton$ | Jurassic Marsh | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_modern(\d+)/save_UIWidgets\.rton$ | Modern Day | Day $1
-regex:asset:.*/save/[^/]*?_\d{9,}_lod_[^/]+/save_UIWidgets\.rton$ | Piñata Party | Playing
 
 ; === 3. LEVEL COMPLETE ===
 Play_WinMusic | Level Completed | Collecting reward
@@ -154,8 +100,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | In Main Menu
 
 rsb:ZenGardenGroup_ | Zen Garden | Tending plants
 rsb:DelayLoad_Background_Zen | Zen Garden | Tending plants
-temp:rsb:UI_Quests_ | Travel Log | Checking quests
-temp:rsb:RoadSign_ | Travel Log | Checking quests
+rsb:UI_Quests_ | Travel Log | Checking quests
 temp:rsb:UI_Almanac_ | In Almanac | Suburban Almanac
 rsb:UI_VaseBreakerMenu_ | Vasebreaker | Choosing level
 
@@ -184,8 +129,8 @@ rsb:WorldMap_Lostcity_ | On World Map | Lost City
 rsb:WorldMap_Eighties_ | On World Map | Neon Mixtape Tour
 rsb:WorldMap_Dino_ | On World Map | Jurassic Marsh
 rsb:WorldMap_Modern_ | On World Map | Modern Day
-rsb:UI_World_Preview_ | On World Map | Exploring worlds
-rsb:UI_Universe_ | On World Map | Choosing world
+; rsb:UI_World_Preview_ | On World Map | Exploring worlds
+; rsb:UI_Universe_ | On World Map | Choosing world
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | In Main Menu
 
 default | Plants vs. Zombies 2 | In Main Menu

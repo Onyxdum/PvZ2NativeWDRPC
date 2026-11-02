@@ -83,63 +83,9 @@ regex:state:Board Level=challenge_levels[/\\].*$ | Diário de Viagem | Jogando u
 regex:state:Board Level=lod_.*$ | Festa Piñata | Em partida
 
 ; === 2. FALLBACK POR ARQUIVO DE SALVAMENTO ===
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_egypt(\d+)/save_UIWidgets\.rton$ | Quebravaso | Egito Antigo - Nível $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_pirate(\d+)/save_UIWidgets\.rton$ | Quebravaso | Mar dos Piratas - Nível $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_cowboy(\d+)/save_UIWidgets\.rton$ | Quebravaso | Velho Oeste - Nível $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_future(\d+)/save_UIWidgets\.rton$ | Quebravaso | Futuro Distante - Nível $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_dark(\d+)/save_UIWidgets\.rton$ | Quebravaso | Idade das Trevas - Nível $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_endless/save_UIWidgets\.rton$ | Quebravaso | Modo Infinito
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_([^/]+)/save_UIWidgets\.rton$ | Quebravaso | Nível $1
 
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Pirâmide da Perdição (Egito Antigo)
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Butim do Homem Morto (Mar dos Piratas)
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Monte Malvadão (Velho Oeste)
-regex:asset:.*/save/[^/]*?_\d{9,}_future_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Terror do Amanhã (Futuro Distante)
-regex:asset:.*/save/[^/]*?_\d{9,}_dark_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Desafio do Artur (Idade das Trevas)
-regex:asset:.*/save/[^/]*?_\d{9,}_beach_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Tocha Tiki (Praia da Boa Onda)
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Campo de Batalha Congelado (Cavernas da Geladura)
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Templo da Podridão (Cidade Perdida)
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Maiores Sucessos (Turnê Idade da Juba)
-regex:asset:.*/save/[^/]*?_\d{9,}_dino_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Poços de Piche Cerébrasa (Pântano Jurássico)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Rodovia da Sala de Pânico (Vida Moderna)
 
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt25/save_UIWidgets\.rton$ | Egito Antigo | Esfingenadora Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate25/save_UIWidgets\.rton$ | Mar dos Piratas | Prancha da Perdição Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy25/save_UIWidgets\.rton$ | Velho Oeste | Carroça de Guerra Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_future25/save_UIWidgets\.rton$ | Futuro Distante | Zumbô Amanhãtron
-regex:asset:.*/save/[^/]*?_\d{9,}_dark20/save_UIWidgets\.rton$ | Idade das Trevas | Dragão das Trevas Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_beach32/save_UIWidgets\.rton$ | Praia da Boa Onda | Subtubarãotrônico Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage30/save_UIWidgets\.rton$ | Cavernas da Geladura | Zumbô Mastermute 10.000 a.C.
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage32/save_UIWidgets\.rton$ | Cavernas da Geladura | Zumbô Mastermute 10.000 a.C.
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity32/save_UIWidgets\.rton$ | Cidade Perdida | Gôndola Aerostática Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties32/save_UIWidgets\.rton$ | Turnê Idade da Juba | Zumbô Multimistureba
-regex:asset:.*/save/[^/]*?_\d{9,}_dino32/save_UIWidgets\.rton$ | Pântano Jurássico | Mastodrônico Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_01_egypt/save_UIWidgets\.rton$ | Vida Moderna | Esfingenadora Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_02_pirate/save_UIWidgets\.rton$ | Vida Moderna | Prancha da Perdição Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_03_cowboy/save_UIWidgets\.rton$ | Vida Moderna | Carroça de Guerra Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_04_future/save_UIWidgets\.rton$ | Vida Moderna | Zumbô Amanhãtron
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_05_dark/save_UIWidgets\.rton$ | Vida Moderna | Dragão das Trevas Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_06_beach/save_UIWidgets\.rton$ | Vida Moderna | Subtubarãotrônico Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_07_iceage/save_UIWidgets\.rton$ | Vida Moderna | Zumbô Mastermute 10.000 a.C.
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_08_lostcity/save_UIWidgets\.rton$ | Vida Moderna | Gôndola Aerostática Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_09_eighties/save_UIWidgets\.rton$ | Vida Moderna | Zumbô Multimistureba
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_10_dino/save_UIWidgets\.rton$ | Vida Moderna | Mastodrônico Zumbô
-regex:asset:.*/save/[^/]*?_\d{9,}_modern32/save_UIWidgets\.rton$ | Vida Moderna | Dr. Zumbão (Parte 1)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern33/save_UIWidgets\.rton$ | Vida Moderna | Dr. Zumbão (Parte 2)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern34/save_UIWidgets\.rton$ | Vida Moderna | Dr. Zumbão (Batalha Final)
 
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt(\d+)/save_UIWidgets\.rton$ | Egito Antigo | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate(\d+)/save_UIWidgets\.rton$ | Mar dos Piratas | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy(\d+)/save_UIWidgets\.rton$ | Velho Oeste | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_future(\d+)/save_UIWidgets\.rton$ | Futuro Distante | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_dark(\d+)/save_UIWidgets\.rton$ | Idade das Trevas | Noite $1
-regex:asset:.*/save/[^/]*?_\d{9,}_beach(\d+)/save_UIWidgets\.rton$ | Praia da Boa Onda | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage(\d+)/save_UIWidgets\.rton$ | Cavernas da Geladura | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity(\d+)/save_UIWidgets\.rton$ | Cidade Perdida | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties(\d+)/save_UIWidgets\.rton$ | Turnê Idade da Juba | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_dino(\d+)/save_UIWidgets\.rton$ | Pântano Jurássico | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_modern(\d+)/save_UIWidgets\.rton$ | Vida Moderna | Dia $1
-regex:asset:.*/save/[^/]*?_\d{9,}_lod_[^/]+/save_UIWidgets\.rton$ | Festa Piñata | Em partida
 
 ; === 3. FIM DE NÍVEL ===
 Play_WinMusic | Nível concluído | Coletando recompensa
@@ -153,8 +99,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | No menu principa
 
 rsb:ZenGardenGroup_ | Jardim Zen | Cuidando das plantas
 rsb:DelayLoad_Background_Zen | Jardim Zen | Cuidando das plantas
-temp:rsb:UI_Quests_ | Diário de Viagem | Vendo missões
-temp:rsb:RoadSign_ | Diário de Viagem | Vendo missões
+rsb:UI_Quests_ | Diário de Viagem | Vendo missões
 temp:rsb:UI_Almanac_ | No Almanaque | Consultando plantas e zumbis
 rsb:UI_VaseBreakerMenu_ | Quebravaso | Escolhendo nível
 
@@ -183,8 +128,8 @@ rsb:WorldMap_Lostcity_ | No mapa | Cidade Perdida
 rsb:WorldMap_Eighties_ | No mapa | Turnê Idade da Juba
 rsb:WorldMap_Dino_ | No mapa | Pântano Jurássico
 rsb:WorldMap_Modern_ | No mapa | Vida Moderna
-rsb:UI_World_Preview_ | No mapa | Explorando mundos
-rsb:UI_Universe_ | No mapa | Escolhendo mundo
+; rsb:UI_World_Preview_ | No mapa | Explorando mundos
+; rsb:UI_Universe_ | No mapa | Escolhendo mundo
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | No menu principal
 
 default | Plants vs. Zombies 2 | No menu principal

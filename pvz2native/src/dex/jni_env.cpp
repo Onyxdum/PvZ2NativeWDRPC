@@ -311,6 +311,8 @@ void trace_java_call(GuestCall &c, const DexCall &call, const std::string &class
 
 std::mutex g_board_level_lock;
 std::string g_board_level;
+std::string g_current_world;
+std::int32_t g_board_level_number = 0;
 
 /* Remembers Crashlytics.setString("Board Level", ...) -- the one breadcrumb the port
  * acts on, so it is kept even when verbose is off. */
@@ -608,6 +610,31 @@ void handle_javavm(GuestCall &c, std::uint32_t slot) {
 std::string current_board_level() {
     std::lock_guard<std::mutex> lk(g_board_level_lock);
     return g_board_level;
+}
+
+void set_current_board_level(const std::string &level) {
+    std::lock_guard<std::mutex> lk(g_board_level_lock);
+    g_board_level = level;
+}
+
+std::int32_t current_board_level_number() {
+    std::lock_guard<std::mutex> lk(g_board_level_lock);
+    return g_board_level_number;
+}
+
+void set_board_level_number(std::int32_t num) {
+    std::lock_guard<std::mutex> lk(g_board_level_lock);
+    g_board_level_number = num;
+}
+
+std::string current_world() {
+    std::lock_guard<std::mutex> lk(g_board_level_lock);
+    return g_current_world;
+}
+
+void set_current_world(const std::string &world) {
+    std::lock_guard<std::mutex> lk(g_board_level_lock);
+    g_current_world = world;
 }
 
 std::uint32_t jni_slot_count() { return kSlotCount; }

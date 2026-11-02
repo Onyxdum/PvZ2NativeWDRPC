@@ -9,6 +9,8 @@
 
 #include <pvz2native/dependencies/libc_internal.h>
 #include <pvz2native/presence.h>
+#include <pvz2native/credits_screen.h>
+#include <pvz2native/dex/dex.h>
 
 #include <mutex>
 #include <string>
@@ -17,6 +19,20 @@ namespace pvz2native {
 namespace {
 
 using libc::VaSource;
+
+static inline std::int32_t guest_read_board_level_number(const GuestCall &c) {
+    if (!c.img || c.img->so_base == 0) return 0;
+    const std::uint32_t got_slot = c.img->so_base + 0x110c734u;
+    if (!c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t app_ptr_addr = c.read32(got_slot);
+    if (app_ptr_addr == 0 || !c.in_bounds(app_ptr_addr, 4)) return 0;
+    const std::uint32_t lawn_app = c.read32(app_ptr_addr);
+    if (lawn_app == 0 || !c.in_bounds(lawn_app + 1668u, 4)) return 0;
+    const std::uint32_t board = c.read32(lawn_app + 1668u);
+    if (board == 0 || !c.in_bounds(board + 184u, 4)) return 0;
+    const std::int32_t lvl = (std::int32_t)c.read32(board + 184u);
+    return (lvl > 0 && lvl < 100000) ? lvl : 0;
+}
 
 /* android_LogPriority, as the guest passes it. */
 const char *priority_name(std::uint32_t prio) {

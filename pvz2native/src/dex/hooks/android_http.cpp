@@ -28,6 +28,7 @@
 
 #include <pvz2native/dex/dex.h>
 #include <pvz2native/config.h>
+#include <pvz2native/credits_screen.h>
 #include <pvz2native/dependencies/vfs.h>
 #include <pvz2native/game/symbols.h>
 #include <pvz2native/host_files.h>
@@ -529,6 +530,31 @@ void ctor(DexCall &d) {
     info.native = d.arg(0);
     info.method = d.string_arg(2);
     info.url = d.string_arg(3);
+
+    auto extract_url_param = [](const std::string &url, const std::string &key) -> std::string {
+        std::size_t pos = url.find(key + "=");
+        if (pos == std::string::npos) return "";
+        pos += key.length() + 1;
+        std::size_t end_pos = url.find('&', pos);
+        return url.substr(pos, end_pos == std::string::npos ? std::string::npos : end_pos - pos);
+    };
+
+    const std::string world = extract_url_param(info.url, "LstPlayWorld");
+    const std::string lvl_str = extract_url_param(info.url, "LstPlayLvl");
+    const std::string state_str = extract_url_param(info.url, "LastLevelState");
+
+    int lvl = 0;
+    if (!lvl_str.empty()) {
+        try { lvl = std::stoi(lvl_str); } catch (...) {}
+    }
+    int state = -1;
+    if (!state_str.empty()) {
+        try { state = std::stoi(state_str); } catch (...) {}
+    }
+
+    if (!world.empty()) {
+        dex::set_current_world(world);
+    }
     std::lock_guard<std::mutex> lk(g_lock);
     g_tx[d.thiz] = std::move(info);
 }
