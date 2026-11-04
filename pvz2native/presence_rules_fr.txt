@@ -153,7 +153,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Dans le menu pri
 
 rsb:ZenGardenGroup_ | Jardin zen | Soin des plantes
 rsb:DelayLoad_Background_Zen | Jardin zen | Soin des plantes
-temp:rsb:UI_Quests_ | Carnet de voyage | Consultation des quêtes
+rsb:UI_Quests_ | Carnet de voyage | Consultation des quêtes
 temp:rsb:UI_Almanac_ | Dans l'Almanach | Consultation des plantes et zombies
 rsb:UI_VaseBreakerMenu_ | Briseur de vase | Choix du niveau
 

@@ -153,7 +153,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | No menu principa
 
 rsb:ZenGardenGroup_ | Jardim Zen | Cuidando das plantas
 rsb:DelayLoad_Background_Zen | Jardim Zen | Cuidando das plantas
-temp:rsb:UI_Quests_ | Diário de Viagem | Vendo missões
+rsb:UI_Quests_ | Diário de Viagem | Vendo missões
 temp:rsb:UI_Almanac_ | No Almanaque | Consultando plantas e zumbis
 rsb:UI_VaseBreakerMenu_ | Quebravaso | Escolhendo nível
 

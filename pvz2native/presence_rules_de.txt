@@ -153,7 +153,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Im Hauptmenü
 
 rsb:ZenGardenGroup_ | Zen-Garten | Pflanzen pflegen
 rsb:DelayLoad_Background_Zen | Zen-Garten | Pflanzen pflegen
-temp:rsb:UI_Quests_ | Reiseklotz | Quests ansehen
+rsb:UI_Quests_ | Reiseklotz | Quests ansehen
 temp:rsb:UI_Almanac_ | Im Lexikon | Pflanzen und Zombies ansehen
 rsb:UI_VaseBreakerMenu_ | Vasenbrecher | Level auswählen
 

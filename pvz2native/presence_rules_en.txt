@@ -154,7 +154,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | In Main Menu
 
 rsb:ZenGardenGroup_ | Zen Garden | Tending plants
 rsb:DelayLoad_Background_Zen | Zen Garden | Tending plants
-temp:rsb:UI_Quests_ | Travel Log | Checking quests
+rsb:UI_Quests_ | Travel Log | Checking quests
 temp:rsb:UI_Almanac_ | In Almanac | Suburban Almanac
 rsb:UI_VaseBreakerMenu_ | Vasebreaker | Choosing level
 

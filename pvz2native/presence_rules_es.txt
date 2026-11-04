@@ -154,7 +154,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | En el menú prin
 
 rsb:ZenGardenGroup_ | Jardín Zen | Cuidando las plantas
 rsb:DelayLoad_Background_Zen | Jardín Zen | Cuidando las plantas
-temp:rsb:UI_Quests_ | Tronco de Viaje | Viendo misiones
+rsb:UI_Quests_ | Tronco de Viaje | Viendo misiones
 rsb:UI_VaseBreakerMenu_ | Rompejarrones | Eligiendo nivel
 
 ; === 5. MAPAS DE MUNDOS ===

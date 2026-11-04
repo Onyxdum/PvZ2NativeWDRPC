@@ -1002,6 +1002,61 @@ void worker() {
 
             static std::string last_known_world;
 
+            auto restore_world_activity = [&]() {
+                const std::string tgt_world = !current_world.empty() ? current_world : last_known_world;
+                if (!tgt_world.empty()) {
+                    const std::string syn_ev = "state:worldmap current world=" + tgt_world;
+                    for (const Rule &r : rules) {
+                        if (!r.is_temp && syn_ev.find(r.needle) != std::string::npos) {
+                            persistent = Activity{r.details, r.state};
+                            desired = persistent;
+                            return;
+                        }
+                    }
+                }
+                for (const Rule &r : rules) {
+                    if (!r.is_temp && r.needle.find("universemap shown=true") != std::string::npos) {
+                        persistent = Activity{r.details, r.state};
+                        desired = persistent;
+                        return;
+                    }
+                }
+                persistent = def;
+                desired = def;
+            };
+
+            const bool is_dialog_close = (ev.find("Play_UI_Button_X_Close_") != std::string::npos ||
+                                          ev.find("Play_UI_Quests_Dialog_") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Cancel_") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Leave_") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Store_Close") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Almanac_Close_") != std::string::npos ||
+                                          ev.rfind("state:WorldMap Actions Active=true", 0) == 0);
+            if (is_dialog_close) {
+                const std::string cur_det = lower(persistent.details);
+                const std::string des_det = lower(desired.details);
+                if (cur_det.find("rompejarrones") != std::string::npos ||
+                    cur_det.find("vasebreaker") != std::string::npos ||
+                    cur_det.find("tronco") != std::string::npos ||
+                    cur_det.find("travel log") != std::string::npos ||
+                    cur_det.find("carnet") != std::string::npos ||
+                    cur_det.find("reiseklotz") != std::string::npos ||
+                    cur_det.find("diario") != std::string::npos ||
+                    cur_det.find("diário") != std::string::npos ||
+                    des_det.find("rompejarrones") != std::string::npos ||
+                    des_det.find("vasebreaker") != std::string::npos ||
+                    des_det.find("tronco") != std::string::npos ||
+                    des_det.find("travel log") != std::string::npos ||
+                    des_det.find("carnet") != std::string::npos ||
+                    des_det.find("reiseklotz") != std::string::npos ||
+                    des_det.find("diario") != std::string::npos ||
+                    des_det.find("diário") != std::string::npos ||
+                    in_temp) {
+                    in_temp = false;
+                    restore_world_activity();
+                }
+            }
+
             if (ev.rfind("state:WorldMap Current World=", 0) == 0) {
                 current_world = ev.substr(27);
                 last_known_world = current_world;
@@ -1027,27 +1082,16 @@ void worker() {
                 boss_name_detected.clear();
                 current_level.clear();
                 in_temp = false;
+                restore_world_activity();
             } else if (ev.rfind("state:UniverseMap Shown=false", 0) == 0) {
                 if (current_world.empty() && !last_known_world.empty()) {
                     current_world = last_known_world;
                 }
                 in_temp = false;
-                if (!current_world.empty()) {
-                    const std::string syn_ev = "state:worldmap current world=" + current_world;
-                    for (const Rule &r : rules) {
-                        if (!r.is_temp && syn_ev.find(r.needle) != std::string::npos) {
-                            persistent = Activity{r.details, r.state};
-                            break;
-                        }
-                    }
-                }
-            } else if (ev.rfind("state:GameStateMgr State=GAME_ArcadeMenu", 0) == 0 ||
-                       ev.find("VaseBreaker") != std::string::npos ||
-                       ev.find("vasebreaker") != std::string::npos) {
+                restore_world_activity();
+            } else if (ev.rfind("state:GameStateMgr State=GAME_ArcadeMenu", 0) == 0) {
                 in_temp = false;
-            } else if (ev.rfind("state:GameStateMgr State=GAME_Almanac", 0) == 0 ||
-                       ev.find("Almanac") != std::string::npos ||
-                       ev.find("almanac") != std::string::npos) {
+            } else if (ev.rfind("state:GameStateMgr State=GAME_Almanac", 0) == 0) {
                 in_temp = false;
             } else if (ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0) {
                 is_paused = false;
@@ -1072,6 +1116,13 @@ void worker() {
                 current_level.clear();
                 current_world.clear();
                 in_temp = false;
+                for (const Rule &r : rules) {
+                    if (!r.is_temp && r.needle.find("universemap shown=true") != std::string::npos) {
+                        persistent = Activity{r.details, r.state};
+                        desired = persistent;
+                        break;
+                    }
+                }
             }
 
             for (const Rule &r : rules) {
