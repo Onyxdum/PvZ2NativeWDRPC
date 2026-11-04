@@ -42,6 +42,9 @@ if (MINGW)
 endif()
 
 add_custom_command(TARGET pvz2native POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "$<TARGET_FILE:pvz2native>"
+        "$<TARGET_FILE_DIR:pvz2native>/pvz2native.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/presence_rules_en.txt"

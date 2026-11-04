@@ -67,22 +67,6 @@ void guest_log(GuestCall &c, const char *prio, const std::string &tag, const std
     /* Discord Rich Presence tap. Before the dedupe below on purpose: the rules
      * file decides what matters, and a no-op when presence is off. */
     if (pvz2_presence_enabled()) pvz2_presence_note("log", (tag + ": " + text).c_str());
-    if (tag == "PvZ2Debug" && text.find("Play_WinMusic") != std::string::npos) {
-        const std::string b_lvl = dex::current_board_level();
-        const std::int32_t lvl_num = guest_read_board_level_number(c);
-        if (lvl_num > 0) dex::set_board_level_number(lvl_num);
-        const std::int32_t known_num = (lvl_num > 0) ? lvl_num : dex::current_board_level_number();
-        const bool is_zomboss = (b_lvl.rfind("modern_zomboss_", 0) == 0);
-        const bool is_m34 = credits_get_modern34_active() ||
-                            b_lvl == "modern34" ||
-                            (is_zomboss && (known_num == 34 || credits_get_modern34_active() || (known_num != 32 && known_num != 33)));
-        if (is_m34) {
-            c.log("[credits] Modern Day 34 win audio event detected (level=%d, b_lvl=%s) -- arming credits and auto-open",
-                  (int)known_num, b_lvl.c_str());
-            credits_notify_modern34_reward_create();
-            credits_mark_modern34_won();
-        }
-    }
 
     std::string line = std::string("[guest ") + prio + "] " + tag + ": " + text;
     std::lock_guard<std::mutex> lk(lock);

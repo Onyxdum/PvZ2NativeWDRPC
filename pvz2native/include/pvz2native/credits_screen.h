@@ -29,6 +29,12 @@ void credits_mark_modern34_won(void);
 int  credits_is_modern34_won(void);
 void credits_update_frame(void);
 
+/* Telemetry context tracked from Draper HTTP calls */
+void credits_set_draper_info(const char *world, int level, int state);
+const char *credits_get_draper_world(void);
+int  credits_get_draper_level(void);
+int  credits_get_draper_state(void);
+
 #ifdef __cplusplus
 }
 #endif

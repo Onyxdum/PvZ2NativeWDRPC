@@ -629,16 +629,30 @@ void resolve_activity_assets(Activity &act, const std::string &cur_level, const 
     const std::string det_low = lower(act.details);
     const std::string st_low = lower(act.state);
 
+    const bool is_world_map = (det_low.find("map") != std::string::npos ||
+                               det_low.find("carte") != std::string::npos);
+
     auto matches = [&](const char *s) -> bool {
-        return lvl_low.find(s) != std::string::npos ||
-               wrd_low.find(s) != std::string::npos ||
-               det_low.find(s) != std::string::npos ||
-               st_low.find(s) != std::string::npos;
+        if (lvl_low.find(s) != std::string::npos ||
+            wrd_low.find(s) != std::string::npos ||
+            det_low.find(s) != std::string::npos) {
+            return true;
+        }
+        // When on the world map, act.state holds the localized world name
+        if (is_world_map && st_low.find(s) != std::string::npos) {
+            return true;
+        }
+        return false;
     };
 
-    if (matches("lostcity") || matches("ciudad perdida") || matches("lost city") ||
-        matches("citÃ© perdue") || matches("cite perdue") || matches("cittÃ  perduta") ||
-        matches("citta perduta") || matches("verlorene stadt") || matches("cidade perdida")) {
+    if (matches("modern") || matches("tiempos modernos") || matches("modern day") ||
+        matches("temps modernes") || matches("moderne") || matches("vida moderna") ||
+        matches("tempi moderni")) {
+        icon_key = "tiempos_modernos";
+        world_name = (g_lang == PresLang::ES) ? "Tiempos Modernos" : "Modern Day";
+    } else if (matches("lostcity") || matches("ciudad perdida") || matches("lost city") ||
+               matches("perdue") || matches("perduta") || matches("verlorene stadt") ||
+               matches("cidade perdida")) {
         icon_key = "ciudad_perdida";
         world_name = (g_lang == PresLang::ES) ? "Ciudad Perdida" : "Lost City";
     } else if (matches("iceage") || matches("cuevas congeladas") || matches("frostbite caves") ||
@@ -647,51 +661,46 @@ void resolve_activity_assets(Activity &act, const std::string &cur_level, const 
         icon_key = "cuevas_congeladas";
         world_name = (g_lang == PresLang::ES) ? "Cuevas Congeladas" : "Frostbite Caves";
     } else if (matches("dark") || matches("edad oscura") || matches("dark ages") ||
-               matches("l'Ã¢ge des tÃ©nÃ¨bres") || matches("age des tenebres") || matches("mittelalter") ||
+               matches("tenebres") || matches("mittelalter") ||
                matches("idade das trevas") || matches("secoli bui")) {
         icon_key = "edad_oscura";
         world_name = (g_lang == PresLang::ES) ? "Edad Oscura" : "Dark Ages";
     } else if (matches("future") || matches("futuro lejano") || matches("far future") ||
-               matches("futur Ã©loignÃ©") || matches("futur eloigne") || matches("ferne zukunft") ||
+               matches("futur") || matches("ferne zukunft") ||
                matches("futuro distante") || matches("futuro lontano")) {
         icon_key = "futuro_lejano";
         world_name = (g_lang == PresLang::ES) ? "Futuro Lejano" : "Far Future";
     } else if (matches("dino") || matches("pantano") || matches("jurassic") ||
-               matches("jurassisches") || matches("pÃ¢ntano") || matches("giurassico")) {
+               matches("jurassisches") || matches("juras") || matches("giurassico")) {
         icon_key = "pantano_jurasico";
-        world_name = (g_lang == PresLang::ES) ? "Pantano del JurÃ¡sico" : "Jurassic Marsh";
+        world_name = (g_lang == PresLang::ES) ? "Pantano del Jurásico" : "Jurassic Marsh";
     } else if (matches("beach") || matches("playa") || matches("big wave") ||
-               matches("dÃ©ferlantes") || matches("deferlantes") || matches("riesenwellen") ||
+               matches("deferlantes") || matches("riesenwellen") ||
                matches("boa onda") || matches("spiaggia")) {
         icon_key = "playa_gran_ola";
         world_name = (g_lang == PresLang::ES) ? "Playa de la Gran Ola" : "Big Wave Beach";
-    } else if (matches("modern") || matches("tiempos modernos") || matches("modern day") ||
-               matches("temps modernes") || matches("moderne") || matches("vida moderna") ||
-               matches("tempi moderni")) {
-        icon_key = "tiempos_modernos";
-        world_name = (g_lang == PresLang::ES) ? "Tiempos Modernos" : "Modern Day";
     } else if (matches("eighties") || matches("vueltacasete") || matches("neon mixtape") ||
                matches("fluotonik") || matches("neon-mixtape") || matches("idade da juba") ||
                matches("discomix")) {
         icon_key = "vueltacasete_neon";
-        world_name = (g_lang == PresLang::ES) ? "Vueltacasete de NeÃ³n" : "Neon Mixtape Tour";
-    } else if (lvl_low.rfind("lod_", 0) == 0 || matches("pinata") || matches("piÃ±ata")) {
+        world_name = (g_lang == PresLang::ES) ? "Vueltacasete de Neón" : "Neon Mixtape Tour";
+    } else if (lvl_low.rfind("lod_", 0) == 0 || matches("pinata") || matches("piñata")) {
         icon_key = "fiesta_pinatas";
-        world_name = (g_lang == PresLang::ES) ? "Fiesta de PiÃ±atas" : "PiÃ±ata Party";
-    } else if (matches("egypt") || matches("egipto") || matches("Ã©gypte") ||
+        world_name = (g_lang == PresLang::ES) ? "Fiesta de Piñatas" : "Piñata Party";
+    } else if (matches("egypt") || matches("egipto") ||
                matches("pirate") || matches("pirata") ||
                matches("cowboy") || matches("oeste") || matches("west") ||
                matches("tutorial") || matches("intro") || matches("casa del jugador") ||
                matches("player's house")) {
         icon_key = "mundos_no_mencionados";
-        if (matches("egypt") || matches("egipto") || matches("Ã©gypte")) {
+        if (matches("egypt") || matches("egipto")) {
             world_name = (g_lang == PresLang::ES) ? "Antiguo Egipto" : "Ancient Egypt";
         } else if (matches("pirate") || matches("pirata")) {
             world_name = (g_lang == PresLang::ES) ? "Mares Piratas" : "Pirate Seas";
         } else if (matches("cowboy") || matches("oeste") || matches("west")) {
             world_name = (g_lang == PresLang::ES) ? "Salvaje Oeste" : "Wild West";
         } else {
-            world_name = (g_lang == PresLang::ES) ? "Mundo ClÃ¡sico" : "Classic World";
+            world_name = (g_lang == PresLang::ES) ? "Mundo Clásico" : "Classic World";
         }
     }
 
@@ -735,6 +744,19 @@ void resolve_activity_assets(Activity &act, const std::string &cur_level, const 
                det_low.find("quebravaso") != std::string::npos) {
         act.small_image = get_icon_uri("rompejarrones");
         act.small_text = (g_lang == PresLang::ES) ? "Rompejarrones" : "Vasebreaker";
+    } else if (det_low.find("almanaque") != std::string::npos ||
+               det_low.find("almanac") != std::string::npos ||
+               det_low.find("almanach") != std::string::npos ||
+               det_low.find("almanacco") != std::string::npos ||
+               det_low.find("lexikon") != std::string::npos ||
+               st_low.find("plantas y zombis") != std::string::npos ||
+               st_low.find("suburban almanac") != std::string::npos ||
+               st_low.find("almanaque suburbano") != std::string::npos) {
+        act.small_image = get_icon_uri("almanaque");
+        act.small_text = (g_lang == PresLang::ES || g_lang == PresLang::PT) ? "Almanaque" :
+                         (g_lang == PresLang::DE) ? "Lexikon" :
+                         (g_lang == PresLang::FR) ? "Almanach" :
+                         (g_lang == PresLang::IT) ? "Almanacco" : "Almanac";
     } else {
         act.small_image.clear();
         act.small_text.clear();
@@ -800,6 +822,8 @@ void worker() {
     int goals_count = 0;
     int boss_phase = 0;
     bool level_won = false;
+    bool is_eighties_boss = false;
+    std::string boss_name_detected;
     std::string current_level;
     std::string current_world;
     Activity sent;
@@ -830,20 +854,105 @@ void worker() {
                 std::fflush(trace);
             }
 
+            /* Only detect boss from events if not already locked in or if phase > 3 */
+            if (boss_name_detected.empty() || boss_phase > 3) {
+                if (ev_lower.find("eighties") != std::string::npos ||
+                    ev_lower.find("zombie_eighties") != std::string::npos ||
+                    ev_lower.find("modern_zomboss_09") != std::string::npos ||
+                    ev_lower.find("multiescenario") != std::string::npos ||
+                    ev_lower.find("multi-stage") != std::string::npos) {
+                    is_eighties_boss = true;
+                    boss_name_detected = "eighties";
+                } else if (ev_lower.find("zombie_pirate") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_02") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "pirate";
+                } else if (ev_lower.find("zombie_egypt") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_01") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "egypt";
+                } else if (ev_lower.find("zombie_cowboy") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_03") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "cowboy";
+                } else if (ev_lower.find("zombie_future") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_04") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "future";
+                } else if (ev_lower.find("zombie_dark") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_05") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "dark";
+                } else if (ev_lower.find("zombie_beach") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_06") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "beach";
+                } else if (ev_lower.find("zombie_iceage") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_07") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "iceage";
+                } else if (ev_lower.find("zombie_lostcity") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_08") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "lostcity";
+                } else if (ev_lower.find("zombie_dino") != std::string::npos ||
+                           ev_lower.find("modern_zomboss_10") != std::string::npos) {
+                    is_eighties_boss = false;
+                    boss_name_detected = "dino";
+                }
+            }
+
+            const auto wave_pos = ev.find("Set_Switch_Zomboss_Wave_");
+            if (wave_pos != std::string::npos && wave_pos + 24 < ev.size()) {
+                const char digit = ev[wave_pos + 24];
+                if (digit >= '1' && digit <= '5') {
+                    const int w = digit - '0';
+                    if (w > boss_phase) boss_phase = w;
+                    if (w >= 4) {
+                        is_eighties_boss = true;
+                        boss_name_detected = "eighties";
+                    }
+                }
+            }
+
             if (ev.rfind("state:Board Level=", 0) == 0) {
                 std::string lvl_raw = ev.substr(18);
                 const auto colon = lvl_raw.find(':');
                 current_level = (colon != std::string::npos) ? lvl_raw.substr(0, colon) : lvl_raw;
                 if (is_boss_level_id(current_level)) {
                     if (boss_phase == 0) boss_phase = 1;
+                    if (current_level.find("eighties") != std::string::npos ||
+                        current_level == "modern_zomboss_09_eighties") {
+                        is_eighties_boss = true;
+                        boss_name_detected = "eighties";
+                    }
                 } else {
                     boss_phase = 0;
+                    is_eighties_boss = false;
+                    boss_name_detected.clear();
                 }
             } else if (ev.rfind("state:Board BossPhase=", 0) == 0) {
                 try {
                     boss_phase = std::stoi(ev.substr(22));
+                    if (boss_phase > 3) {
+                        is_eighties_boss = true;
+                        boss_name_detected = "eighties";
+                    }
                 } catch (...) {
                     boss_phase = 1;
+                }
+                continue;
+            } else if (ev == "state:Board EightiesBoss=true") {
+                if (boss_name_detected.empty() || boss_phase > 3) {
+                    is_eighties_boss = true;
+                    boss_name_detected = "eighties";
+                }
+                continue;
+            } else if (ev.rfind("state:Board BossName=", 0) == 0) {
+                std::string bname = ev.substr(21);
+                if (boss_name_detected.empty() || boss_phase > 3) {
+                    boss_name_detected = bname;
+                    if (boss_name_detected == "eighties") is_eighties_boss = true;
                 }
                 continue;
             } else if (ev.rfind("state:Board Goals=", 0) == 0) {
@@ -868,9 +977,16 @@ void worker() {
             } else if (ev == "state:Board State=LoadingLevel") {
                 level_won = false;
                 if (is_boss_level_id(current_level)) {
-                    boss_phase = 1;
+                    if (boss_phase == 0) boss_phase = 1;
+                    if (current_level.find("eighties") != std::string::npos ||
+                        current_level == "modern_zomboss_09_eighties") {
+                        is_eighties_boss = true;
+                        boss_name_detected = "eighties";
+                    }
                 } else {
                     boss_phase = 0;
+                    is_eighties_boss = false;
+                    boss_name_detected.clear();
                 }
             } else if (ev == "state:Board State=PlayerWonOutro") {
                 level_won = true;
@@ -884,30 +1000,78 @@ void worker() {
                 level_won = false;
             }
 
+            static std::string last_known_world;
+
             if (ev.rfind("state:WorldMap Current World=", 0) == 0) {
                 current_world = ev.substr(27);
+                last_known_world = current_world;
                 is_paused = false;
                 is_chooser = false;
                 goals_count = 0;
                 boss_phase = 0;
                 level_won = false;
+                is_eighties_boss = false;
+                boss_name_detected.clear();
                 current_level.clear();
+                in_temp = false;
             } else if (ev.rfind("state:GameStateMgr State=GAME_WorldMap", 0) == 0) {
+                if (current_world.empty() && !last_known_world.empty()) {
+                    current_world = last_known_world;
+                }
                 is_paused = false;
                 is_chooser = false;
                 goals_count = 0;
                 boss_phase = 0;
                 level_won = false;
+                is_eighties_boss = false;
+                boss_name_detected.clear();
                 current_level.clear();
-            } else if (ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0 ||
-                       ev.rfind("state:UniverseMap", 0) == 0) {
+                in_temp = false;
+            } else if (ev.rfind("state:UniverseMap Shown=false", 0) == 0) {
+                if (current_world.empty() && !last_known_world.empty()) {
+                    current_world = last_known_world;
+                }
+                in_temp = false;
+                if (!current_world.empty()) {
+                    const std::string syn_ev = "state:worldmap current world=" + current_world;
+                    for (const Rule &r : rules) {
+                        if (!r.is_temp && syn_ev.find(r.needle) != std::string::npos) {
+                            persistent = Activity{r.details, r.state};
+                            break;
+                        }
+                    }
+                }
+            } else if (ev.rfind("state:GameStateMgr State=GAME_ArcadeMenu", 0) == 0 ||
+                       ev.find("VaseBreaker") != std::string::npos ||
+                       ev.find("vasebreaker") != std::string::npos) {
+                in_temp = false;
+            } else if (ev.rfind("state:GameStateMgr State=GAME_Almanac", 0) == 0 ||
+                       ev.find("Almanac") != std::string::npos ||
+                       ev.find("almanac") != std::string::npos) {
+                in_temp = false;
+            } else if (ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0) {
                 is_paused = false;
                 is_chooser = false;
                 goals_count = 0;
                 boss_phase = 0;
                 level_won = false;
+                is_eighties_boss = false;
+                boss_name_detected.clear();
                 current_level.clear();
                 current_world.clear();
+                last_known_world.clear();
+                in_temp = false;
+            } else if (ev.rfind("state:UniverseMap Shown=true", 0) == 0) {
+                is_paused = false;
+                is_chooser = false;
+                goals_count = 0;
+                boss_phase = 0;
+                level_won = false;
+                is_eighties_boss = false;
+                boss_name_detected.clear();
+                current_level.clear();
+                current_world.clear();
+                in_temp = false;
             }
 
             for (const Rule &r : rules) {
@@ -962,16 +1126,36 @@ void worker() {
                                       is_boss_level_id(current_level));
 
                 if (is_boss) {
-                    const int max_phases = (current_level.find("eighties") != std::string::npos ||
-                                            desired.state.find("Multiescenario") != std::string::npos ||
-                                            desired.state.find("Multi-stage") != std::string::npos ||
-                                            desired.state.find("multipiste") != std::string::npos ||
-                                            desired.state.find("Rampensau") != std::string::npos ||
-                                            desired.state.find("Multimistureba") != std::string::npos ||
-                                            desired.state.find("Multifasico") != std::string::npos)
-                                               ? 5
-                                               : 3;
+                    const bool is_eighties = is_eighties_boss ||
+                                             (boss_name_detected == "eighties") ||
+                                             (current_level.find("eighties") != std::string::npos) ||
+                                             (desired.state.find("Multiescenario") != std::string::npos) ||
+                                             (desired.state.find("Multi-stage") != std::string::npos) ||
+                                             (desired.state.find("multipiste") != std::string::npos) ||
+                                             (desired.state.find("Rampensau") != std::string::npos) ||
+                                             (desired.state.find("Multimistureba") != std::string::npos) ||
+                                             (desired.state.find("Multifasico") != std::string::npos);
+                    const int max_phases = (is_eighties || boss_phase > 3) ? 5 : 3;
                     const int cur_phase = (boss_phase > 0) ? (boss_phase > max_phases ? max_phases : boss_phase) : 1;
+
+                    if (is_eighties && current_level.rfind("modern", 0) == 0) {
+                        if (g_rules_path.find("_pt") != std::string::npos) desired.state = "Zumbô Multimistureba";
+                        else if (g_rules_path.find("_de") != std::string::npos) desired.state = "Zombot-Rampensau";
+                        else if (g_rules_path.find("_fr") != std::string::npos) desired.state = "Zombot multipiste";
+                        else if (g_rules_path.find("_it") != std::string::npos) desired.state = "Schiacciaverdure Multifasico Zombot";
+                        else if (g_rules_path.find("_en") != std::string::npos) desired.state = "Multi-stage Masher";
+                        else desired.state = "Zombot Machacante Multiescenario";
+                    } else if (!boss_name_detected.empty() && current_level.rfind("modern", 0) == 0) {
+                        if (boss_name_detected == "egypt") desired.state = "Zombot Esfinge Letal";
+                        else if (boss_name_detected == "pirate") desired.state = "Zombot Corsario";
+                        else if (boss_name_detected == "cowboy") desired.state = "Zombot Carro Blindado";
+                        else if (boss_name_detected == "future") desired.state = "Zombot Mañanatrón";
+                        else if (boss_name_detected == "dark") desired.state = "Zombot Dragón Oscuro";
+                        else if (boss_name_detected == "beach") desired.state = "Zombot Subtiburotrónico";
+                        else if (boss_name_detected == "iceage") desired.state = "Zombot Maestro del Colmillo 10.000 a.C.";
+                        else if (boss_name_detected == "lostcity") desired.state = "Zombot Góndola Aerostática";
+                        else if (boss_name_detected == "dino") desired.state = "Zombot Dinotrónico Mechasaurio";
+                    }
                     std::string extra;
                     if (is_paused && is_chooser) {
                         extra = std::string(" - ") + ps->choosing_seeds + " - " + ps->paused;

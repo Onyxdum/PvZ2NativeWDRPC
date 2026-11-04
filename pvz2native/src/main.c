@@ -1600,8 +1600,6 @@ static void host_pump(void) {
             continue;
         if (credits_screen_is_open()) {
             credits_screen_handle_event(&event);
-        } else if (credits_is_modern34_reward_active() && credits_screen_handle_reward_button_event(&event)) {
-            /* Handled "Ver los creditos" button */
         } else if (achievements_screen_is_open()) {
             achievements_screen_handle_event(&event);
         } else if (config_screen_is_open()) {
@@ -2042,8 +2040,6 @@ int main(int argc, char **argv) {
                 /* Credits screen takes priority over everything when open. */
                 if (credits_screen_is_open()) {
                     credits_screen_handle_event(&event);
-                } else if (credits_is_modern34_reward_active() && credits_screen_handle_reward_button_event(&event)) {
-                    /* Handled "Ver los creditos" button */
                 } else if (achievements_screen_is_open()) {
                     achievements_screen_handle_event(&event);
                 } else if (config_screen_is_open()) {
@@ -2094,10 +2090,6 @@ int main(int argc, char **argv) {
                 credits_screen_open(window);
             }
             if (g_boot_overlay_active) draw_boot_splash_fade(window);
-            /* Reward screen button overlay ("Ver los creditos") */
-            if (credits_is_modern34_reward_active() && !credits_screen_is_open()) {
-                credits_screen_draw_reward_button_overlay(window);
-            }
             /* Draw config screen overlay on top of the game frame (before swap) */
             if (config_screen_is_open()) config_screen_draw(window);
             /* Achievements: popup draws always (if animating), screen on top of config */

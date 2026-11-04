@@ -7,6 +7,7 @@
 
 #include <pvz2native/config.h>
 #include <pvz2native/host_assets.h>
+#include <pvz2native/log.h>
 
 #include "stb_truetype.h"
 
@@ -57,12 +58,12 @@ static const char *kSkipButtonTexts[6] = {
 };
 
 static const char *kViewCreditsButtonTexts[6] = {
-    "Ver los cr\xc3\xa9" "ditos", /* ES: Ver los créditos */
+    "Ver cr\xc3\xa9" "ditos",       /* ES: Ver créditos */
     "View Credits",               /* EN */
-    "Voir les cr\xc3\xa9" "dits", /* FR: Voir les crédits */
+    "Voir cr\xc3\xa9" "dits",       /* FR: Voir crédits */
     "Credits ansehen",            /* DE */
-    "Vedi i crediti",             /* IT */
-    "Ver os cr\xc3\xa9" "ditos"   /* PT: Ver os créditos */
+    "Vedi crediti",               /* IT */
+    "Ver cr\xc3\xa9" "ditos"        /* PT: Ver créditos */
 };
 
 static const char *kPauseBadgeTexts[6] = {
@@ -424,6 +425,28 @@ int credits_screen_consume_open_request(void) {
     return 0;
 }
 
+static std::string g_draper_world;
+static int g_draper_level = 0;
+static int g_draper_state = 0;
+
+void credits_set_draper_info(const char *world, int level, int state) {
+    if (world && world[0] != '\0') g_draper_world = world;
+    if (level > 0) g_draper_level = level;
+    g_draper_state = state;
+}
+
+const char *credits_get_draper_world(void) {
+    return g_draper_world.c_str();
+}
+
+int credits_get_draper_level(void) {
+    return g_draper_level;
+}
+
+int credits_get_draper_state(void) {
+    return g_draper_state;
+}
+
 void credits_set_modern34_active(int active) {
     g_modern34_level_active = (active != 0);
 }
@@ -446,65 +469,16 @@ int credits_is_modern34_reward_active(void) {
 
 void credits_mark_modern34_won(void) {
     g_modern34_won = true;
-    g_modern34_won_time_ms = SDL_GetTicks();
 }
 
 int credits_is_modern34_won(void) {
     return g_modern34_won ? 1 : 0;
 }
 
-void credits_update_frame(void) {
-    if (g_modern34_won && !g_credits_open) {
-        /* Auto-roll credits 5.5s after victory if outro finishes or user does not interact */
-        if (SDL_GetTicks() - g_modern34_won_time_ms >= 5500) {
-            g_modern34_won = false;
-            g_modern34_reward_active = false;
-            credits_screen_request_open();
-        }
-    }
-}
+void credits_update_frame(void) {}
 
 int credits_screen_handle_reward_button_event(const SDL_Event *e) {
-    if (!g_modern34_reward_active || g_credits_open || !e) return 0;
-
-    int ww = 1920, wh = 1080;
-    SDL_Window *win = SDL_GL_GetCurrentWindow();
-    if (win) SDL_GL_GetDrawableSize(win, &ww, &wh);
-    float win_w = (float)ww, win_h = (float)wh;
-    float s = win_h / 1080.0f;
-
-    float btn_w = 340.0f * s;
-    float btn_h = 76.0f * s;
-    float btn_x = (win_w - btn_w) * 0.5f;
-    float btn_y = win_h * 0.805f;
-
-    if (e->type == SDL_MOUSEBUTTONDOWN && e->button.button == SDL_BUTTON_LEFT) {
-        float mx = (float)e->button.x;
-        float my = (float)e->button.y;
-        if (hit(btn_x, btn_y, btn_w, btn_h, mx, my)) {
-            g_modern34_won = false;
-            g_modern34_reward_active = false;
-            credits_screen_request_open();
-            return 1;
-        }
-    } else if (e->type == SDL_FINGERDOWN) {
-        float mx = e->tfinger.x * win_w;
-        float my = e->tfinger.y * win_h;
-        if (hit(btn_x, btn_y, btn_w, btn_h, mx, my)) {
-            g_modern34_won = false;
-            g_modern34_reward_active = false;
-            credits_screen_request_open();
-            return 1;
-        }
-    } else if (e->type == SDL_KEYDOWN) {
-        if (e->key.keysym.sym == SDLK_RETURN || e->key.keysym.sym == SDLK_KP_ENTER ||
-            e->key.keysym.sym == SDLK_SPACE) {
-            g_modern34_won = false;
-            g_modern34_reward_active = false;
-            credits_screen_request_open();
-            return 1;
-        }
-    }
+    (void)e;
     return 0;
 }
 
@@ -636,7 +610,17 @@ void credits_screen_draw(SDL_Window *window) {
     ensure_font_loaded();
 
     /* Save GL state */
-    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_VIEWPORT_BIT);
+    GLint prev_program = 0, prev_fbo = 0;
+    GLint prev_viewport[4]{};
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prev_program);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo);
+    glGetIntegerv(GL_VIEWPORT, prev_viewport);
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glUseProgram(0);
+    glViewport(0, 0, ww, wh);
+
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -647,6 +631,7 @@ void credits_screen_draw(SDL_Window *window) {
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
+    glDisable(GL_STENCIL_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -892,117 +877,16 @@ void credits_screen_draw(SDL_Window *window) {
     glMatrixMode(GL_MODELVIEW);
     glPopMatrix();
     glPopAttrib();
+    glBindFramebuffer(GL_FRAMEBUFFER, prev_fbo);
+    glUseProgram(prev_program);
+    glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
 }
 
 /* =========================================================================
  * Reward Screen Button Overlay ("Ver los créditos")
  * ========================================================================= */
 void credits_screen_draw_reward_button_overlay(SDL_Window *window) {
-    if (!g_modern34_reward_active || g_credits_open) return;
-
-    int ww, wh;
-    SDL_GL_GetDrawableSize(window, &ww, &wh);
-    float win_w = (float)ww, win_h = (float)wh;
-    float s = win_h / 1080.0f;
-
-    ensure_font_loaded();
-
-    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_VIEWPORT_BIT);
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0, (double)win_w, (double)win_h, 0, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    /* In Modern Day Day 34 award dialog, the bottom Continue button is centered:
-     * Reference 1920x1080 coordinates:
-     * Center X = 960 (half), width ~340, height ~76, Y ~875
-     */
-    float btn_w = 340.0f * s;
-    float btn_h = 76.0f * s;
-    float btn_x = (win_w - btn_w) * 0.5f;
-    float btn_y = win_h * 0.805f;
-
-    /* Check mouse hover */
-    int mx, my;
-    SDL_GetMouseState(&mx, &my);
-    bool is_hover = hit(btn_x, btn_y, btn_w, btn_h, (float)mx, (float)my);
-
-    glDisable(GL_TEXTURE_2D);
-
-    /* Shadow */
-    glColor4f(0.0f, 0.0f, 0.0f, 0.45f);
-    glBegin(GL_QUADS);
-    glVertex2f(btn_x + 3.0f * s, btn_y + 4.0f * s);
-    glVertex2f(btn_x + btn_w + 3.0f * s, btn_y + 4.0f * s);
-    glVertex2f(btn_x + btn_w + 3.0f * s, btn_y + btn_h + 4.0f * s);
-    glVertex2f(btn_x + 3.0f * s, btn_y + btn_h + 4.0f * s);
-    glEnd();
-
-    /* PopCap Green Button Background */
-    float top_r = is_hover ? 0.32f : 0.22f;
-    float top_g = is_hover ? 0.72f : 0.58f;
-    float top_b = is_hover ? 0.18f : 0.12f;
-    float bot_r = is_hover ? 0.16f : 0.11f;
-    float bot_g = is_hover ? 0.45f : 0.35f;
-    float bot_b = is_hover ? 0.08f : 0.05f;
-
-    glBegin(GL_QUADS);
-    glColor4f(top_r, top_g, top_b, 1.0f);
-    glVertex2f(btn_x, btn_y); glVertex2f(btn_x + btn_w, btn_y);
-    glColor4f(bot_r, bot_g, bot_b, 1.0f);
-    glVertex2f(btn_x + btn_w, btn_y + btn_h); glVertex2f(btn_x, btn_y + btn_h);
-    glEnd();
-
-    /* Top glossy highlight */
-    glBegin(GL_QUADS);
-    glColor4f(1.0f, 1.0f, 1.0f, is_hover ? 0.35f : 0.25f);
-    glVertex2f(btn_x + 3.0f * s, btn_y + 3.0f * s);
-    glVertex2f(btn_x + btn_w - 3.0f * s, btn_y + 3.0f * s);
-    glColor4f(1.0f, 1.0f, 1.0f, 0.05f);
-    glVertex2f(btn_x + btn_w - 3.0f * s, btn_y + btn_h * 0.45f);
-    glVertex2f(btn_x + 3.0f * s, btn_y + btn_h * 0.45f);
-    glEnd();
-
-    /* Golden border */
-    glColor4f(0.95f, 0.85f, 0.35f, 0.95f);
-    float bw = 2.5f * s;
-    glBegin(GL_QUADS);
-    glVertex2f(btn_x, btn_y); glVertex2f(btn_x + btn_w, btn_y);
-    glVertex2f(btn_x + btn_w, btn_y + bw); glVertex2f(btn_x, btn_y + bw);
-    glVertex2f(btn_x, btn_y + btn_h - bw); glVertex2f(btn_x + btn_w, btn_y + btn_h - bw);
-    glVertex2f(btn_x + btn_w, btn_y + btn_h); glVertex2f(btn_x, btn_y + btn_h);
-    glVertex2f(btn_x, btn_y); glVertex2f(btn_x + bw, btn_y);
-    glVertex2f(btn_x + bw, btn_y + btn_h); glVertex2f(btn_x, btn_y + btn_h);
-    glVertex2f(btn_x + btn_w - bw, btn_y); glVertex2f(btn_x + btn_w, btn_y);
-    glVertex2f(btn_x + btn_w, btn_y + btn_h); glVertex2f(btn_x + btn_w - bw, btn_y + btn_h);
-    glEnd();
-
-    glEnable(GL_TEXTURE_2D);
-
-    /* Localized "Ver los créditos" text */
-    CreditLang lang = current_credit_lang();
-    const char *btn_text = kViewCreditsButtonTexts[(size_t)lang];
-
-    float txt_w = measure_string_cr(g_font, btn_text, false, s * 0.92f);
-    float tx = btn_x + (btn_w - txt_w) * 0.5f;
-    float ty = btn_y + (btn_h - 20.0f * s) * 0.5f + 18.0f * s;
-
-    draw_string_cr(g_font, btn_text, false, tx, ty,
-                   1.0f, 0.95f, 0.85f, 1.0f, s * 0.92f, true);
-
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
-    glPopAttrib();
+    (void)window;
 }
 
 } // extern "C"

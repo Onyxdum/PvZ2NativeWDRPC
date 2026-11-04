@@ -942,6 +942,7 @@ void crashlytics_set_string(DexCall &d) {
             }
         } else if (key == "Board Level" && !val.empty()) {
             g_last_board_level = val;
+            dex::set_current_board_level(val);
             const std::int32_t num = read_board_level_number(d);
             if (num > 0) {
                 g_last_level_num = num;
@@ -950,11 +951,8 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", lvl_with_num.c_str());
             } else {
                 g_last_level_num = 0;
-            }
-            if (val == "modern34" || (val.rfind("modern_zomboss_", 0) == 0 && (num == 34 || credits_get_modern34_active()))) {
-                credits_set_modern34_active(1);
-            } else if (num == 32 || num == 33 || val == "modern32" || val == "modern33") {
-                credits_set_modern34_active(0);
+                const std::string lvl = "Board Level=" + val;
+                pvz2_presence_note("state", lvl.c_str());
             }
             int goals = count_level_challenges(val);
             if (goals == 0 && g_has_protect_plant) goals = 1;
@@ -962,6 +960,7 @@ void crashlytics_set_string(DexCall &d) {
             pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
         } else if (key == "WorldMap Current World" && !val.empty()) {
             g_last_world = val;
+            dex::set_current_world(val);
             g_has_seed_chooser = false;
             g_in_seed_chooser = false;
             g_has_protect_plant = false;
@@ -999,16 +998,14 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Goals=0");
                 const std::int32_t num = read_board_level_number(d);
                 if (num > 0) dex::set_board_level_number(num);
-                const std::int32_t known_num = (num > 0) ? num : dex::current_board_level_number();
-                const bool is_modern34_win = credits_get_modern34_active() ||
-                                             credits_is_modern34_won() ||
-                                             g_last_board_level == "modern34" ||
-                                             dex::current_board_level() == "modern34" ||
-                                             (g_last_board_level.rfind("modern_zomboss_", 0) == 0 &&
-                                              (known_num == 34 || credits_get_modern34_active() || (known_num != 32 && known_num != 33)));
-                if (is_modern34_win) {
-                    pvz2_log("[credits] Modern Day 34 victory detected (PlayerWonOutro) -- arming credits and auto-open");
-                    credits_notify_modern34_reward_create();
+                const bool is_modern = (g_last_world == "modern" || dex::current_world() == "modern" ||
+                                        g_last_board_level.find("modern") != std::string::npos);
+                const bool is_day34 = (num == 34 || g_last_level_num == 34 ||
+                                       dex::current_board_level_number() == 34 ||
+                                       g_last_board_level.find("34") != std::string::npos ||
+                                       g_last_board_level == "modern34" ||
+                                       g_last_board_level.find("zomboss_3") != std::string::npos);
+                if (is_modern && is_day34) {
                     credits_mark_modern34_won();
                 }
             } else if (val == "PlayerLostOutro" || val == "EndLevel" || val == "Initial") {
@@ -1019,12 +1016,6 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
-                if (val != "PlayerLostOutro" && (credits_is_modern34_reward_active() || credits_is_modern34_won())) {
-                    pvz2_log("[credits] Modern Day 34 ended (%s) -- opening credits screen", val.c_str());
-                    credits_notify_modern34_reward_destroy();
-                    credits_screen_request_open();
-                    credits_set_modern34_active(0);
-                }
             }
 
             if (!g_last_board_level.empty()) {
@@ -1073,11 +1064,8 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
-                if (credits_is_modern34_reward_active() || credits_is_modern34_won()) {
-                    pvz2_log("[credits] Leaving Modern Day 34 to WorldMap -- opening credits screen");
-                    credits_notify_modern34_reward_destroy();
+                if (credits_is_modern34_won()) {
                     credits_screen_request_open();
-                    credits_set_modern34_active(0);
                 }
                 if (!g_last_world.empty()) {
                     const std::string w = "WorldMap Current World=" + g_last_world;
@@ -1103,6 +1091,14 @@ void crashlytics_set_bool(DexCall &d) {
     if (pvz2_presence_enabled() && !key.empty()) {
         const std::string kv = key + "=" + (val ? "true" : "false");
         pvz2_presence_note("state", kv.c_str());
+
+        if (key == "UniverseMap Shown" && !val) {
+            std::lock_guard<std::mutex> lk(g_crashlytics_mu);
+            if (!g_last_world.empty()) {
+                const std::string w = "WorldMap Current World=" + g_last_world;
+                pvz2_presence_note("state", w.c_str());
+            }
+        }
     }
     d.ret(0);
 }

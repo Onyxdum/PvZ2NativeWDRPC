@@ -154,7 +154,6 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | No menu principa
 rsb:ZenGardenGroup_ | Jardim Zen | Cuidando das plantas
 rsb:DelayLoad_Background_Zen | Jardim Zen | Cuidando das plantas
 temp:rsb:UI_Quests_ | Diário de Viagem | Vendo missões
-temp:rsb:RoadSign_ | Diário de Viagem | Vendo missões
 temp:rsb:UI_Almanac_ | No Almanaque | Consultando plantas e zumbis
 rsb:UI_VaseBreakerMenu_ | Quebravaso | Escolhendo nível
 
@@ -183,8 +182,8 @@ rsb:WorldMap_Lostcity_ | No mapa | Cidade Perdida
 rsb:WorldMap_Eighties_ | No mapa | Turnê Idade da Juba
 rsb:WorldMap_Dino_ | No mapa | Pântano Jurássico
 rsb:WorldMap_Modern_ | No mapa | Vida Moderna
-rsb:UI_World_Preview_ | No mapa | Explorando mundos
-rsb:UI_Universe_ | No mapa | Escolhendo mundo
+; rsb:UI_World_Preview_ | No mapa | Explorando mundos
+; rsb:UI_Universe_ | No mapa | Escolhendo mundo
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | No menu principal
 
 default | Plants vs. Zombies 2 | No menu principal

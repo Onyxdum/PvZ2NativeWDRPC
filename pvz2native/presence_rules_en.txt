@@ -155,7 +155,6 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | In Main Menu
 rsb:ZenGardenGroup_ | Zen Garden | Tending plants
 rsb:DelayLoad_Background_Zen | Zen Garden | Tending plants
 temp:rsb:UI_Quests_ | Travel Log | Checking quests
-temp:rsb:RoadSign_ | Travel Log | Checking quests
 temp:rsb:UI_Almanac_ | In Almanac | Suburban Almanac
 rsb:UI_VaseBreakerMenu_ | Vasebreaker | Choosing level
 
@@ -184,8 +183,8 @@ rsb:WorldMap_Lostcity_ | On World Map | Lost City
 rsb:WorldMap_Eighties_ | On World Map | Neon Mixtape Tour
 rsb:WorldMap_Dino_ | On World Map | Jurassic Marsh
 rsb:WorldMap_Modern_ | On World Map | Modern Day
-rsb:UI_World_Preview_ | On World Map | Exploring worlds
-rsb:UI_Universe_ | On World Map | Choosing world
+; rsb:UI_World_Preview_ | On World Map | Exploring worlds
+; rsb:UI_Universe_ | On World Map | Choosing world
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | In Main Menu
 
 default | Plants vs. Zombies 2 | In Main Menu

@@ -154,7 +154,6 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Nel menu princip
 rsb:ZenGardenGroup_ | Giardino zen | Curando le piante
 rsb:DelayLoad_Background_Zen | Giardino zen | Curando le piante
 temp:rsb:UI_Quests_ | Diario di viaggio | Controllando le missioni
-temp:rsb:RoadSign_ | Diario di viaggio | Controllando le missioni
 temp:rsb:UI_Almanac_ | Nell'Almanacco | Consultando piante e zombi
 rsb:UI_VaseBreakerMenu_ | Spaccavasi | Scelta del livello
 
@@ -183,8 +182,8 @@ rsb:WorldMap_Lostcity_ | Sulla mappa | Città perduta
 rsb:WorldMap_Eighties_ | Sulla mappa | Neon Discomix Tour
 rsb:WorldMap_Dino_ | Sulla mappa | Pantano giurassico
 rsb:WorldMap_Modern_ | Sulla mappa | Tempi moderni
-rsb:UI_World_Preview_ | Sulla mappa | Esplorando i mondi
-rsb:UI_Universe_ | Sulla mappa | Scelta del mondo
+; rsb:UI_World_Preview_ | Sulla mappa | Esplorando i mondi
+; rsb:UI_Universe_ | Sulla mappa | Scelta del mondo
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | Nel menu principale
 
 default | Plants vs. Zombies 2 | Nel menu principale

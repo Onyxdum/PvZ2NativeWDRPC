@@ -246,12 +246,101 @@ bool accept_receipt_locally(pvz2_elf_image_t *img) {
     return false;
 }
 
+static std::string s_locked_boss_name;
+
 void zomboss_stage_hook(GuestCall &call) {
+    const std::uint32_t zomboss = call.arg(0);
     const std::uint32_t stage = call.arg(1);
     if (pvz2_presence_enabled()) {
-        char buf[32];
+        char buf[64];
         std::snprintf(buf, sizeof(buf), "Board BossPhase=%u", stage + 1);
         pvz2_presence_note("state", buf);
+
+        std::string detected_boss;
+        if (stage == 0) {
+            s_locked_boss_name.clear();
+        } else if (stage >= 3) {
+            detected_boss = "eighties";
+            s_locked_boss_name = "eighties";
+        } else if (!s_locked_boss_name.empty()) {
+            detected_boss = s_locked_boss_name;
+        }
+
+        if (detected_boss.empty() && zomboss != 0 && call.in_bounds(zomboss, 0x800)) {
+            // Check RtWeakString at zomboss + 0x50
+            if (call.in_bounds(zomboss + 0x50, 8)) {
+                const std::uint32_t pstr = call.read32(zomboss + 0x50);
+                if (pstr > 0x10000 && call.in_bounds(pstr, 16)) {
+                    std::string s = call.cstr(pstr, 64);
+                    for (char &c : s) c = (char)std::tolower((unsigned char)c);
+                    if (s.find("eighties") != std::string::npos) detected_boss = "eighties";
+                    else if (s.find("pirate") != std::string::npos) detected_boss = "pirate";
+                    else if (s.find("cowboy") != std::string::npos) detected_boss = "cowboy";
+                    else if (s.find("future") != std::string::npos) detected_boss = "future";
+                    else if (s.find("dark") != std::string::npos) detected_boss = "dark";
+                    else if (s.find("beach") != std::string::npos) detected_boss = "beach";
+                    else if (s.find("iceage") != std::string::npos) detected_boss = "iceage";
+                    else if (s.find("lostcity") != std::string::npos) detected_boss = "lostcity";
+                    else if (s.find("dino") != std::string::npos) detected_boss = "dino";
+                    else if (s.find("egypt") != std::string::npos) detected_boss = "egypt";
+                }
+            }
+            // Check pointers inside the object for boss identifiers
+            for (std::uint32_t off = 0; detected_boss.empty() && off < 0x800; off += 4) {
+                const std::uint32_t val = call.read32(zomboss + off);
+                if (val > 0x10000 && call.in_bounds(val, 16)) {
+                    std::string s = call.cstr(val, 64);
+                    if (!s.empty()) {
+                        for (char &c : s) c = (char)std::tolower((unsigned char)c);
+                        if (s.find("eighties") != std::string::npos ||
+                            s.find("multiescenario") != std::string::npos) {
+                            detected_boss = "eighties";
+                            break;
+                        } else if (s.find("pirate") != std::string::npos) {
+                            detected_boss = "pirate";
+                        } else if (s.find("cowboy") != std::string::npos) {
+                            detected_boss = "cowboy";
+                        } else if (s.find("future") != std::string::npos) {
+                            detected_boss = "future";
+                        } else if (s.find("dark") != std::string::npos) {
+                            detected_boss = "dark";
+                        } else if (s.find("beach") != std::string::npos) {
+                            detected_boss = "beach";
+                        } else if (s.find("iceage") != std::string::npos) {
+                            detected_boss = "iceage";
+                        } else if (s.find("lostcity") != std::string::npos) {
+                            detected_boss = "lostcity";
+                        } else if (s.find("dino") != std::string::npos) {
+                            detected_boss = "dino";
+                        } else if (s.find("egypt") != std::string::npos) {
+                            detected_boss = "egypt";
+                        }
+                    }
+                }
+            }
+            // Also check inline bytes on stage 0 in case strings are short/inline
+            if (detected_boss.empty() && stage == 0) {
+                for (std::uint32_t off = 0; off + 8 <= 0x800; ++off) {
+                    char b[9];
+                    for (int k = 0; k < 8; ++k) b[k] = (char)std::tolower((unsigned char)call.read8(zomboss + off + k));
+                    b[8] = '\0';
+                    if (std::memcmp(b, "eighties", 8) == 0) {
+                        detected_boss = "eighties";
+                        break;
+                    }
+                }
+            }
+            if (!detected_boss.empty() && s_locked_boss_name.empty()) {
+                s_locked_boss_name = detected_boss;
+            }
+        }
+
+        if (!detected_boss.empty()) {
+            pvz2_presence_note("state", ("Board BossName=" + detected_boss).c_str());
+            if (detected_boss == "eighties") {
+                pvz2_presence_note("state", "Board EightiesBoss=true");
+            }
+        }
     }
     call.returns = false;
     call.regs[15] = call.img->so_base + sym().patch.zomboss_setup_stage;
@@ -720,9 +809,10 @@ void scr_create(GuestCall &c) {
                                   dex::current_board_level().c_str(), live);
     const std::string b_lvl = dex::current_board_level();
     const std::int32_t known_num = dex::current_board_level_number();
-    const bool is_zomboss = (b_lvl.rfind("modern_zomboss_", 0) == 0);
-    if (b_lvl == "modern34" || credits_get_modern34_active() || credits_is_modern34_won() ||
-        (is_zomboss && (credits_get_modern34_active() || known_num == 34 || (known_num != 32 && known_num != 33)))) {
+    const bool is_modern = (dex::current_world() == "modern" || b_lvl.find("modern") != std::string::npos);
+    const bool is_day34 = (known_num == 34 || b_lvl.find("34") != std::string::npos ||
+                           b_lvl == "modern34" || b_lvl.find("zomboss_3") != std::string::npos);
+    if (credits_is_modern34_won() || (is_modern && is_day34)) {
         credits_notify_modern34_reward_create();
         credits_mark_modern34_won();
     }

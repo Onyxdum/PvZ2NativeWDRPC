@@ -154,7 +154,6 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Dans le menu pri
 rsb:ZenGardenGroup_ | Jardin zen | Soin des plantes
 rsb:DelayLoad_Background_Zen | Jardin zen | Soin des plantes
 temp:rsb:UI_Quests_ | Carnet de voyage | Consultation des quêtes
-temp:rsb:RoadSign_ | Carnet de voyage | Consultation des quêtes
 temp:rsb:UI_Almanac_ | Dans l'Almanach | Consultation des plantes et zombies
 rsb:UI_VaseBreakerMenu_ | Briseur de vase | Choix du niveau
 
@@ -183,8 +182,8 @@ rsb:WorldMap_Lostcity_ | Sur la carte | Cité perdue
 rsb:WorldMap_Eighties_ | Sur la carte | Tournée Fluotonik
 rsb:WorldMap_Dino_ | Sur la carte | Jurassic Mare
 rsb:WorldMap_Modern_ | Sur la carte | Temps modernes
-rsb:UI_World_Preview_ | Sur la carte | Exploration des mondes
-rsb:UI_Universe_ | Sur la carte | Choix du monde
+; rsb:UI_World_Preview_ | Sur la carte | Exploration des mondes
+; rsb:UI_Universe_ | Sur la carte | Choix du monde
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | Dans le menu principal
 
 default | Plants vs. Zombies 2 | Dans le menu principal

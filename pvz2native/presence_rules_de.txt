@@ -154,7 +154,6 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Im Hauptmenü
 rsb:ZenGardenGroup_ | Zen-Garten | Pflanzen pflegen
 rsb:DelayLoad_Background_Zen | Zen-Garten | Pflanzen pflegen
 temp:rsb:UI_Quests_ | Reiseklotz | Quests ansehen
-temp:rsb:RoadSign_ | Reiseklotz | Quests ansehen
 temp:rsb:UI_Almanac_ | Im Lexikon | Pflanzen und Zombies ansehen
 rsb:UI_VaseBreakerMenu_ | Vasenbrecher | Level auswählen
 
@@ -183,8 +182,8 @@ rsb:WorldMap_Lostcity_ | Auf der Weltkarte | Verlorene Stadt
 rsb:WorldMap_Eighties_ | Auf der Weltkarte | Neon-Mixtape-Tour
 rsb:WorldMap_Dino_ | Auf der Weltkarte | Jurassisches Moor
 rsb:WorldMap_Modern_ | Auf der Weltkarte | Moderne
-rsb:UI_World_Preview_ | Auf der Weltkarte | Welten erkunden
-rsb:UI_Universe_ | Auf der Weltkarte | Welt auswählen
+; rsb:UI_World_Preview_ | Auf der Weltkarte | Welten erkunden
+; rsb:UI_Universe_ | Auf der Weltkarte | Welt auswählen
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | Im Hauptmenü
 
 default | Plants vs. Zombies 2 | Im Hauptmenü

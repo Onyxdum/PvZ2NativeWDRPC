@@ -177,8 +177,11 @@ void report_call_census();
  * "goldbloom10"), or empty. Tracked whether or not verbose is on: the end-of-level
  * epic fix in game/patches.cpp needs it. */
 std::string current_board_level();
+void set_current_board_level(const std::string &level);
 std::int32_t current_board_level_number();
 void set_board_level_number(std::int32_t num);
+std::string current_world();
+void set_current_world(const std::string &world);
 
 /* One registrar per Java class, each in its own file under src/dex/hooks/. */
 void register_android_game_app(HookTable &t);
