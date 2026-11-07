@@ -30,6 +30,7 @@
 #include <pvz2native/log.h>
 #include <pvz2native/save_dates.h>
 #include <pvz2native/steam_shortcut.h>
+#include <pvz2native/updater.h>
 
 /* Set once the window exists, so input mapping can use logical window coords. */
 static SDL_Window *g_window = NULL;
@@ -1872,6 +1873,7 @@ int main(int argc, char **argv) {
     }
     pvz2_check_steam_shortcut_prompt();
     pvz2_fix_future_save_dates();
+    pvz2_check_updates_async();
 
     /* PvZ2's .so only imports gl* symbols, never egl* -- on real Android the
      * Java-side GLSurfaceView owns EGL context creation and the native side
