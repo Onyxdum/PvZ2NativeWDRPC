@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#define PVZ2NATIVE_APP_VERSION "v1.2.0"
+#define PVZ2NATIVE_APP_VERSION "v1.3.0"
 
 /* Asynchronously checks GitHub releases for updates in the background.
  * If a newer version is available, prompts the player with a dialog:
