@@ -820,54 +820,234 @@ void scr_create(GuestCall &c) {
     c.no_return();
 }
 
-static void launch_native_credits_screen(GuestCall &c) {
-    const std::uint32_t got_lawn_app_slot = c.img->so_base + 0x110c734;
-    const std::uint32_t lawn_app_ptr = c.read32(got_lawn_app_slot);
-    if (!lawn_app_ptr) {
-        pvz2_log("[credits] lawn_app_ptr is NULL");
-        return;
+/* Native post-Modern-Day-34 Credits screen state & hooks (4.5.2) */
+constexpr std::uint32_t kGsmTransitionToFn   = 0x34bcdcu;
+constexpr std::uint32_t kGsmTransitionToPush = 0xE92D4BF0u; /* PUSH {r4-r9,r11,lr} */
+constexpr std::uint32_t kGsmEnterMainMenuFn   = 0x3484acu;
+constexpr std::uint32_t kGsmEnterMainMenuPush = 0xE92D48F0u; /* PUSH {r4-r7,r11,lr} */
+constexpr std::uint32_t kMainMenuUpdateFn     = 0x451f18u;
+constexpr std::uint32_t kMainMenuUpdatePush   = 0xE92D47F0u; /* PUSH {r4-r10,lr} */
+
+/* Travel Log (QuestHotListDialog) open & destroy hooks for Discord Rich Presence (4.5.2) */
+constexpr std::uint32_t kQuestDialogOpenFn    = 0x748390u;
+constexpr std::uint32_t kQuestDialogOpenPush  = 0xE92D4FF0u; /* PUSH {r4-r11,lr} */
+constexpr std::uint32_t kQuestDialogDtorFn    = 0x748550u;
+constexpr std::uint32_t kQuestDialogDtorPush  = 0xE92D48F0u; /* PUSH {r4-r7,r11,lr} */
+
+bool g_pending_md34_credits = false;
+bool g_md34_credits_mode = false;
+bool g_md34_exit_triggered = false;
+std::uint32_t g_md34_credits_widget = 0;
+std::uint32_t g_md34_hidden_mainmenu = 0;
+std::uint32_t g_md34_dummy_mainmenu = 0;
+std::uint32_t g_md34_str_startup_music = 0;
+std::uint32_t g_md34_str_modern = 0;
+std::uint32_t g_gsm_enter_mainmenu_exit = 0;
+std::vector<std::uint32_t> g_gsm_enter_mainmenu_lrs;
+
+std::uint32_t ensure_guest_const_string(GuestCall &c, std::uint32_t &slot, const char *s) {
+    if (slot != 0) return slot;
+    const std::uint32_t len = (std::uint32_t)std::strlen(s);
+    const std::uint32_t block = c.rt->heap.alloc(16u + len + 1u);
+    if (block == 0) return 0;
+    const std::uint32_t data_ptr = block + 16u;
+    for (std::uint32_t i = 0; i <= len; ++i) {
+        c.write8(data_ptr + i, (std::uint8_t)s[i]);
     }
-    const std::uint32_t lawn_app = c.read32(lawn_app_ptr);
-    if (!lawn_app) {
-        pvz2_log("[credits] lawn_app is NULL");
-        return;
+    c.write32(block + 0u, ((len + 16u) & ~15u) | 1u); /* libc++ long-string cap | 1 */
+    c.write32(block + 4u, len);
+    c.write32(block + 8u, data_ptr);
+    slot = block;
+    return slot;
+}
+
+std::uint32_t read_guest_lawn_app(GuestCall &c) {
+    const std::uint32_t got_slot = c.img->so_base + 0x110c734u;
+    if (!c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t ptr_addr = c.read32(got_slot);
+    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
+    return c.read32(ptr_addr);
+}
+
+std::uint32_t read_guest_gsm(GuestCall &c) {
+    const std::uint32_t got_slot = c.img->so_base + 0x110c7a0u;
+    if (!c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t ptr_addr = c.read32(got_slot);
+    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
+    return c.read32(ptr_addr);
+}
+
+void gsm_transition_to_enter(GuestCall &c) {
+    const std::uint32_t next_state = c.arg(1);
+    if ((g_pending_md34_credits || credits_is_modern34_won()) &&
+        (next_state == 6u || next_state == 12u)) {
+        g_pending_md34_credits = false;
+        credits_notify_modern34_reward_destroy();
+        g_md34_credits_mode = true;
+        g_md34_exit_triggered = false;
+        g_md34_credits_widget = 0;
+        c.regs[1] = 4u; /* GAME_MainMenu (loads MainMenu_Background swirl + UI_MainMenu) */
+        if (c.regs[2] == 0u) c.regs[2] = 5u; /* smooth black fade-out */
+        if (c.regs[3] == 0u) c.regs[3] = 5u; /* smooth black fade-in */
+        pvz2_log("[credits] Redirecting post-MD34 transition (state %u -> GAME_MainMenu) for native credits",
+                 next_state);
     }
-    const std::uint32_t widget_manager = c.read32(lawn_app + 0x2d0);
-    if (!widget_manager) {
-        pvz2_log("[credits] widget_manager is NULL");
-        return;
+    emulate_push(c, {4, 5, 6, 7, 8, 9, 11}, c.lr());
+    c.no_return();
+}
+
+void gsm_enter_mainmenu_enter(GuestCall &c) {
+    if (!g_md34_credits_mode) {
+        g_md34_hidden_mainmenu = 0;
+    }
+    if (g_gsm_enter_mainmenu_exit != 0) {
+        g_gsm_enter_mainmenu_lrs.push_back(c.lr());
+        emulate_push(c, {4, 5, 6, 7, 11}, g_gsm_enter_mainmenu_exit);
+    } else {
+        emulate_push(c, {4, 5, 6, 7, 11}, c.lr());
+    }
+    c.no_return();
+}
+
+void gsm_enter_mainmenu_exit(GuestCall &c) {
+    if (g_gsm_enter_mainmenu_lrs.empty()) return;
+    const std::uint32_t ret_lr = g_gsm_enter_mainmenu_lrs.back();
+    g_gsm_enter_mainmenu_lrs.pop_back();
+
+    if (g_md34_credits_mode) {
+        const std::uint32_t lawn_app = read_guest_lawn_app(c);
+        const std::uint32_t gsm = read_guest_gsm(c);
+        if (lawn_app != 0 && gsm != 0) {
+            /* 1. Synchronously load StartupMusic RSB group and play native credits/splash theme */
+            const std::uint32_t str_music =
+                ensure_guest_const_string(c, g_md34_str_startup_music, "StartupMusic");
+            if (str_music != 0) {
+                const std::uint32_t load_args[2] = {lawn_app, str_music};
+                c.call_guest(c.img->so_base + 0x3edcfcu, load_args, 2);
+                const std::uint32_t play_args[2] = {lawn_app, c.img->so_base + 0x101ca96u};
+                c.call_guest(c.img->so_base + 0x3f9920u, play_args, 2);
+                c.write8(gsm + 0x615u, 1u); /* m_isStartupMusicPlaying = true */
+                c.write8(gsm + 0x616u, 0u); /* m_hasStoppedStartupMusic = false */
+            }
+
+            /* 2. Hide and disable MainMenu's own buttons while keeping its swirl + vignette background */
+            const std::uint32_t main_menu = c.read32(lawn_app + 0x744u);
+            if (main_menu != 0) {
+                g_md34_hidden_mainmenu = main_menu;
+                c.write32(main_menu + 0xa0u, 0u); /* 0.0f UI alpha */
+                c.write8(main_menu + 0x9cu, 1u);  /* disable MainMenu button callbacks */
+            }
+
+            /* 3. Construct native CreditsWidget with dummy MainMenu target so real MainMenu stays at 0.0f */
+            if (g_md34_dummy_mainmenu == 0) {
+                g_md34_dummy_mainmenu = c.rt->heap.alloc(0xa4u);
+                if (g_md34_dummy_mainmenu != 0) {
+                    for (std::uint32_t off = 0; off < 0xa4u; off += 4u) {
+                        c.write32(g_md34_dummy_mainmenu + off, 0u);
+                    }
+                }
+            }
+
+            const std::uint32_t widget_mgr = c.read32(lawn_app + 0x2d0u);
+            if (widget_mgr != 0 && g_md34_dummy_mainmenu != 0) {
+                const std::uint32_t alloc_args[1] = {0xa4u};
+                const std::uint32_t widget = c.call_guest(c.img->so_base + 0xd854cu, alloc_args, 1);
+                if (widget != 0) {
+                    const std::uint32_t ctor_args[2] = {widget, g_md34_dummy_mainmenu};
+                    c.call_guest(c.img->so_base + 0x4adb68u, ctor_args, 2);
+                    c.write32(widget + 0x9cu, 0u); /* finish state 0 immediately -> smooth fade-in in state 1 */
+
+                    const std::uint32_t wm_vt = c.read32(widget_mgr);
+                    const std::uint32_t add_fn = c.read32(wm_vt + 0x28u);
+                    const std::uint32_t front_fn = c.read32(wm_vt + 0x54u);
+                    const std::uint32_t wm_args[2] = {widget_mgr, widget};
+                    c.call_guest(add_fn, wm_args, 2);
+                    c.call_guest(front_fn, wm_args, 2);
+
+                    /* Keep GameStateTransitionController's black fade overlay above CreditsWidget */
+                    const std::uint32_t app_args[1] = {lawn_app};
+                    c.call_guest(c.img->so_base + 0x3e7330u, app_args, 1);
+
+                    g_md34_credits_widget = widget;
+                    if (pvz2_presence_enabled()) {
+                        pvz2_presence_note("state", "Credits Shown=true");
+                    }
+                    pvz2_log("[credits] Native CreditsWidget 0x%08x active with StartupMusic + fade transition",
+                             widget);
+                }
+            }
+        }
     }
 
-    /* Dummy vtable where all entries (including SetFocus at +0x54) call bx lr (0x18012c) */
-    const std::uint32_t bx_lr = c.img->so_base + 0x18012c;
-    const std::uint32_t dummy_vtable = c.rt->heap.alloc(0x80);
-    for (std::uint32_t off = 0; off < 0x80; off += 4) {
-        c.write32(dummy_vtable + off, bx_lr);
+    c.regs[14] = ret_lr;
+}
+
+void mainmenu_update_enter(GuestCall &c) {
+    const std::uint32_t main_menu = c.arg(0);
+    if (main_menu != 0 && main_menu == g_md34_hidden_mainmenu) {
+        c.write32(main_menu + 0xa0u, 0u); /* keep MainMenu UI invisible */
+        c.write8(main_menu + 0x9cu, 1u);  /* keep MainMenu buttons disabled */
     }
 
-    /* Listener widget (0xa0 bytes):
-     * [listener + 0] = dummy_vtable
-     * [listener + 0x90] = widget_manager
-     */
-    const std::uint32_t listener = c.rt->heap.alloc(0xa0);
-    for (std::uint32_t off = 0; off < 0xa0; off += 4) {
-        c.write32(listener + off, 0);
-    }
-    c.write32(listener, dummy_vtable);
-    c.write32(listener + 0x90, widget_manager);
+    if (g_md34_credits_mode && !g_md34_exit_triggered && g_md34_credits_widget != 0 &&
+        c.in_bounds(g_md34_credits_widget + 0x98u, 4)) {
+        const std::uint32_t cr_state = c.read32(g_md34_credits_widget + 0x98u);
+        if (cr_state >= 4u) {
+            g_md34_exit_triggered = true;
+            g_md34_credits_mode = false;
+            const std::uint32_t widget = g_md34_credits_widget;
+            g_md34_credits_widget = 0;
 
-    /* Context buffer (0xb0 bytes) expected by ShowCredits at 0x7ad85c:
-     * [context_buf + 0xa8] = listener
-     */
-    const std::uint32_t context_buf = c.rt->heap.alloc(0xb0);
-    for (std::uint32_t off = 0; off < 0xb0; off += 4) {
-        c.write32(context_buf + off, 0);
-    }
-    c.write32(context_buf + 0xa8, listener);
+            const std::uint32_t lawn_app = read_guest_lawn_app(c);
+            const std::uint32_t gsm = read_guest_gsm(c);
+            if (lawn_app != 0) {
+                const std::uint32_t widget_mgr = c.read32(lawn_app + 0x2d0u);
+                if (widget_mgr != 0) {
+                    const std::uint32_t wm_vt = c.read32(widget_mgr);
+                    const std::uint32_t rem_fn = c.read32(wm_vt + 0x2cu);
+                    const std::uint32_t rem_args[2] = {widget_mgr, widget};
+                    c.call_guest(rem_fn, rem_args, 2);
+                }
+                const std::uint32_t w_vt = c.read32(widget);
+                const std::uint32_t dtor_fn = c.read32(w_vt + 0x0cu);
+                const std::uint32_t dtor_args[1] = {widget};
+                c.call_guest(dtor_fn, dtor_args, 1);
+            }
 
-    std::uint32_t args[1] = { context_buf };
-    pvz2_log("[credits] Launching native in-game Credits screen at so+0x7ad85c (context=0x%08x)", context_buf);
-    c.call_guest(c.img->so_base + 0x7ad85c, args, 1);
+            if (pvz2_presence_enabled()) {
+                pvz2_presence_note("state", "Credits Shown=false");
+            }
+
+            if (gsm != 0) {
+                const std::uint32_t str_modern =
+                    ensure_guest_const_string(c, g_md34_str_modern, "modern");
+                if (str_modern != 0) {
+                    const std::uint32_t map_args[4] = {gsm, str_modern, 5u, 5u};
+                    pvz2_log("[credits] Credits finished/dismissed -- transitioning smoothly to Modern Day map");
+                    c.call_guest(c.img->so_base + 0x346024u, map_args, 4);
+                }
+            }
+        }
+    }
+
+    emulate_push(c, {4, 5, 6, 7, 8, 9, 10}, c.lr());
+    c.no_return();
+}
+
+void quest_dialog_open_enter(GuestCall &c) {
+    if (pvz2_presence_enabled()) {
+        pvz2_presence_note("state", "TravelLog Shown=true");
+    }
+    emulate_push(c, {4, 5, 6, 7, 8, 9, 10, 11}, c.lr());
+    c.no_return();
+}
+
+void quest_dialog_dtor_enter(GuestCall &c) {
+    if (pvz2_presence_enabled()) {
+        pvz2_presence_note("state", "TravelLog Shown=false");
+    }
+    emulate_push(c, {4, 5, 6, 7, 11}, c.lr());
+    c.no_return();
 }
 
 void scr_destroy(GuestCall &c) {
@@ -895,9 +1075,8 @@ void scr_destroy(GuestCall &c) {
     pvz2native::diagnostics::vlog("screen", "DESTROY reward-screen singleton, caller .so+0x%x "
                                   "(live=0x%08x)", c.lr() - c.img->so_base, live);
     if (credits_is_modern34_reward_active() || credits_is_modern34_won()) {
-        pvz2_log("[screen] Modern 34 reward screen dismissed -- launching native in-game credits screen");
-        credits_notify_modern34_reward_destroy();
-        launch_native_credits_screen(c);
+        pvz2_log("[screen] Modern 34 reward screen dismissed -- arming native credits transition");
+        g_pending_md34_credits = true;
     }
     emulate_push(c, {4, 5, 6}, c.lr());
     c.no_return();
@@ -910,6 +1089,18 @@ void game_install_reward_screen_fix(pvz2_elf_image_t *img) {
     const auto &p = sym().patch;
     install_svc_at(img, p.scr_create, kScrCreatePush, "scr.create", scr_create, "screen create");
     install_svc_at(img, p.scr_destroy, kScrDestroyPush, "scr.destroy", scr_destroy, "screen destroy");
+
+    g_gsm_enter_mainmenu_exit = make_guest_callback("gsm.mainmenu.exit", gsm_enter_mainmenu_exit);
+    install_svc_at(img, kGsmTransitionToFn, kGsmTransitionToPush, "gsm.transition", gsm_transition_to_enter,
+                   "post-MD34 credits transition");
+    install_svc_at(img, kGsmEnterMainMenuFn, kGsmEnterMainMenuPush, "gsm.mainmenu.enter", gsm_enter_mainmenu_enter,
+                   "post-MD34 credits setup");
+    install_svc_at(img, kMainMenuUpdateFn, kMainMenuUpdatePush, "mainmenu.update", mainmenu_update_enter,
+                   "post-MD34 credits update");
+    install_svc_at(img, kQuestDialogOpenFn, kQuestDialogOpenPush, "quest.dlg.open", quest_dialog_open_enter,
+                   "travel log open tap");
+    install_svc_at(img, kQuestDialogDtorFn, kQuestDialogDtorPush, "quest.dlg.dtor", quest_dialog_dtor_enter,
+                   "travel log close tap");
 }
 
 /* --- quest trace (verbose only) --------------------------------------------- *

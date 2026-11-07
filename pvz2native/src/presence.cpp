@@ -221,37 +221,45 @@ struct PresStrings {
     const char *shop;
     const char *zen_garden;
     const char *travel_log;
+    const char *viewing_quests;
+    const char *watching_credits;
 };
 
 static const PresStrings kPresEN = {
     "presence_rules_en.txt", "In Main Menu", "Level Completed", "Collecting reward",
     "Phase", "Choosing seeds", "Paused",
-    "On World Map", "In Almanac", "In Shop", "Zen Garden", "Travel Log"
+    "On World Map", "In Almanac", "In Shop", "Zen Garden", "Travel Log",
+    "Viewing quests", "Watching credits"
 };
 static const PresStrings kPresES = {
     "presence_rules_es.txt", "En el menú principal", "Nivel completado", "Recogiendo recompensa",
     "Fase", "Eligiendo plantas", "En pausa",
-    "En el mapa", "En el Almanaque", "En la Tienda", "Jardín Zen", "Tronco de Viaje"
+    "En el mapa", "En el Almanaque", "En la Tienda", "Jardín Zen", "Tronco de Viaje",
+    "Viendo misiones", "Viendo los créditos"
 };
 static const PresStrings kPresFR = {
     "presence_rules_fr.txt", "Dans le menu principal", "Niveau terminé", "Récupération de la récompense",
     "Phase", "Choix des plantes", "En pause",
-    "Sur la carte", "Dans l'Almanach", "Dans la Boutique", "Jardin zen", "Carnet de voyage"
+    "Sur la carte", "Dans l'Almanach", "Dans la Boutique", "Jardin zen", "Carnet de voyage",
+    "Consulte les quêtes", "Regarde les crédits"
 };
 static const PresStrings kPresDE = {
     "presence_rules_de.txt", "Im Hauptmenü", "Level abgeschlossen", "Belohnung einsammeln",
     "Phase", "Pflanzenauswahl", "Pausiert",
-    "Auf der Weltkarte", "Im Lexikon", "Im Laden", "Zen-Garten", "Reiseklotz"
+    "Auf der Weltkarte", "Im Lexikon", "Im Laden", "Zen-Garten", "Reiseklotz",
+    "Sieht Quests an", "Sieht den Abspann"
 };
 static const PresStrings kPresPT = {
     "presence_rules_pt.txt", "No menu principal", "Nível concluído", "Coletando recompensa",
     "Fase", "Escolhendo plantas", "Em pausa",
-    "No mapa", "No Almanaque", "Na Loja", "Jardim Zen", "Diário de Viagem"
+    "No mapa", "No Almanaque", "Na Loja", "Jardim Zen", "Diário de Viagem",
+    "Vendo missões", "Vendo os créditos"
 };
 static const PresStrings kPresIT = {
     "presence_rules_it.txt", "Nel menu principale", "Livello completato", "Riscossione ricompensa",
     "Fase", "Scelta delle piante", "In pausa",
-    "Sulla mappa", "Nell'Almanacco", "Nel Negozio", "Giardino zen", "Diario di viaggio"
+    "Sulla mappa", "Nell'Almanacco", "Nel Negozio", "Giardino zen", "Diario di viaggio",
+    "Guardando le missioni", "Guardando i crediti"
 };
 
 const PresStrings *pres_str() {
@@ -823,6 +831,9 @@ void worker() {
     int boss_phase = 0;
     bool level_won = false;
     bool is_eighties_boss = false;
+    bool travel_log_open = false;
+    bool vasebreaker_menu_open = false;
+    bool credits_open = false;
     std::string boss_name_detected;
     std::string current_level;
     std::string current_world;
@@ -916,6 +927,9 @@ void worker() {
             }
 
             if (ev.rfind("state:Board Level=", 0) == 0) {
+                travel_log_open = false;
+                vasebreaker_menu_open = false;
+                credits_open = false;
                 std::string lvl_raw = ev.substr(18);
                 const auto colon = lvl_raw.find(':');
                 current_level = (colon != std::string::npos) ? lvl_raw.substr(0, colon) : lvl_raw;
@@ -976,6 +990,9 @@ void worker() {
                 continue;
             } else if (ev == "state:Board State=LoadingLevel") {
                 level_won = false;
+                travel_log_open = false;
+                vasebreaker_menu_open = false;
+                credits_open = false;
                 if (is_boss_level_id(current_level)) {
                     if (boss_phase == 0) boss_phase = 1;
                     if (current_level.find("eighties") != std::string::npos ||
@@ -1001,6 +1018,7 @@ void worker() {
             }
 
             static std::string last_known_world;
+            const PresStrings *ps_ev = pres_str();
 
             auto restore_world_activity = [&]() {
                 const std::string tgt_world = !current_world.empty() ? current_world : last_known_world;
@@ -1025,53 +1043,87 @@ void worker() {
                 desired = def;
             };
 
-            const bool is_dialog_close = (ev.find("Play_UI_Button_X_Close_") != std::string::npos ||
-                                          ev.find("Play_UI_Quests_Dialog_") != std::string::npos ||
-                                          ev.find("Play_UI_Menu_Cancel_") != std::string::npos ||
-                                          ev.find("Play_UI_Menu_Leave_") != std::string::npos ||
-                                          ev.find("Play_UI_Menu_Store_Close") != std::string::npos ||
-                                          ev.find("Play_UI_Menu_Almanac_Close_") != std::string::npos ||
-                                          (ev.rfind("state:Last DeleteGroups=", 0) == 0 &&
-                                           (ev.find("UI_VaseBreaker") != std::string::npos ||
-                                            ev.find("UI_Quests") != std::string::npos ||
-                                            ev.find("RoadSign") != std::string::npos ||
-                                            ev.find("UI_Almanac") != std::string::npos ||
-                                            ev.find("UI_Store") != std::string::npos)));
+            if (ev == "state:TravelLog Shown=true") {
+                if (current_level.empty() && !level_won) {
+                    travel_log_open = true;
+                    in_temp = false;
+                    persistent = Activity{ps_ev->travel_log, ps_ev->viewing_quests};
+                    desired = persistent;
+                }
+                continue;
+            } else if (ev == "state:TravelLog Shown=false") {
+                if (travel_log_open) {
+                    travel_log_open = false;
+                    in_temp = false;
+                    if (current_level.empty() && !level_won && !credits_open) {
+                        restore_world_activity();
+                    }
+                }
+                continue;
+            } else if (ev == "state:Credits Shown=true") {
+                credits_open = true;
+                level_won = false;
+                travel_log_open = false;
+                vasebreaker_menu_open = false;
+                in_temp = false;
+                persistent = Activity{"Plants vs. Zombies 2", ps_ev->watching_credits};
+                desired = persistent;
+                continue;
+            } else if (ev == "state:Credits Shown=false") {
+                credits_open = false;
+                in_temp = false;
+                continue;
+            }
+
+            auto delete_groups_has_exact_dialog = [](const std::string &s) -> bool {
+                constexpr const char *kPrefix = "state:Last DeleteGroups=";
+                constexpr std::size_t kPrefixLen = 24;
+                if (s.rfind(kPrefix, 0) != 0) return false;
+                std::size_t pos = kPrefixLen;
+                while (pos < s.size()) {
+                    std::size_t comma = s.find(',', pos);
+                    if (comma == std::string::npos) comma = s.size();
+                    const std::string tok = trim(s.substr(pos, comma - pos));
+                    if (tok == "UI_VaseBreakerMenu" || tok == "UI_Almanac" || tok == "UI_Store") {
+                        return true;
+                    }
+                    pos = comma + 1;
+                }
+                return false;
+            };
+
+            const bool is_dialog_close = (!travel_log_open &&
+                                          (ev.find("Play_UI_Button_X_Close_") != std::string::npos ||
+                                           ev.find("Play_UI_Menu_Cancel_") != std::string::npos ||
+                                           ev.find("Play_UI_Menu_Leave_") != std::string::npos ||
+                                           ev.find("Play_UI_Menu_Store_Close") != std::string::npos ||
+                                           ev.find("Play_UI_Menu_Almanac_Close_") != std::string::npos ||
+                                           delete_groups_has_exact_dialog(ev)));
             if (is_dialog_close) {
                 const std::string cur_det = lower(persistent.details);
                 const std::string des_det = lower(desired.details);
                 if (cur_det.find("rompejarrones") != std::string::npos ||
                     cur_det.find("vasebreaker") != std::string::npos ||
-                    cur_det.find("tronco") != std::string::npos ||
-                    cur_det.find("travel log") != std::string::npos ||
-                    cur_det.find("carnet") != std::string::npos ||
-                    cur_det.find("reiseklotz") != std::string::npos ||
-                    cur_det.find("diario") != std::string::npos ||
-                    cur_det.find("diário") != std::string::npos ||
                     cur_det.find("almanaque") != std::string::npos ||
                     cur_det.find("almanac") != std::string::npos ||
                     cur_det.find("tienda") != std::string::npos ||
                     cur_det.find("store") != std::string::npos ||
                     des_det.find("rompejarrones") != std::string::npos ||
                     des_det.find("vasebreaker") != std::string::npos ||
-                    des_det.find("tronco") != std::string::npos ||
-                    des_det.find("travel log") != std::string::npos ||
-                    des_det.find("carnet") != std::string::npos ||
-                    des_det.find("reiseklotz") != std::string::npos ||
-                    des_det.find("diario") != std::string::npos ||
-                    des_det.find("diário") != std::string::npos ||
                     des_det.find("almanaque") != std::string::npos ||
                     des_det.find("almanac") != std::string::npos ||
                     des_det.find("tienda") != std::string::npos ||
                     des_det.find("store") != std::string::npos ||
+                    vasebreaker_menu_open ||
                     in_temp) {
+                    vasebreaker_menu_open = false;
                     in_temp = false;
                     restore_world_activity();
                 }
             }
 
             if (ev.rfind("state:WorldMap Current World=", 0) == 0) {
-                current_world = ev.substr(27);
+                current_world = ev.substr(29);
                 last_known_world = current_world;
                 is_paused = false;
                 is_chooser = false;
@@ -1081,7 +1133,9 @@ void worker() {
                 is_eighties_boss = false;
                 boss_name_detected.clear();
                 current_level.clear();
-                in_temp = false;
+                if (!travel_log_open && !vasebreaker_menu_open && !credits_open) {
+                    in_temp = false;
+                }
             } else if (ev.rfind("state:GameStateMgr State=GAME_WorldMap", 0) == 0) {
                 if (current_world.empty() && !last_known_world.empty()) {
                     current_world = last_known_world;
@@ -1092,19 +1146,32 @@ void worker() {
                 boss_phase = 0;
                 level_won = false;
                 is_eighties_boss = false;
+                vasebreaker_menu_open = false;
                 boss_name_detected.clear();
                 current_level.clear();
                 in_temp = false;
-                restore_world_activity();
+                if (!travel_log_open && !credits_open) {
+                    restore_world_activity();
+                }
             } else if (ev.rfind("state:UniverseMap Shown=false", 0) == 0) {
                 if (current_world.empty() && !last_known_world.empty()) {
                     current_world = last_known_world;
                 }
                 in_temp = false;
-                restore_world_activity();
+                if (!travel_log_open && !vasebreaker_menu_open && !credits_open) {
+                    restore_world_activity();
+                }
             } else if (ev.rfind("state:GameStateMgr State=GAME_ArcadeMenu", 0) == 0) {
+                vasebreaker_menu_open = true;
+                travel_log_open = false;
+                credits_open = false;
                 in_temp = false;
-            } else if (ev.rfind("state:GameStateMgr State=GAME_Almanac", 0) == 0) {
+            } else if (ev.rfind("state:GameStateMgr State=GAME_Almanac", 0) == 0 ||
+                       ev.rfind("state:GameStateMgr State=GAME_Store", 0) == 0 ||
+                       ev.rfind("state:GameStateMgr State=GAME_ZenGarden", 0) == 0) {
+                travel_log_open = false;
+                vasebreaker_menu_open = false;
+                credits_open = false;
                 in_temp = false;
             } else if (ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0) {
                 is_paused = false;
@@ -1113,10 +1180,11 @@ void worker() {
                 boss_phase = 0;
                 level_won = false;
                 is_eighties_boss = false;
+                travel_log_open = false;
+                vasebreaker_menu_open = false;
                 boss_name_detected.clear();
                 current_level.clear();
                 current_world.clear();
-                last_known_world.clear();
                 in_temp = false;
             } else if (ev.rfind("state:UniverseMap Shown=true", 0) == 0) {
                 is_paused = false;
@@ -1125,6 +1193,9 @@ void worker() {
                 boss_phase = 0;
                 level_won = false;
                 is_eighties_boss = false;
+                travel_log_open = false;
+                vasebreaker_menu_open = false;
+                credits_open = false;
                 boss_name_detected.clear();
                 current_level.clear();
                 current_world.clear();
@@ -1138,6 +1209,20 @@ void worker() {
                 }
             }
 
+            /* Prevent background map streaming or victory quest loads from overwriting active modal dialogs */
+            if ((level_won || !current_level.empty()) && ev_lower.rfind("rsb:ui_quests_", 0) == 0) {
+                continue;
+            }
+            if ((travel_log_open || vasebreaker_menu_open || credits_open) &&
+                (ev_lower.rfind("rsb:worldmap_", 0) == 0 ||
+                 ev_lower.rfind("state:worldmap current world=", 0) == 0 ||
+                 ev_lower.rfind("rsb:ui_mainmenu_", 0) == 0)) {
+                continue;
+            }
+            if (credits_open && ev_lower.rfind("state:gamestatemgr state=game_mainmenu", 0) == 0) {
+                continue;
+            }
+
             for (const Rule &r : rules) {
                 bool hit = false;
                 std::smatch m;
@@ -1147,6 +1232,11 @@ void worker() {
                     hit = ev_lower.find(r.needle) != std::string::npos;
                 }
                 if (!hit) continue;
+                if (ev_lower.rfind("rsb:ui_quests_", 0) == 0 && current_level.empty() && !level_won) {
+                    travel_log_open = true;
+                } else if (ev_lower.rfind("rsb:ui_vasebreakermenu_", 0) == 0 && current_level.empty()) {
+                    vasebreaker_menu_open = true;
+                }
                 Activity matched{
                     r.is_regex ? expand(r.details, m) : r.details,
                     r.is_regex ? expand(r.state, m) : r.state,

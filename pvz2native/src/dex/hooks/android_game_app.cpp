@@ -1085,8 +1085,10 @@ void crashlytics_set_bool(DexCall &d) {
     const std::string key = d.string_arg(0);
     const std::uint32_t val = d.arg(1);
     if (pvz2_presence_enabled() && !key.empty()) {
-        const std::string kv = key + "=" + (val ? "true" : "false");
-        pvz2_presence_note("state", kv.c_str());
+        if (key != "WorldMap Actions Active") {
+            const std::string kv = key + "=" + (val ? "true" : "false");
+            pvz2_presence_note("state", kv.c_str());
+        }
 
         if (key == "UniverseMap Shown" && !val) {
             std::lock_guard<std::mutex> lk(g_crashlytics_mu);

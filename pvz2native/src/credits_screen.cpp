@@ -442,6 +442,7 @@ void credits_notify_modern34_reward_create(void) {
 
 void credits_notify_modern34_reward_destroy(void) {
     g_modern34_reward_active = false;
+    g_modern34_won = false;
 }
 
 int credits_is_modern34_reward_active(void) {
