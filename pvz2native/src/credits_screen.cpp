@@ -383,24 +383,8 @@ extern "C" {
  * ========================================================================= */
 void credits_screen_open(SDL_Window *window) {
     (void)window;
-    ensure_font_loaded();
-    init_starfield();
-
-    g_credits_open = true;
+    g_credits_open = false;
     g_open_requested = false;
-    g_modern34_won = false;
-    g_modern34_reward_active = false;
-    g_modern34_level_active = false;
-    g_scroll_y = -100.0f; /* Start slightly below top */
-    g_paused = false;
-    g_fade_alpha = 0.0f;
-    g_fading_out = false;
-    g_finish_wait_timer = 0.0f;
-    g_key_fast_forward = false;
-    g_key_rewind = false;
-    g_skip_hover = false;
-    g_skip_pressed = false;
-    g_last_tick_ms = SDL_GetTicks();
 }
 
 void credits_screen_close(void) {
@@ -410,18 +394,15 @@ void credits_screen_close(void) {
 }
 
 int credits_screen_is_open(void) {
-    return g_credits_open ? 1 : 0;
+    return 0;
 }
 
 void credits_screen_request_open(void) {
-    g_open_requested = true;
+    g_open_requested = false;
 }
 
 int credits_screen_consume_open_request(void) {
-    if (g_open_requested) {
-        g_open_requested = false;
-        return 1;
-    }
+    g_open_requested = false;
     return 0;
 }
 

@@ -922,8 +922,7 @@ void crashlytics_set_string(DexCall &d) {
         if (key != "Last Serialized Object Class" &&
             key != "Resgroup Preload Refcounts" &&
             key != "Resgroup Refcounts" &&
-            key != "Last Force LoadGroups" &&
-            key != "Last DeleteGroups") {
+            key != "Last Force LoadGroups") {
             const std::string kv = key + "=" + val;
             pvz2_presence_note("state", kv.c_str());
         }
@@ -1064,9 +1063,6 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
-                if (credits_is_modern34_won()) {
-                    credits_screen_request_open();
-                }
                 if (!g_last_world.empty()) {
                     const std::string w = "WorldMap Current World=" + g_last_world;
                     pvz2_presence_note("state", w.c_str());

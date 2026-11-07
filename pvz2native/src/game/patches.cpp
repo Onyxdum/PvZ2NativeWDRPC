@@ -820,6 +820,56 @@ void scr_create(GuestCall &c) {
     c.no_return();
 }
 
+static void launch_native_credits_screen(GuestCall &c) {
+    const std::uint32_t got_lawn_app_slot = c.img->so_base + 0x110c734;
+    const std::uint32_t lawn_app_ptr = c.read32(got_lawn_app_slot);
+    if (!lawn_app_ptr) {
+        pvz2_log("[credits] lawn_app_ptr is NULL");
+        return;
+    }
+    const std::uint32_t lawn_app = c.read32(lawn_app_ptr);
+    if (!lawn_app) {
+        pvz2_log("[credits] lawn_app is NULL");
+        return;
+    }
+    const std::uint32_t widget_manager = c.read32(lawn_app + 0x2d0);
+    if (!widget_manager) {
+        pvz2_log("[credits] widget_manager is NULL");
+        return;
+    }
+
+    /* Dummy vtable where all entries (including SetFocus at +0x54) call bx lr (0x18012c) */
+    const std::uint32_t bx_lr = c.img->so_base + 0x18012c;
+    const std::uint32_t dummy_vtable = c.rt->heap.alloc(0x80);
+    for (std::uint32_t off = 0; off < 0x80; off += 4) {
+        c.write32(dummy_vtable + off, bx_lr);
+    }
+
+    /* Listener widget (0xa0 bytes):
+     * [listener + 0] = dummy_vtable
+     * [listener + 0x90] = widget_manager
+     */
+    const std::uint32_t listener = c.rt->heap.alloc(0xa0);
+    for (std::uint32_t off = 0; off < 0xa0; off += 4) {
+        c.write32(listener + off, 0);
+    }
+    c.write32(listener, dummy_vtable);
+    c.write32(listener + 0x90, widget_manager);
+
+    /* Context buffer (0xb0 bytes) expected by ShowCredits at 0x7ad85c:
+     * [context_buf + 0xa8] = listener
+     */
+    const std::uint32_t context_buf = c.rt->heap.alloc(0xb0);
+    for (std::uint32_t off = 0; off < 0xb0; off += 4) {
+        c.write32(context_buf + off, 0);
+    }
+    c.write32(context_buf + 0xa8, listener);
+
+    std::uint32_t args[1] = { context_buf };
+    pvz2_log("[credits] Launching native in-game Credits screen at so+0x7ad85c (context=0x%08x)", context_buf);
+    c.call_guest(c.img->so_base + 0x7ad85c, args, 1);
+}
+
 void scr_destroy(GuestCall &c) {
     const std::uint32_t global = c.img->so_base + sym().patch.scr_global;
     std::uint32_t live = c.read32(global);
@@ -845,9 +895,9 @@ void scr_destroy(GuestCall &c) {
     pvz2native::diagnostics::vlog("screen", "DESTROY reward-screen singleton, caller .so+0x%x "
                                   "(live=0x%08x)", c.lr() - c.img->so_base, live);
     if (credits_is_modern34_reward_active() || credits_is_modern34_won()) {
-        pvz2_log("[screen] Modern 34 reward screen dismissed -- opening credits screen");
+        pvz2_log("[screen] Modern 34 reward screen dismissed -- launching native in-game credits screen");
         credits_notify_modern34_reward_destroy();
-        credits_screen_request_open();
+        launch_native_credits_screen(c);
     }
     emulate_push(c, {4, 5, 6}, c.lr());
     c.no_return();

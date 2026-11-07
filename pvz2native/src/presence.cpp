@@ -1031,7 +1031,12 @@ void worker() {
                                           ev.find("Play_UI_Menu_Leave_") != std::string::npos ||
                                           ev.find("Play_UI_Menu_Store_Close") != std::string::npos ||
                                           ev.find("Play_UI_Menu_Almanac_Close_") != std::string::npos ||
-                                          ev.rfind("state:WorldMap Actions Active=true", 0) == 0);
+                                          (ev.rfind("state:Last DeleteGroups=", 0) == 0 &&
+                                           (ev.find("UI_VaseBreaker") != std::string::npos ||
+                                            ev.find("UI_Quests") != std::string::npos ||
+                                            ev.find("RoadSign") != std::string::npos ||
+                                            ev.find("UI_Almanac") != std::string::npos ||
+                                            ev.find("UI_Store") != std::string::npos)));
             if (is_dialog_close) {
                 const std::string cur_det = lower(persistent.details);
                 const std::string des_det = lower(desired.details);
@@ -1043,6 +1048,10 @@ void worker() {
                     cur_det.find("reiseklotz") != std::string::npos ||
                     cur_det.find("diario") != std::string::npos ||
                     cur_det.find("diário") != std::string::npos ||
+                    cur_det.find("almanaque") != std::string::npos ||
+                    cur_det.find("almanac") != std::string::npos ||
+                    cur_det.find("tienda") != std::string::npos ||
+                    cur_det.find("store") != std::string::npos ||
                     des_det.find("rompejarrones") != std::string::npos ||
                     des_det.find("vasebreaker") != std::string::npos ||
                     des_det.find("tronco") != std::string::npos ||
@@ -1051,6 +1060,10 @@ void worker() {
                     des_det.find("reiseklotz") != std::string::npos ||
                     des_det.find("diario") != std::string::npos ||
                     des_det.find("diário") != std::string::npos ||
+                    des_det.find("almanaque") != std::string::npos ||
+                    des_det.find("almanac") != std::string::npos ||
+                    des_det.find("tienda") != std::string::npos ||
+                    des_det.find("store") != std::string::npos ||
                     in_temp) {
                     in_temp = false;
                     restore_world_activity();
