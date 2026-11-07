@@ -1271,6 +1271,70 @@ void scr_destroy(GuestCall &c) {
     c.no_return();
 }
 
+/* PopAnim and UI state controller null pointer guards */
+constexpr std::uint32_t kPopAnimAttachFn   = 0x6b7bfcu;
+constexpr std::uint32_t kPopAnimAttachPush = 0xE92D4830u; /* PUSH {r4,r5,fp,lr} */
+constexpr std::uint32_t kPopAnimCreateFn   = 0x33fcd0u;
+constexpr std::uint32_t kPopAnimCreatePush = 0xE92D41F0u; /* PUSH {r4-r8,lr} */
+constexpr std::uint32_t kZenStateGuardFn   = 0x3a0808u;
+constexpr std::uint32_t kZenStateGuardWord = 0xE5940000u; /* LDR r0, [r4] */
+
+void popanim_attach_enter(GuestCall &c) {
+    const std::uint32_t obj = c.arg(0);
+    const std::uint32_t factory = c.arg(1);
+    if (factory == 0 || !c.in_bounds(factory + 0xc, 4)) {
+        pvz2_log("[popanim] 0x6b7bfc called with null/invalid factory (obj=0x%08x, lr=0x%08x) -- skipping attach",
+                 obj, c.lr());
+        c.set_result(0);
+        return;
+    }
+    const std::uint32_t create_fn = c.read32(factory + 0xc);
+    if (create_fn == 0) {
+        pvz2_log("[popanim] 0x6b7bfc factory has null creator fn (obj=0x%08x, lr=0x%08x) -- skipping attach",
+                 obj, c.lr());
+        c.set_result(0);
+        return;
+    }
+    emulate_push(c, {4, 5, 11}, c.lr());
+    c.no_return();
+}
+
+void popanim_create_enter(GuestCall &c) {
+    const std::uint32_t factory = c.arg(0);
+    if (factory == 0 || !c.in_bounds(factory + 0xc, 4)) {
+        pvz2_log("[popanim] 0x33fcd0 called with null/invalid factory (lr=0x%08x) -- returning null", c.lr());
+        c.set_result(0);
+        return;
+    }
+    const std::uint32_t create_fn = c.read32(factory + 0xc);
+    if (create_fn == 0) {
+        pvz2_log("[popanim] 0x33fcd0 factory has null creator fn (lr=0x%08x) -- returning null", c.lr());
+        c.set_result(0);
+        return;
+    }
+    emulate_push(c, {4, 5, 6, 7, 8}, c.lr());
+    c.no_return();
+}
+
+void zen_state_guard_enter(GuestCall &c) {
+    const std::uint32_t r4_val = c.regs[4];
+    if (r4_val == 0 || !c.in_bounds(r4_val, 4)) {
+        pvz2_log("[state] 0x3a0808 null controller guard triggered (r4=0x%08x, sp=0x%08x) -- skipping virtual call",
+                 r4_val, c.sp());
+        const std::uint32_t sp = c.regs[13];
+        c.regs[4]  = c.read32(sp + 8);
+        c.regs[5]  = c.read32(sp + 12);
+        c.regs[11] = c.read32(sp + 16);
+        const std::uint32_t ret_pc = c.read32(sp + 20);
+        c.regs[13] = sp + 24;
+        c.regs[14] = ret_pc;
+        c.set_result(0);
+        return;
+    }
+    c.regs[0] = c.read32(r4_val);
+    c.no_return();
+}
+
 }  // namespace
 
 void game_install_reward_screen_fix(pvz2_elf_image_t *img) {
@@ -1296,6 +1360,12 @@ void game_install_reward_screen_fix(pvz2_elf_image_t *img) {
                    "travel log open tap");
     install_svc_at(img, kQuestDialogDtorFn, kQuestDialogDtorPush, "quest.dlg.dtor", quest_dialog_dtor_enter,
                    "travel log close tap");
+    install_svc_at(img, kPopAnimAttachFn, kPopAnimAttachPush, "popanim.attach", popanim_attach_enter,
+                   "popanim attach null factory guard");
+    install_svc_at(img, kPopAnimCreateFn, kPopAnimCreatePush, "popanim.create", popanim_create_enter,
+                   "popanim create null factory guard");
+    install_svc_at(img, kZenStateGuardFn, kZenStateGuardWord, "zen.state.guard", zen_state_guard_enter,
+                   "state controller null virtual dispatch guard");
 }
 
 /* --- quest trace (verbose only) --------------------------------------------- *
