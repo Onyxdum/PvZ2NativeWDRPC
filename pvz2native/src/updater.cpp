@@ -18,102 +18,271 @@ namespace {
 
 const char *kApiUrl = "https://api.github.com/repos/Onyxdum/PvZ2NativeWDRPC/releases/latest";
 
-const char kUpdaterPs1Script[] =
-    "param(\r\n"
-    "    [string]$DownloadUrl,\r\n"
-    "    [string]$TargetExe\r\n"
-    ")\r\n"
-    "\r\n"
-    "$Host.UI.RawUI.WindowTitle = \"Actualizador de Plants vs. Zombies 2\"\r\n"
-    "Write-Host \"========================================================\" -ForegroundColor Green\r\n"
-    "Write-Host \"   Plants vs. Zombies 2 - Actualizador Automatico\" -ForegroundColor Green\r\n"
-    "Write-Host \"========================================================\" -ForegroundColor Green\r\n"
-    "Write-Host \"\"\r\n"
-    "Write-Host \"Cerrando el juego y preparando la actualizacion...\" -ForegroundColor Yellow\r\n"
-    "\r\n"
-    "while ((Get-Process -Name \"pvz2\", \"pvz2native\" -ErrorAction SilentlyContinue).Count -gt 0) {\r\n"
-    "    Start-Sleep -Seconds 1\r\n"
-    "}\r\n"
-    "Start-Sleep -Seconds 1\r\n"
-    "\r\n"
-    "$gameDir = Split-Path -Parent $MyInvocation.MyCommand.Path\r\n"
-    "Set-Location $gameDir\r\n"
-    "\r\n"
-    "Write-Host \"Descargando la nueva version desde GitHub...\" -ForegroundColor Cyan\r\n"
-    "Write-Host \"URL: $DownloadUrl\" -ForegroundColor DarkGray\r\n"
-    "\r\n"
-    "$zipFile = Join-Path $gameDir \"pvz2_update.zip\"\r\n"
-    "$tmpDir = Join-Path $gameDir \"pvz2_update_tmp\"\r\n"
-    "\r\n"
-    "if (Test-Path $zipFile) { Remove-Item -Force $zipFile -ErrorAction SilentlyContinue }\r\n"
-    "if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue }\r\n"
-    "\r\n"
-    "try {\r\n"
-    "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\r\n"
-    "    $wc = New-Object System.Net.WebClient\r\n"
-    "    $wc.Headers.Add(\"User-Agent\", \"PvZ2Native-Updater\")\r\n"
-    "    $wc.DownloadFile($DownloadUrl, $zipFile)\r\n"
-    "} catch {\r\n"
-    "    Write-Host \"[ERROR] No se pudo descargar la actualizacion: $($_.Exception.Message)\" -ForegroundColor Red\r\n"
-    "    Write-Host \"Por favor descarga la actualizacion manualmente desde GitHub.\" -ForegroundColor Yellow\r\n"
-    "    Pause\r\n"
-    "    exit 1\r\n"
-    "}\r\n"
-    "\r\n"
-    "Write-Host \"Descomprimiendo archivos...\" -ForegroundColor Cyan\r\n"
-    "try {\r\n"
-    "    Expand-Archive -Path $zipFile -DestinationPath $tmpDir -Force\r\n"
-    "} catch {\r\n"
-    "    Write-Host \"[ERROR] Error al descomprimir el archivo: $($_.Exception.Message)\" -ForegroundColor Red\r\n"
-    "    Pause\r\n"
-    "    exit 1\r\n"
-    "}\r\n"
-    "\r\n"
-    "Write-Host \"Instalando archivos actualizados...\" -ForegroundColor Cyan\r\n"
-    "$src = $tmpDir\r\n"
-    "$dirs = Get-ChildItem -Path $src -Directory\r\n"
-    "if ($dirs.Count -eq 1 -and (Test-Path (Join-Path $dirs[0].FullName \"pvz2.exe\"))) {\r\n"
-    "    $src = $dirs[0].FullName\r\n"
-    "}\r\n"
-    "\r\n"
-    "Get-ChildItem -Path $src -Recurse | ForEach-Object {\r\n"
-    "    $rel = $_.FullName.Substring($src.Length).TrimStart('\\')\r\n"
-    "    if ($rel -like 'userdata*' -or $rel -ieq 'config.ini' -or $rel -like '*.obb' -or $rel -ieq 'libPVZ2.so') {\r\n"
-    "        return\r\n"
-    "    }\r\n"
-    "    $dest = Join-Path $gameDir $rel\r\n"
-    "    if ($_.PSIsContainer) {\r\n"
-    "        if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }\r\n"
-    "    } else {\r\n"
-    "        Copy-Item $_.FullName -Destination $dest -Force\r\n"
-    "    }\r\n"
-    "}\r\n"
-    "\r\n"
-    "if (Test-Path (Join-Path $gameDir \"pvz2.exe\")) {\r\n"
-    "    Copy-Item (Join-Path $gameDir \"pvz2.exe\") -Destination (Join-Path $gameDir \"pvz2native.exe\") -Force\r\n"
-    "}\r\n"
-    "\r\n"
-    "Write-Host \"Limpiando archivos temporales...\" -ForegroundColor DarkGray\r\n"
-    "if (Test-Path $zipFile) { Remove-Item -Force $zipFile -ErrorAction SilentlyContinue }\r\n"
-    "if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue }\r\n"
-    "\r\n"
-    "Write-Host \"\"\r\n"
-    "Write-Host \"========================================================\" -ForegroundColor Green\r\n"
-    "Write-Host \"   Actualizacion completada con exito!\" -ForegroundColor Green\r\n"
-    "Write-Host \"   Reiniciando el juego...\" -ForegroundColor Green\r\n"
-    "Write-Host \"========================================================\" -ForegroundColor Green\r\n"
-    "Start-Sleep -Seconds 2\r\n"
-    "\r\n"
-    "if ($TargetExe -and (Test-Path (Join-Path $gameDir $TargetExe))) {\r\n"
-    "    Start-Process (Join-Path $gameDir $TargetExe)\r\n"
-    "} elseif (Test-Path (Join-Path $gameDir \"pvz2.exe\")) {\r\n"
-    "    Start-Process (Join-Path $gameDir \"pvz2.exe\")\r\n"
-    "} elseif (Test-Path (Join-Path $gameDir \"pvz2native.exe\")) {\r\n"
-    "    Start-Process (Join-Path $gameDir \"pvz2native.exe\")\r\n"
-    "}\r\n"
-    "\r\n"
-    "$selfPath = $MyInvocation.MyCommand.Path\r\n"
-    "Start-Process powershell -ArgumentList \"-NoProfile -Command Start-Sleep -Seconds 1; Remove-Item -Force '$selfPath'\" -WindowStyle Hidden\r\n";
+const char kUpdaterPs1Script[] = R"ps1(
+param(
+    [string]$DownloadUrl,
+    [string]$TargetExe
+)
+
+$Host.UI.RawUI.WindowTitle = "Actualizador de Plants vs. Zombies 2"
+Write-Host "========================================================" -ForegroundColor Green
+Write-Host "   Plants vs. Zombies 2 - Actualizador Automatico" -ForegroundColor Green
+Write-Host "========================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Cerrando el juego y preparando la actualizacion..." -ForegroundColor Yellow
+
+while ((Get-Process -Name "pvz2", "pvz2native" -ErrorAction SilentlyContinue).Count -gt 0) {
+    Start-Sleep -Seconds 1
+}
+Start-Sleep -Seconds 1
+
+$gameDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $gameDir
+
+Write-Host "Descargando la nueva version desde GitHub..." -ForegroundColor Cyan
+Write-Host "URL: $DownloadUrl" -ForegroundColor DarkGray
+
+$zipFile = Join-Path $gameDir "pvz2_update.zip"
+$tmpDir = Join-Path $gameDir "pvz2_update_tmp"
+
+if (Test-Path $zipFile) { Remove-Item -Force $zipFile -ErrorAction SilentlyContinue }
+if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue }
+
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $wc = New-Object System.Net.WebClient
+    $wc.Headers.Add("User-Agent", "PvZ2Native-Updater")
+    $wc.DownloadFile($DownloadUrl, $zipFile)
+} catch {
+    Write-Host "[ERROR] No se pudo descargar la actualizacion: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Por favor descarga la actualizacion manualmente desde GitHub." -ForegroundColor Yellow
+    Pause
+    exit 1
+}
+
+Write-Host "Descomprimiendo archivos..." -ForegroundColor Cyan
+try {
+    Expand-Archive -Path $zipFile -DestinationPath $tmpDir -Force
+} catch {
+    Write-Host "[ERROR] Error al descomprimir el archivo: $($_.Exception.Message)" -ForegroundColor Red
+    Pause
+    exit 1
+}
+
+# --- Funciones de Fusion Inteligente ---
+
+function Merge-PresenceRules([string]$destFile, [string]$srcFile) {
+    if (!(Test-Path $destFile)) {
+        Copy-Item $srcFile $destFile -Force
+        return
+    }
+
+    $bakFile = "$destFile.bak"
+    Copy-Item $destFile $bakFile -Force
+
+    $userLines = Get-Content -Path $destFile -Encoding UTF8
+    $newLines = Get-Content -Path $srcFile -Encoding UTF8
+
+    $userPatterns = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($line in $userLines) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) {
+            continue
+        }
+        $parts = $trimmed.Split('|', 2)
+        $pattern = $parts[0].Trim().ToLowerInvariant()
+        if ($pattern.Length -gt 0) {
+            [void]$userPatterns.Add($pattern)
+        }
+    }
+
+    $rulesToAdd = New-Object System.Collections.Generic.List[string]
+    $pendingComments = New-Object System.Collections.Generic.List[string]
+
+    foreach ($line in $newLines) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0) {
+            if ($pendingComments.Count -gt 0) {
+                $pendingComments.Add($line)
+            }
+            continue
+        }
+        if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) {
+            $pendingComments.Add($line)
+            continue
+        }
+
+        $parts = $trimmed.Split('|', 2)
+        $pattern = $parts[0].Trim().ToLowerInvariant()
+
+        if ($pattern.Length -gt 0 -and !$userPatterns.Contains($pattern)) {
+            if ($pendingComments.Count -gt 0) {
+                foreach ($c in $pendingComments) {
+                    $rulesToAdd.Add($c)
+                }
+                $pendingComments.Clear()
+            }
+            $rulesToAdd.Add($line)
+            [void]$userPatterns.Add($pattern)
+        } else {
+            $pendingComments.Clear()
+        }
+    }
+
+    if ($rulesToAdd.Count -gt 0) {
+        $merged = New-Object System.Collections.Generic.List[string]
+        foreach ($l in $userLines) { $merged.Add($l) }
+        $merged.Add("")
+        $merged.Add("; --- [ACTUALIZACION: Reglas nuevas anadidas automaticamente] ---")
+        foreach ($r in $rulesToAdd) { $merged.Add($r) }
+
+        [System.IO.File]::WriteAllLines($destFile, $merged, [System.Text.Encoding]::UTF8)
+        Write-Host "  [Fusion] $($rulesToAdd.Count) regla(s) nueva(s) incorporada(s) en $(Split-Path -Leaf $destFile) (respetando tus ajustes)." -ForegroundColor Green
+    } else {
+        Write-Host "  [OK] $(Split-Path -Leaf $destFile) al dia (tus reglas personalizadas se conservan)." -ForegroundColor DarkGray
+    }
+}
+
+function Merge-IniConfig([string]$destFile, [string]$srcFile) {
+    if (!(Test-Path $destFile)) {
+        Copy-Item $srcFile $destFile -Force
+        return
+    }
+
+    $bakFile = "$destFile.bak"
+    Copy-Item $destFile $bakFile -Force
+
+    $userLines = Get-Content -Path $destFile -Encoding UTF8
+    $newLines = Get-Content -Path $srcFile -Encoding UTF8
+
+    $userSections = @{}
+    $currentSec = ""
+    foreach ($line in $userLines) {
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith('[') -and $trimmed.EndsWith(']')) {
+            $currentSec = $trimmed.Substring(1, $trimmed.Length - 2).Trim().ToLowerInvariant()
+            if (!$userSections.ContainsKey($currentSec)) {
+                $userSections[$currentSec] = New-Object 'System.Collections.Generic.HashSet[string]'
+            }
+        } elseif ($currentSec -ne "" -and $trimmed -match '^([^=;#]+)=') {
+            $key = $matches[1].Trim().ToLowerInvariant()
+            [void]$userSections[$currentSec].Add($key)
+        }
+    }
+
+    $additions = New-Object System.Collections.Generic.List[string]
+    $curReleaseSec = ""
+    $pendingComments = New-Object System.Collections.Generic.List[string]
+
+    foreach ($line in $newLines) {
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith('[') -and $trimmed.EndsWith(']')) {
+            $curReleaseSec = $trimmed.Substring(1, $trimmed.Length - 2).Trim().ToLowerInvariant()
+            $pendingComments.Clear()
+            continue
+        }
+        if ($trimmed.Length -eq 0) {
+            continue
+        }
+        if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) {
+            $pendingComments.Add($line)
+            continue
+        }
+        if ($curReleaseSec -ne "" -and $trimmed -match '^([^=]+)=') {
+            $key = $matches[1].Trim().ToLowerInvariant()
+            $alreadyHas = $userSections.ContainsKey($curReleaseSec) -and $userSections[$curReleaseSec].Contains($key)
+            if (!$alreadyHas) {
+                if ($additions.Count -eq 0) {
+                    $additions.Add("")
+                    $additions.Add("; --- [NUEVOS AJUSTES ANADIDOS TRAS LA ACTUALIZACION] ---")
+                }
+                $additions.Add("")
+                $additions.Add("[$curReleaseSec]")
+                foreach ($c in $pendingComments) { $additions.Add($c) }
+                $additions.Add($line)
+
+                if (!$userSections.ContainsKey($curReleaseSec)) {
+                    $userSections[$curReleaseSec] = New-Object 'System.Collections.Generic.HashSet[string]'
+                }
+                [void]$userSections[$curReleaseSec].Add($key)
+            }
+            $pendingComments.Clear()
+        }
+    }
+
+    if ($additions.Count -gt 0) {
+        $merged = New-Object System.Collections.Generic.List[string]
+        foreach ($l in $userLines) { $merged.Add($l) }
+        foreach ($a in $additions) { $merged.Add($a) }
+        [System.IO.File]::WriteAllLines($destFile, $merged, [System.Text.Encoding]::UTF8)
+        Write-Host "  [Fusion] $($additions.Count) nueva(s) opcion(es) anadida(s) a config.ini (tus ajustes se conservan)." -ForegroundColor Green
+    } else {
+        Write-Host "  [OK] config.ini al dia (tus ajustes se conservan)." -ForegroundColor DarkGray
+    }
+}
+
+Write-Host "Instalando y fusionando archivos actualizados..." -ForegroundColor Cyan
+$src = $tmpDir
+$dirs = Get-ChildItem -Path $src -Directory
+if ($dirs.Count -eq 1 -and (Test-Path (Join-Path $dirs[0].FullName "pvz2.exe"))) {
+    $src = $dirs[0].FullName
+}
+
+Get-ChildItem -Path $src -Recurse | ForEach-Object {
+    $rel = $_.FullName.Substring($src.Length).TrimStart('\')
+    # Proteger partidas y datos principales del juego
+    if ($rel -like 'userdata*' -or $rel -like '*.obb' -or $rel -ieq 'libPVZ2.so' -or $rel -like '*custom*') {
+        return
+    }
+
+    $dest = Join-Path $gameDir $rel
+    if ($_.PSIsContainer) {
+        if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+        return
+    }
+
+    # Fusion inteligente para config.ini
+    if ($rel -ieq 'config.ini') {
+        Merge-IniConfig $dest $_.FullName
+        return
+    }
+
+    # Fusion inteligente para archivos de reglas de texto
+    if ($rel -like 'presence_rules*.txt' -or $rel -like '*.txt') {
+        Merge-PresenceRules $dest $_.FullName
+        return
+    }
+
+    # Resto de archivos (ejecutables, dlls, recursos): copiar directamente
+    Copy-Item $_.FullName -Destination $dest -Force
+}
+
+if (Test-Path (Join-Path $gameDir "pvz2.exe")) {
+    Copy-Item (Join-Path $gameDir "pvz2.exe") -Destination (Join-Path $gameDir "pvz2native.exe") -Force
+}
+
+Write-Host "Limpiando archivos temporales..." -ForegroundColor DarkGray
+if (Test-Path $zipFile) { Remove-Item -Force $zipFile -ErrorAction SilentlyContinue }
+if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue }
+
+Write-Host ""
+Write-Host "========================================================" -ForegroundColor Green
+Write-Host "   Actualizacion completada con exito!" -ForegroundColor Green
+Write-Host "   Reiniciando el juego..." -ForegroundColor Green
+Write-Host "========================================================" -ForegroundColor Green
+Start-Sleep -Seconds 2
+
+if ($TargetExe -and (Test-Path (Join-Path $gameDir $TargetExe))) {
+    Start-Process (Join-Path $gameDir $TargetExe)
+} elseif (Test-Path (Join-Path $gameDir "pvz2.exe")) {
+    Start-Process (Join-Path $gameDir "pvz2.exe")
+} elseif (Test-Path (Join-Path $gameDir "pvz2native.exe")) {
+    Start-Process (Join-Path $gameDir "pvz2native.exe")
+}
+
+$selfPath = $MyInvocation.MyCommand.Path
+Start-Process powershell -ArgumentList "-NoProfile -Command Start-Sleep -Seconds 1; Remove-Item -Force '$selfPath'" -WindowStyle Hidden
+)ps1";
 
 const char kUpdaterBatScript[] =
     "@echo off\r\n"
