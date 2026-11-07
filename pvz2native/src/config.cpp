@@ -247,6 +247,10 @@ const Setting kSettings[] = {
      "the game requests completes for free; off = store reports not supported.\n"
      "Default off: gem-priced store items do not need Play Billing.",
      nullptr, "0"},
+    {"game", "check_updates", nullptr, Kind::kBool,
+     offsetof(pvz2_config_t, check_updates), 0,
+     "Check for game updates on startup from GitHub releases. Default on.",
+     nullptr, "1"},
     {"game", "achievement_notifications", nullptr, Kind::kBool,
      offsetof(pvz2_config_t, achievement_notifications), 0,
      "Show the achievement unlock popup and sound. Achievements are still saved\n"
@@ -1634,6 +1638,7 @@ extern "C" void pvz2_config_load(const char *ini_path, const char *base_dir) {
     g_base_dir = base_with_sep(base_dir);
     g_config = pvz2_config_t{}; /* reset to all-zero before (re)reading */
     g_config.emulate_iap = 0;
+    g_config.check_updates = 1;
     g_config.use_cdn = 1;
     g_config.allow_repeat_quests = 1;
     g_config.achievement_notifications = 1;

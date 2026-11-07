@@ -258,6 +258,12 @@ Relative paths are resolved against the folder that contains the executable. Abs
 
 On first launch the host writes a documented `config.ini`. Everyday options are meant to be changed from the in-game settings screen; advanced keys stay in the file / CLI.
 
+### 🍎 macOS (via Whisky / Wine)
+Native macOS binaries are not provided due to Apple deprecating OpenGL and enforcing strict JIT restrictions on Apple Silicon. However, macOS users can play easily using **[Whisky](https://getwhisky.app/)** (free, open source) or **CrossOver**:
+1. Install **Whisky**.
+2. Create a Windows 10 bottle.
+3. Launch `pvz2.exe` from the Windows release package.
+
 ---
 
 ## 🔧 Configuration (`config.ini`)

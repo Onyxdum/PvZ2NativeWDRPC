@@ -258,6 +258,12 @@ Las rutas relativas se resuelven respecto a la carpeta del ejecutable. También 
 
 En el primer arranque el host escribe un `config.ini` documentado. Lo cotidiano se cambia desde la pantalla de ajustes; lo avanzado queda en el archivo / CLI.
 
+### 🍎 macOS (mediante Whisky / Wine)
+No se ofrecen binarios nativos para macOS debido a la eliminación de OpenGL por parte de Apple y a las restricciones de JIT en Apple Silicon. Sin embargo, los usuarios de Mac pueden jugar de forma muy sencilla utilizando **[Whisky](https://getwhisky.app/)** (gratuito y de código abierto) o **CrossOver**:
+1. Instala **Whisky**.
+2. Crea una botella de Windows 10.
+3. Ejecuta `pvz2.exe` desde el paquete de la versión de Windows.
+
 ---
 
 ## 🔧 Configuración (`config.ini`)

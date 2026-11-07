@@ -394,7 +394,7 @@ static bool              g_music_playing = false;
 static bool              g_music_fading = false;
 static float             g_music_fade_gain = 1.0f;
 /* Master volume attenuation factor so Zombie Time matches native in-game Wwise loudness levels */
-static constexpr float   kCreditsMusicMasterGain = 0.65f;
+static constexpr float   kCreditsMusicMasterGain = 0.45f;
 static std::atomic<int>  g_music_vol_pct{100};
 static std::atomic<bool> g_music_active_flag{false};
 

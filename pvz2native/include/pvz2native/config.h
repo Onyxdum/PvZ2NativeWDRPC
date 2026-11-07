@@ -96,6 +96,7 @@ typedef struct pvz2_config {
      * granted). When off, the store reports "not supported" and nothing is
      * purchasable. Defaults ON -- see pvz2_config_load. */
     int emulate_iap;
+    int check_updates;
 
     /* Host-side achievement unlock toast + sound. Achievements are still
      * recorded when off; only the popup/SFX are suppressed. Default on. */
