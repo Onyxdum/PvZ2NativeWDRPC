@@ -914,10 +914,39 @@ std::int32_t read_board_level_number(DexCall &d) {
     return (lvl > 0 && lvl < 100000) ? lvl : 0;
 }
 
+static std::string read_guest_worldmap_node_dex(DexCall &d) {
+    if (!d.c.img || d.c.img->so_base == 0) return "";
+    const std::uint32_t slot = d.c.img->so_base + 0x115bc00u;
+    if (!d.c.in_bounds(slot, 4)) return "";
+    const std::uint32_t mgr = d.c.read32(slot);
+    if (mgr == 0 || !d.c.in_bounds(mgr + 0x84u, 12)) return "";
+    std::uint32_t size, data;
+    const std::uint8_t b0 = d.c.read8(mgr + 0x84u);
+    if (b0 & 1) {
+        size = d.c.read32(mgr + 0x84u + 4);
+        data = d.c.read32(mgr + 0x84u + 8);
+    } else {
+        size = b0 >> 1;
+        data = mgr + 0x84u + 1;
+    }
+    if (size > 256) size = 256;
+    if (!d.c.in_bounds(data, size)) return "";
+    std::string out;
+    out.reserve(size);
+    for (std::uint32_t i = 0; i < size; ++i) out.push_back((char)d.c.read8(data + i));
+    return out;
+}
+
 void crashlytics_set_string(DexCall &d) {
     const std::string key = d.string_arg(0);
     const std::string val = d.string_arg(1);
-    if (pvz2_presence_enabled() && !key.empty()) {
+    if (key.empty()) {
+        d.ret(0);
+        return;
+    }
+
+    const bool presence = pvz2_presence_enabled();
+    if (presence) {
         /* Filter out high-frequency resource tracking strings from trace/queue */
         if (key != "Last Serialized Object Class" &&
             key != "Resgroup Preload Refcounts" &&
@@ -926,117 +955,144 @@ void crashlytics_set_string(DexCall &d) {
             const std::string kv = key + "=" + val;
             pvz2_presence_note("state", kv.c_str());
         }
+    }
 
-        std::lock_guard<std::mutex> lk(g_crashlytics_mu);
-        if (key == "Last PrepareLoadGroups") {
-            if (val.find("UI_SeedChooser") != std::string::npos) {
-                g_has_seed_chooser = true;
+    std::lock_guard<std::mutex> lk(g_crashlytics_mu);
+    if (key == "Last PrepareLoadGroups") {
+        if (val.find("UI_SeedChooser") != std::string::npos) {
+            g_has_seed_chooser = true;
+        }
+        if (val.find("ProtectThePlantChallengeModule") != std::string::npos) {
+            g_has_protect_plant = true;
+            if (g_last_goals_count < 1) {
+                g_last_goals_count = 1;
+                if (presence) pvz2_presence_note("state", "Board Goals=1");
             }
-            if (val.find("ProtectThePlantChallengeModule") != std::string::npos) {
-                g_has_protect_plant = true;
-                if (g_last_goals_count < 1) {
-                    g_last_goals_count = 1;
-                    pvz2_presence_note("state", "Board Goals=1");
-                }
-            }
-        } else if (key == "Board Level" && !val.empty()) {
-            g_last_board_level = val;
-            dex::set_current_board_level(val);
-            const std::int32_t num = read_board_level_number(d);
-            if (num > 0) {
-                g_last_level_num = num;
-                dex::set_board_level_number(num);
+        }
+    } else if (key == "Board Level" && !val.empty()) {
+        g_last_board_level = val;
+        dex::set_current_board_level(val);
+        const std::string node = read_guest_worldmap_node_dex(d);
+        const bool is_md34 = (val == "modern34" || node == "modern34");
+        credits_set_modern34_active(is_md34 ? 1 : 0);
+        if (!is_md34) {
+            credits_notify_modern34_reward_destroy();
+        }
+
+        const std::int32_t num = read_board_level_number(d);
+        if (num > 0) {
+            g_last_level_num = num;
+            dex::set_board_level_number(num);
+            if (presence) {
                 const std::string lvl_with_num = "Board Level=" + val + ":" + std::to_string(num);
                 pvz2_presence_note("state", lvl_with_num.c_str());
-            } else {
-                g_last_level_num = 0;
+            }
+        } else {
+            g_last_level_num = 0;
+            if (presence) {
                 const std::string lvl = "Board Level=" + val;
                 pvz2_presence_note("state", lvl.c_str());
             }
-            int goals = count_level_challenges(val);
-            if (goals == 0 && g_has_protect_plant) goals = 1;
+        }
+        int goals = count_level_challenges(val);
+        if (goals == 0 && g_has_protect_plant) goals = 1;
+        g_last_goals_count = goals;
+        if (presence) pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+    } else if (key == "WorldMap Current World" && !val.empty()) {
+        g_last_world = val;
+        dex::set_current_world(val);
+        g_has_seed_chooser = false;
+        g_in_seed_chooser = false;
+        g_has_protect_plant = false;
+        g_last_goals_count = 0;
+        if (presence) {
+            pvz2_presence_note("state", "Board Chooser=false");
+            pvz2_presence_note("state", "Board Paused=false");
+            pvz2_presence_note("state", "Board Goals=0");
+        }
+    } else if (key == "Board State") {
+        if (val == "LoadingLevel") {
+            g_has_seed_chooser = false;
+            g_in_seed_chooser = false;
+            g_has_protect_plant = false;
+            if (presence) {
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+            }
+            const int goals = count_level_challenges(g_last_board_level);
             g_last_goals_count = goals;
-            pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
-        } else if (key == "WorldMap Current World" && !val.empty()) {
-            g_last_world = val;
-            dex::set_current_world(val);
+            if (presence) pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+        } else if (val == "LevelIntro") {
+            if (g_has_seed_chooser) {
+                g_in_seed_chooser = true;
+                if (presence) pvz2_presence_note("state", "Board Chooser=true");
+            }
+        } else if (val == "PlayingLevel") {
+            if (g_in_seed_chooser) {
+                g_in_seed_chooser = false;
+                if (presence) pvz2_presence_note("state", "Board Chooser=false");
+            }
+        } else if (val == "PlayerWonOutro") {
             g_has_seed_chooser = false;
             g_in_seed_chooser = false;
             g_has_protect_plant = false;
             g_last_goals_count = 0;
-            pvz2_presence_note("state", "Board Chooser=false");
-            pvz2_presence_note("state", "Board Paused=false");
-            pvz2_presence_note("state", "Board Goals=0");
-        } else if (key == "Board State") {
-            if (val == "LoadingLevel") {
-                g_has_seed_chooser = false;
-                g_in_seed_chooser = false;
-                g_has_protect_plant = false;
-                pvz2_presence_note("state", "Board Chooser=false");
-                pvz2_presence_note("state", "Board Paused=false");
-                const int goals = count_level_challenges(g_last_board_level);
-                g_last_goals_count = goals;
-                pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
-            } else if (val == "LevelIntro") {
-                if (g_has_seed_chooser) {
-                    g_in_seed_chooser = true;
-                    pvz2_presence_note("state", "Board Chooser=true");
-                }
-            } else if (val == "PlayingLevel") {
-                if (g_in_seed_chooser) {
-                    g_in_seed_chooser = false;
-                    pvz2_presence_note("state", "Board Chooser=false");
-                }
-            } else if (val == "PlayerWonOutro") {
-                g_has_seed_chooser = false;
-                g_in_seed_chooser = false;
-                g_has_protect_plant = false;
-                g_last_goals_count = 0;
-                pvz2_presence_note("state", "Board Chooser=false");
-                pvz2_presence_note("state", "Board Paused=false");
-                pvz2_presence_note("state", "Board Goals=0");
-                const std::int32_t num = read_board_level_number(d);
-                if (num > 0) dex::set_board_level_number(num);
-                const bool is_modern = (g_last_world == "modern" || dex::current_world() == "modern" ||
-                                        g_last_board_level.find("modern") != std::string::npos);
-                const bool is_day34 = (num == 34 || g_last_level_num == 34 ||
-                                       dex::current_board_level_number() == 34 ||
-                                       g_last_board_level.find("34") != std::string::npos ||
-                                       g_last_board_level == "modern34" ||
-                                       g_last_board_level.find("zomboss_3") != std::string::npos);
-                if (is_modern && is_day34) {
-                    credits_mark_modern34_won();
-                }
-            } else if (val == "PlayerLostOutro" || val == "EndLevel" || val == "Initial") {
-                g_has_seed_chooser = false;
-                g_in_seed_chooser = false;
-                g_has_protect_plant = false;
-                g_last_goals_count = 0;
+            if (presence) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
             }
-
-            if (!g_last_board_level.empty()) {
-                int goals = count_level_challenges(g_last_board_level);
-                if (goals == 0 && g_has_protect_plant) goals = 1;
-                g_last_goals_count = goals;
-                pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
-
-                const std::int32_t num = read_board_level_number(d);
-                if (num > 0) {
-                    g_last_level_num = num;
-                    const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(num);
-                    pvz2_presence_note("state", lvl_with_num.c_str());
-                } else if (g_last_level_num > 0) {
-                    const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(g_last_level_num);
-                    pvz2_presence_note("state", lvl_with_num.c_str());
-                } else {
-                    const std::string lvl = "Board Level=" + g_last_board_level;
-                    pvz2_presence_note("state", lvl.c_str());
-                }
+            const std::int32_t num = read_board_level_number(d);
+            if (num > 0) dex::set_board_level_number(num);
+            const std::string node = read_guest_worldmap_node_dex(d);
+            const bool is_modern = (g_last_world == "modern" || dex::current_world() == "modern" ||
+                                    g_last_board_level.find("modern") != std::string::npos ||
+                                    node.rfind("modern", 0) == 0);
+            const bool is_day34 = (num == 34 || g_last_level_num == 34 ||
+                                   dex::current_board_level_number() == 34 ||
+                                   g_last_board_level.find("34") != std::string::npos ||
+                                   g_last_board_level == "modern34" ||
+                                   node == "modern34" ||
+                                   credits_get_modern34_active() != 0 ||
+                                   (is_modern && g_last_board_level.find("modern_zomboss_") != std::string::npos && node == "modern34"));
+            if (is_modern && is_day34) {
+                credits_mark_modern34_won();
+                pvz2_log("[credits] Modern Day 34 victory detected (board='%s', node='%s')",
+                         g_last_board_level.c_str(), node.c_str());
             }
-        } else if (key == "GameStateMgr State") {
+        } else if (val == "PlayerLostOutro" || val == "EndLevel" || val == "Initial") {
+            g_has_seed_chooser = false;
+            g_in_seed_chooser = false;
+            g_has_protect_plant = false;
+            g_last_goals_count = 0;
+            if (presence) {
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+                pvz2_presence_note("state", "Board Goals=0");
+            }
+        }
+
+        if (presence && !g_last_board_level.empty()) {
+            int goals = count_level_challenges(g_last_board_level);
+            if (goals == 0 && g_has_protect_plant) goals = 1;
+            g_last_goals_count = goals;
+            pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+
+            const std::int32_t num = read_board_level_number(d);
+            if (num > 0) {
+                g_last_level_num = num;
+                const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(num);
+                pvz2_presence_note("state", lvl_with_num.c_str());
+            } else if (g_last_level_num > 0) {
+                const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(g_last_level_num);
+                pvz2_presence_note("state", lvl_with_num.c_str());
+            } else {
+                const std::string lvl = "Board Level=" + g_last_board_level;
+                pvz2_presence_note("state", lvl.c_str());
+            }
+        }
+    } else if (key == "GameStateMgr State") {
+        if (presence) {
             if (val == "GAME_Game" && !g_last_board_level.empty()) {
                 int goals = count_level_challenges(g_last_board_level);
                 if (goals == 0 && g_has_protect_plant) goals = 1;

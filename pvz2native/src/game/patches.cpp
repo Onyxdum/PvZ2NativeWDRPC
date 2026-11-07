@@ -795,6 +795,66 @@ constexpr std::uint32_t kScrDestroyPush = 0xE92D4070u; /* PUSH {r4,r5,r6,lr} */
  * (the only case that worked before) never touches the stack. */
 std::vector<std::uint32_t> g_scr_stack;
 
+/* A libc++ std::string (12 bytes, short-string flag in bit 0 of byte 0). */
+std::string guest_std_string(GuestCall &c, std::uint32_t p) {
+    if (!c.in_bounds(p, 12)) return "<unreadable>";
+    std::uint32_t size, data;
+    const std::uint8_t b0 = c.read8(p);
+    if (b0 & 1) {
+        size = c.read32(p + 4);
+        data = c.read32(p + 8);
+    } else {
+        size = b0 >> 1;
+        data = p + 1;
+    }
+    if (size > 4000) size = 4000;
+    if (!c.in_bounds(data, size)) return "<unreadable>";
+    std::string out;
+    out.reserve(size);
+    for (std::uint32_t i = 0; i < size; ++i) out.push_back((char)c.read8(data + i));
+    return out;
+}
+
+std::uint32_t read_guest_lawn_app(GuestCall &c) {
+    const std::uint32_t got_slot = c.img->so_base + 0x110c734u;
+    if (!c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t ptr_addr = c.read32(got_slot);
+    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
+    return c.read32(ptr_addr);
+}
+
+std::uint32_t read_guest_gsm(GuestCall &c) {
+    const std::uint32_t got_slot = c.img->so_base + 0x110c7a0u;
+    if (!c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t ptr_addr = c.read32(got_slot);
+    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
+    return c.read32(ptr_addr);
+}
+
+std::string read_guest_worldmap_node(GuestCall &c) {
+    if (!c.img || c.img->so_base == 0) return "";
+    const std::uint32_t slot = c.img->so_base + 0x115bc00u;
+    if (!c.in_bounds(slot, 4)) return "";
+    const std::uint32_t mgr = c.read32(slot);
+    if (mgr == 0 || !c.in_bounds(mgr + 0x84u, 12)) return "";
+    return guest_std_string(c, mgr + 0x84u);
+}
+
+bool is_modern34_board_context(GuestCall &c) {
+    const std::string node = read_guest_worldmap_node(c);
+    if (node == "modern34") return true;
+    if (credits_is_modern34_won()) return true;
+    if (credits_get_modern34_active()) return true;
+
+    const std::string b_lvl = dex::current_board_level();
+    const std::int32_t known_num = dex::current_board_level_number();
+    const bool is_modern = (dex::current_world() == "modern" || b_lvl.find("modern") != std::string::npos ||
+                            node.rfind("modern", 0) == 0);
+    const bool is_day34 = (known_num == 34 || b_lvl.find("34") != std::string::npos ||
+                           b_lvl == "modern34" || (is_modern && b_lvl.find("modern_zomboss_") != std::string::npos));
+    return is_modern && is_day34;
+}
+
 void scr_create(GuestCall &c) {
     const std::uint32_t global = c.img->so_base + sym().patch.scr_global;
     const std::uint32_t live = c.read32(global);
@@ -807,14 +867,23 @@ void scr_create(GuestCall &c) {
     pvz2native::diagnostics::vlog("screen", "CREATE  reward-screen singleton, caller .so+0x%x "
                                   "(board='%s', live=0x%08x)", c.lr() - c.img->so_base,
                                   dex::current_board_level().c_str(), live);
+
+    const std::uint32_t lawn_app = read_guest_lawn_app(c);
+    const bool in_board = (lawn_app != 0 && c.in_bounds(lawn_app + 0x684u, 4) && c.read32(lawn_app + 0x684u) != 0);
+    const std::string node = read_guest_worldmap_node(c);
     const std::string b_lvl = dex::current_board_level();
     const std::int32_t known_num = dex::current_board_level_number();
-    const bool is_modern = (dex::current_world() == "modern" || b_lvl.find("modern") != std::string::npos);
+    const bool is_modern = (dex::current_world() == "modern" || b_lvl.find("modern") != std::string::npos ||
+                            node.rfind("modern", 0) == 0);
     const bool is_day34 = (known_num == 34 || b_lvl.find("34") != std::string::npos ||
-                           b_lvl == "modern34" || b_lvl.find("zomboss_3") != std::string::npos);
-    if (credits_is_modern34_won() || (is_modern && is_day34)) {
+                           b_lvl == "modern34" || node == "modern34" ||
+                           (is_modern && b_lvl.find("modern_zomboss_") != std::string::npos));
+
+    if (credits_is_modern34_won() || (in_board && is_modern && is_day34)) {
         credits_notify_modern34_reward_create();
         credits_mark_modern34_won();
+        pvz2_log("[credits] Modern Day 34 reward screen created (in_board=%d, node='%s', board='%s')",
+                 in_board ? 1 : 0, node.c_str(), b_lvl.c_str());
     }
     emulate_push(c, {4, 5, 6, 7, 11}, c.lr());
     c.no_return();
@@ -851,6 +920,9 @@ std::uint32_t g_md34_str_modern = 0;
 std::uint32_t g_md34_wstr_view_credits = 0;
 std::uint32_t g_gsm_enter_mainmenu_exit = 0;
 std::vector<std::uint32_t> g_gsm_enter_mainmenu_lrs;
+std::uint32_t g_credits_music_started_widget = 0;
+std::uint32_t g_cr_state2_widget = 0;
+std::chrono::steady_clock::time_point g_cr_state2_enter_time;
 
 const char32_t *localized_view_credits_wstr() {
     const pvz2_config_t *cfg = pvz2_config();
@@ -887,15 +959,6 @@ std::uint32_t ensure_guest_view_credits_wstring(GuestCall &c) {
     return block;
 }
 
-bool is_modern34_board_context() {
-    const std::string b_lvl = dex::current_board_level();
-    const std::int32_t known_num = dex::current_board_level_number();
-    const bool is_modern = (dex::current_world() == "modern" || b_lvl.find("modern") != std::string::npos);
-    const bool is_day34 = (known_num == 34 || b_lvl.find("34") != std::string::npos ||
-                           b_lvl == "modern34" || b_lvl.find("zomboss_3") != std::string::npos);
-    return is_modern && is_day34;
-}
-
 std::uint32_t ensure_guest_const_string(GuestCall &c, std::uint32_t &slot, const char *s) {
     if (slot != 0) return slot;
     const std::uint32_t len = (std::uint32_t)std::strlen(s);
@@ -912,28 +975,13 @@ std::uint32_t ensure_guest_const_string(GuestCall &c, std::uint32_t &slot, const
     return slot;
 }
 
-std::uint32_t read_guest_lawn_app(GuestCall &c) {
-    const std::uint32_t got_slot = c.img->so_base + 0x110c734u;
-    if (!c.in_bounds(got_slot, 4)) return 0;
-    const std::uint32_t ptr_addr = c.read32(got_slot);
-    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
-    return c.read32(ptr_addr);
-}
-
-std::uint32_t read_guest_gsm(GuestCall &c) {
-    const std::uint32_t got_slot = c.img->so_base + 0x110c7a0u;
-    if (!c.in_bounds(got_slot, 4)) return 0;
-    const std::uint32_t ptr_addr = c.read32(got_slot);
-    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
-    return c.read32(ptr_addr);
-}
-
 void gsm_transition_to_enter(GuestCall &c) {
     const std::uint32_t next_state = c.arg(1);
-    if ((g_pending_md34_credits || credits_is_modern34_won()) &&
+    if ((g_pending_md34_credits || credits_is_modern34_won() || credits_is_modern34_reward_active()) &&
         (next_state == 6u || next_state == 12u)) {
         g_pending_md34_credits = false;
         credits_notify_modern34_reward_destroy();
+        credits_set_modern34_active(0);
         g_md34_credits_mode = true;
         g_md34_exit_triggered = false;
         g_md34_credits_widget = 0;
@@ -969,14 +1017,14 @@ void gsm_enter_mainmenu_exit(GuestCall &c) {
         const std::uint32_t lawn_app = read_guest_lawn_app(c);
         const std::uint32_t gsm = read_guest_gsm(c);
         if (lawn_app != 0 && gsm != 0) {
-            /* 1. Stop any lingering Wwise world/splash music and start 'Zombie Time' credits song */
+            /* 1. Stop any lingering Wwise world/splash music.
+             * Silence during fade transition into credits. */
             const std::uint32_t stop_world_args[2] = {lawn_app, c.img->so_base + 0x1039c6du};
             c.call_guest(c.img->so_base + 0x3f9920u, stop_world_args, 2);
             const std::uint32_t stop_splash_args[2] = {lawn_app, c.img->so_base + 0x101cb1au};
             c.call_guest(c.img->so_base + 0x3f9920u, stop_splash_args, 2);
             c.write8(gsm + 0x615u, 0u); /* m_isStartupMusicPlaying = false */
             c.write8(gsm + 0x616u, 1u); /* m_hasStoppedStartupMusic = true */
-            credits_music_start();
 
             /* 2. Hide and disable MainMenu's own buttons while keeping its swirl + vignette background */
             const std::uint32_t main_menu = c.read32(lawn_app + 0x744u);
@@ -1003,7 +1051,8 @@ void gsm_enter_mainmenu_exit(GuestCall &c) {
                 if (widget != 0) {
                     const std::uint32_t ctor_args[2] = {widget, g_md34_dummy_mainmenu};
                     c.call_guest(c.img->so_base + 0x4adb68u, ctor_args, 2);
-                    c.write32(widget + 0x9cu, 0u); /* finish state 0 immediately -> smooth fade-in in state 1 */
+                    /* Note: leaving m_stateStartTime at current time lets state 0 run during black fade-in,
+                     * followed by state 1 smoothly fading in credits over the visible swirling background. */
 
                     const std::uint32_t wm_vt = c.read32(widget_mgr);
                     const std::uint32_t add_fn = c.read32(wm_vt + 0x28u);
@@ -1020,8 +1069,7 @@ void gsm_enter_mainmenu_exit(GuestCall &c) {
                     if (pvz2_presence_enabled()) {
                         pvz2_presence_note("state", "Credits Shown=true");
                     }
-                    pvz2_log("[credits] Native CreditsWidget 0x%08x active with 'Zombie Time' + fade transition",
-                             widget);
+                    pvz2_log("[credits] Native CreditsWidget 0x%08x active for post-MD34 credits", widget);
                 }
             }
         }
@@ -1044,6 +1092,8 @@ void mainmenu_update_enter(GuestCall &c) {
             credits_music_fade_out();
         } else if (cr_state >= 4u) {
             credits_music_stop();
+            g_credits_music_started_widget = 0;
+            g_cr_state2_widget = 0;
             g_md34_exit_triggered = true;
             g_md34_credits_mode = false;
             const std::uint32_t widget = g_md34_credits_widget;
@@ -1087,7 +1137,7 @@ void mainmenu_update_enter(GuestCall &c) {
 
 void reward_btn_create_enter(GuestCall &c) {
     if (!g_md34_credits_mode &&
-        (credits_is_modern34_reward_active() || credits_is_modern34_won() || is_modern34_board_context())) {
+        (credits_is_modern34_reward_active() || credits_is_modern34_won() || is_modern34_board_context(c))) {
         const std::uint32_t btn_id = c.arg(1);
         if (btn_id == 0x3e8u) {
             const std::uint32_t wstr = ensure_guest_view_credits_wstring(c);
@@ -1105,16 +1155,17 @@ void reward_btn_create_enter(GuestCall &c) {
 void credits_widget_ctor_enter(GuestCall &c) {
     if (!g_md34_credits_mode) {
         g_menu_credits_widget = c.arg(0);
+        g_credits_music_started_widget = 0;
+        g_cr_state2_widget = 0;
         const std::uint32_t lawn_app = read_guest_lawn_app(c);
         if (lawn_app != 0) {
             const std::uint32_t stop_splash_args[2] = {lawn_app, c.img->so_base + 0x101cb1au};
             c.call_guest(c.img->so_base + 0x3f9920u, stop_splash_args, 2);
         }
-        credits_music_start();
         if (pvz2_presence_enabled()) {
             pvz2_presence_note("state", "Credits Shown=true");
         }
-        pvz2_log("[credits] Menu CreditsWidget 0x%08x opened -- playing 'Zombie Time'", g_menu_credits_widget);
+        pvz2_log("[credits] Menu CreditsWidget 0x%08x opened", g_menu_credits_widget);
     }
     emulate_push(c, {4, 5, 6, 7, 8, 9, 10, 11}, c.lr());
     c.no_return();
@@ -1122,22 +1173,49 @@ void credits_widget_ctor_enter(GuestCall &c) {
 
 void credits_widget_update_enter(GuestCall &c) {
     const std::uint32_t widget = c.arg(0);
-    if (!g_md34_credits_mode && g_menu_credits_widget != 0 && widget == g_menu_credits_widget &&
-        c.in_bounds(widget + 0x98u, 4)) {
+    const bool is_target_widget = (widget != 0 && (widget == g_menu_credits_widget || widget == g_md34_credits_widget));
+    if (is_target_widget && c.in_bounds(widget + 0x98u, 4)) {
         const std::uint32_t cr_state = c.read32(widget + 0x98u);
+
+        /* Start music when credits reach state 2 (and begin scrolling downward) */
+        if (cr_state == 2u) {
+            if (g_cr_state2_widget != widget) {
+                g_cr_state2_widget = widget;
+                g_cr_state2_enter_time = std::chrono::steady_clock::now();
+            }
+            if (g_credits_music_started_widget != widget) {
+                const std::uint32_t scroll = (c.in_bounds(widget + 0x88u, 4)) ? c.read32(widget + 0x88u) : 0u;
+                const bool scroll_started = (scroll != 0 && c.in_bounds(scroll + 0x9cu, 1) && c.read8(scroll + 0x9cu) != 0);
+                const auto elapsed_sec = std::chrono::duration<float>(std::chrono::steady_clock::now() - g_cr_state2_enter_time).count();
+                if (scroll_started || elapsed_sec >= 3.6f) {
+                    g_credits_music_started_widget = widget;
+                    credits_music_start();
+                    pvz2_log("[credits] Started 'Zombie Time' credits music (widget=0x%08x, scroll_started=%d, elapsed=%.2fs)",
+                             widget, scroll_started ? 1 : 0, elapsed_sec);
+                }
+            }
+        } else if (g_cr_state2_widget == widget) {
+            g_cr_state2_widget = 0;
+        }
+
+        /* Fade out music when user presses back button or credits finish */
         if (cr_state == 3u) {
             credits_music_fade_out();
         } else if (cr_state >= 4u) {
-            g_menu_credits_widget = 0;
             credits_music_stop();
-            if (pvz2_presence_enabled()) {
-                pvz2_presence_note("state", "Credits Shown=false");
-            }
-            const std::uint32_t lawn_app = read_guest_lawn_app(c);
-            const std::uint32_t gsm = read_guest_gsm(c);
-            if (lawn_app != 0 && gsm != 0 && c.read8(gsm + 0x615u) != 0) {
-                const std::uint32_t play_splash_args[2] = {lawn_app, c.img->so_base + 0x101ca96u};
-                c.call_guest(c.img->so_base + 0x3f9920u, play_splash_args, 2);
+            g_credits_music_started_widget = 0;
+
+            if (!g_md34_credits_mode && widget == g_menu_credits_widget) {
+                g_menu_credits_widget = 0;
+                if (pvz2_presence_enabled()) {
+                    pvz2_presence_note("state", "Credits Shown=false");
+                }
+                const std::uint32_t lawn_app = read_guest_lawn_app(c);
+                const std::uint32_t gsm = read_guest_gsm(c);
+                if (lawn_app != 0 && gsm != 0 && c.read8(gsm + 0x615u) != 0) {
+                    const std::uint32_t play_splash_args[2] = {lawn_app, c.img->so_base + 0x101ca96u};
+                    c.call_guest(c.img->so_base + 0x3f9920u, play_splash_args, 2);
+                }
             }
         }
     }
@@ -1251,26 +1329,6 @@ struct QuestFrame {
     bool pending;
 };
 std::vector<QuestFrame> g_quest_pick_frames, g_quest_slot_frames;
-
-/* A libc++ std::string (12 bytes, short-string flag in bit 0 of byte 0). */
-std::string guest_std_string(GuestCall &c, std::uint32_t p) {
-    if (!c.in_bounds(p, 12)) return "<unreadable>";
-    std::uint32_t size, data;
-    const std::uint8_t b0 = c.read8(p);
-    if (b0 & 1) {
-        size = c.read32(p + 4);
-        data = c.read32(p + 8);
-    } else {
-        size = b0 >> 1;
-        data = p + 1;
-    }
-    if (size > 4000) size = 4000;
-    if (!c.in_bounds(data, size)) return "<unreadable>";
-    std::string out;
-    out.reserve(size);
-    for (std::uint32_t i = 0; i < size; ++i) out.push_back((char)c.read8(data + i));
-    return out;
-}
 
 std::uint32_t quest_active_count(GuestCall &c, std::uint32_t mgr) {
     if (!c.in_bounds(mgr + kMgrActiveBegin, 8)) return 0;
