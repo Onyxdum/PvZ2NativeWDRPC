@@ -6,15 +6,19 @@
 #include "credits_data.h"
 
 #include <pvz2native/config.h>
+#include <pvz2native/dex/config_store.h>
 #include <pvz2native/host_assets.h>
 #include <pvz2native/log.h>
 
 #include "stb_truetype.h"
+#define STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
 
 #include <SDL.h>
 #include <glad/gl.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -79,21 +83,28 @@ static const char *kPauseBadgeTexts[6] = {
  * Font system (stb_truetype using RC_CFG_FONT 213)
  * ========================================================================= */
 static const int RC_CFG_FONT = 213;
+static const int RC_CREDITS_MUSIC = 318;
 
 static void *load_raw_from_rc(int rc_id, int *out_size) {
 #ifdef _WIN32
     HMODULE self = GetModuleHandleA(NULL);
     HRSRC res = FindResourceA(self, MAKEINTRESOURCEA(rc_id), RT_RCDATA);
-    if (!res) return nullptr;
-    HGLOBAL h = LoadResource(self, res);
-    if (!h) return nullptr;
-    DWORD bytes = SizeofResource(self, res);
-    const void *ptr = LockResource(h);
-    if (!ptr || !bytes) return nullptr;
-    void *buf = SDL_malloc(bytes);
-    SDL_memcpy(buf, ptr, bytes);
-    if (out_size) *out_size = (int)bytes;
-    return buf;
+    if (res) {
+        HGLOBAL h = LoadResource(self, res);
+        if (h) {
+            DWORD bytes = SizeofResource(self, res);
+            const void *ptr = LockResource(h);
+            if (ptr && bytes) {
+                void *buf = SDL_malloc(bytes);
+                if (buf) {
+                    SDL_memcpy(buf, ptr, bytes);
+                    if (out_size) *out_size = (int)bytes;
+                    return buf;
+                }
+            }
+        }
+    }
+    return pvz2_load_asset_bytes(rc_id, out_size);
 #else
     return pvz2_load_asset_bytes(rc_id, out_size);
 #endif
@@ -371,6 +382,90 @@ static bool hit(float bx, float by, float bw, float bh, float px, float py) {
     return px >= bx && px <= bx + bw && py >= by && py <= by + bh;
 }
 
+/* =========================================================================
+ * Native Credits Music ("Zombie Time" Ogg Vorbis streaming player)
+ * ========================================================================= */
+static SDL_AudioDeviceID g_music_dev = 0;
+static SDL_AudioSpec     g_music_spec{};
+static void             *g_music_ogg_buf = nullptr;
+static int               g_music_ogg_size = 0;
+static stb_vorbis       *g_music_vorbis = nullptr;
+static bool              g_music_playing = false;
+static bool              g_music_fading = false;
+static float             g_music_fade_gain = 1.0f;
+static std::atomic<int>  g_music_vol_pct{100};
+static std::atomic<bool> g_music_active_flag{false};
+
+static int sample_music_volume_pct() {
+    std::int64_t muted = 0;
+    if (pvz2native::dex::config_store_get_int64("Muted", muted) && muted != 0) {
+        return 0;
+    }
+    std::int64_t vol = 100;
+    pvz2native::dex::config_store_get_int64("MusicVolume", vol);
+    if (vol < 0) vol = 0;
+    if (vol > 100) vol = 100;
+    return (int)vol;
+}
+
+static void SDLCALL credits_music_audio_cb(void *, Uint8 *stream, int len) {
+    SDL_memset(stream, 0, (size_t)len);
+    if (!g_music_playing || !g_music_vorbis || len <= 0) return;
+
+    short *out = reinterpret_cast<short *>(stream);
+    const int total_samples = len / (int)sizeof(short);
+    const int frames_needed = total_samples / 2;
+    int frames_written = 0;
+
+    while (frames_written < frames_needed) {
+        const int got = stb_vorbis_get_samples_short_interleaved(
+            g_music_vorbis, 2, out + frames_written * 2, (frames_needed - frames_written) * 2);
+        if (got <= 0) {
+            if (g_music_fading) break;
+            stb_vorbis_seek_start(g_music_vorbis);
+            const int retry = stb_vorbis_get_samples_short_interleaved(
+                g_music_vorbis, 2, out + frames_written * 2, (frames_needed - frames_written) * 2);
+            if (retry <= 0) {
+                g_music_playing = false;
+                g_music_active_flag.store(false, std::memory_order_relaxed);
+                break;
+            }
+            frames_written += retry;
+        } else {
+            frames_written += got;
+        }
+    }
+
+    const float base_gain = (float)g_music_vol_pct.load(std::memory_order_relaxed) / 100.0f;
+    const float fade_step = (g_music_spec.freq > 0)
+                            ? (1.0f / ((float)g_music_spec.freq * 0.85f))
+                            : (1.0f / (44100.0f * 0.85f));
+
+    for (int i = 0; i < frames_written; ++i) {
+        if (g_music_fading) {
+            g_music_fade_gain -= fade_step;
+            if (g_music_fade_gain <= 0.0f) {
+                g_music_fade_gain = 0.0f;
+                g_music_playing = false;
+                g_music_fading = false;
+                g_music_active_flag.store(false, std::memory_order_relaxed);
+                const int rem = (frames_needed - i) * 2;
+                if (rem > 0) SDL_memset(out + i * 2, 0, (size_t)rem * sizeof(short));
+                return;
+            }
+        }
+        const float g = base_gain * g_music_fade_gain;
+        if (g < 0.999f) {
+            int l = (int)std::lrintf((float)out[i * 2] * g);
+            int r = (int)std::lrintf((float)out[i * 2 + 1] * g);
+            if (l < -32768) l = -32768; else if (l > 32767) l = 32767;
+            if (r < -32768) r = -32768; else if (r > 32767) r = 32767;
+            out[i * 2]     = (short)l;
+            out[i * 2 + 1] = (short)r;
+        }
+    }
+}
+
 } // namespace
 } // namespace pvz2native
 
@@ -457,7 +552,102 @@ int credits_is_modern34_won(void) {
     return g_modern34_won ? 1 : 0;
 }
 
-void credits_update_frame(void) {}
+void credits_update_frame(void) {
+    if (g_music_active_flag.load(std::memory_order_relaxed)) {
+        g_music_vol_pct.store(sample_music_volume_pct(), std::memory_order_relaxed);
+    }
+}
+
+void credits_music_start(void) {
+    g_music_vol_pct.store(sample_music_volume_pct(), std::memory_order_relaxed);
+
+    if (!g_music_ogg_buf || g_music_ogg_size <= 0) {
+        g_music_ogg_buf = load_raw_from_rc(RC_CREDITS_MUSIC, &g_music_ogg_size);
+        if (!g_music_ogg_buf || g_music_ogg_size <= 0) {
+            pvz2_log("[credits] Failed to load zombie_time.ogg asset (rc=%d)", RC_CREDITS_MUSIC);
+            return;
+        }
+    }
+
+    if (!g_music_dev) {
+        if (SDL_WasInit(SDL_INIT_AUDIO) == 0 && SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+            pvz2_log("[credits] SDL_InitSubSystem(SDL_INIT_AUDIO) failed: %s", SDL_GetError());
+            return;
+        }
+        SDL_AudioSpec want{};
+        want.freq     = 44100;
+        want.format   = AUDIO_S16SYS;
+        want.channels = 2;
+        want.samples  = 2048;
+        want.callback = credits_music_audio_cb;
+        want.userdata = nullptr;
+        g_music_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &g_music_spec, 0);
+        if (!g_music_dev) {
+            pvz2_log("[credits] SDL_OpenAudioDevice failed: %s", SDL_GetError());
+            return;
+        }
+    }
+
+    SDL_LockAudioDevice(g_music_dev);
+    if (g_music_vorbis) {
+        stb_vorbis_seek_start(g_music_vorbis);
+    } else {
+        int vorbis_err = 0;
+        g_music_vorbis = stb_vorbis_open_memory(
+            static_cast<const unsigned char *>(g_music_ogg_buf), g_music_ogg_size, &vorbis_err, nullptr);
+        if (!g_music_vorbis) {
+            SDL_UnlockAudioDevice(g_music_dev);
+            pvz2_log("[credits] stb_vorbis_open_memory failed (err=%d)", vorbis_err);
+            return;
+        }
+    }
+    g_music_fade_gain = 1.0f;
+    g_music_fading    = false;
+    g_music_playing   = true;
+    g_music_active_flag.store(true, std::memory_order_relaxed);
+    SDL_UnlockAudioDevice(g_music_dev);
+
+    SDL_PauseAudioDevice(g_music_dev, 0);
+    pvz2_log("[credits] Playing 'Zombie Time' credits theme (vol=%d%%, %d bytes)",
+             g_music_vol_pct.load(std::memory_order_relaxed), g_music_ogg_size);
+}
+
+void credits_music_fade_out(void) {
+    if (!g_music_dev) return;
+    SDL_LockAudioDevice(g_music_dev);
+    if (g_music_playing && !g_music_fading) {
+        g_music_fading = true;
+    }
+    SDL_UnlockAudioDevice(g_music_dev);
+}
+
+void credits_music_stop(void) {
+    if (!g_music_dev) return;
+    SDL_LockAudioDevice(g_music_dev);
+    g_music_playing   = false;
+    g_music_fading    = false;
+    g_music_fade_gain = 0.0f;
+    g_music_active_flag.store(false, std::memory_order_relaxed);
+    SDL_UnlockAudioDevice(g_music_dev);
+    SDL_PauseAudioDevice(g_music_dev, 1);
+}
+
+void credits_music_shutdown(void) {
+    if (g_music_dev) {
+        credits_music_stop();
+        SDL_CloseAudioDevice(g_music_dev);
+        g_music_dev = 0;
+    }
+    if (g_music_vorbis) {
+        stb_vorbis_close(g_music_vorbis);
+        g_music_vorbis = nullptr;
+    }
+    if (g_music_ogg_buf) {
+        SDL_free(g_music_ogg_buf);
+        g_music_ogg_buf  = nullptr;
+        g_music_ogg_size = 0;
+    }
+}
 
 int credits_screen_handle_reward_button_event(const SDL_Event *e) {
     (void)e;
@@ -465,6 +655,7 @@ int credits_screen_handle_reward_button_event(const SDL_Event *e) {
 }
 
 void credits_screen_shutdown(void) {
+    credits_music_shutdown();
     if (g_font_loaded) {
         g_font.unload();
         g_font_loaded = false;

@@ -29,6 +29,12 @@ void credits_mark_modern34_won(void);
 int  credits_is_modern34_won(void);
 void credits_update_frame(void);
 
+/* Native credits music ("Zombie Time") streaming playback */
+void credits_music_start(void);
+void credits_music_fade_out(void);
+void credits_music_stop(void);
+void credits_music_shutdown(void);
+
 /* Telemetry context tracked from Draper HTTP calls */
 void credits_set_draper_info(const char *world, int level, int state);
 const char *credits_get_draper_world(void);

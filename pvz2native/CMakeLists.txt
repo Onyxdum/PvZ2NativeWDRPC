@@ -3,10 +3,10 @@ cmake_minimum_required (VERSION 3.5)
 project(pvz2native-core)
 
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS src/*.c src/*.cpp)
+list(APPEND SOURCE_FILES ../stb/stb_vorbis.c)
 
-# stb_vorbis is gone with src/audio/sound_repository.c, its only consumer. That
-# file, src/audio/sles.c and src/audio/audio_engine.c were an older OpenSL
-# implementation with no callers left: the live audio path is the guest-vtable
+# stb_vorbis decodes the official PvZ2 credits song (zombie_time.ogg) streamed
+# during the native CreditsWidget roll. Main gameplay audio uses the guest-vtable
 # bridge in src/dependencies/libopensles.cpp plus src/audio/audio_output.cpp.
 if (WIN32)
     add_executable(pvz2native WIN32 ${SOURCE_FILES})

@@ -125,6 +125,7 @@
 315 RCDATA "../assets/achievements/achievement_the_shadow_family.bmp"
 316 RCDATA "../assets/achievements/achievement_present_perfect.bmp"
 317 RCDATA "../assets/config/achievement_unlock.wav"
+318 RCDATA "../assets/config/zombie_time.ogg"
 
 /* Steam Grid Artwork (350-352) */
 350 RCDATA "../assets/steam/Grid.png"
