@@ -393,6 +393,8 @@ static stb_vorbis       *g_music_vorbis = nullptr;
 static bool              g_music_playing = false;
 static bool              g_music_fading = false;
 static float             g_music_fade_gain = 1.0f;
+/* Master volume attenuation factor so Zombie Time matches native in-game Wwise loudness levels */
+static constexpr float   kCreditsMusicMasterGain = 0.65f;
 static std::atomic<int>  g_music_vol_pct{100};
 static std::atomic<bool> g_music_active_flag{false};
 
@@ -436,7 +438,7 @@ static void SDLCALL credits_music_audio_cb(void *, Uint8 *stream, int len) {
         }
     }
 
-    const float base_gain = (float)g_music_vol_pct.load(std::memory_order_relaxed) / 100.0f;
+    const float base_gain = ((float)g_music_vol_pct.load(std::memory_order_relaxed) / 100.0f) * kCreditsMusicMasterGain;
     const float fade_step = (g_music_spec.freq > 0)
                             ? (1.0f / ((float)g_music_spec.freq * 0.85f))
                             : (1.0f / (44100.0f * 0.85f));
