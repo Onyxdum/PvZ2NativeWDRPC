@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include <glad/gl.h>
 #include <pvz2native/config.h>
+#include <pvz2native/first_boot_wizard.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <SDL_syswm.h>
@@ -1793,42 +1794,6 @@ static void print_usage(const char *argv0) {
     printf("  --paths.obb=data.obb\n");
 }
 
-/* Returns 1 when `path` can be opened and is not empty. SDL_RWFromFile takes UTF-8 paths
- * on every platform, unlike a bare fopen on Windows. */
-static int required_file_ok(const char *path) {
-    if (!path || !path[0]) return 0;
-    SDL_RWops *f = SDL_RWFromFile(path, "rb");
-    if (!f) return 0;
-    Sint64 size = SDL_RWsize(f);
-    SDL_RWclose(f);
-    return size != 0;
-}
-
-/* Checks libPVZ2.so and the .obb right after the config is loaded. Without them the boot
- * would otherwise sit forever on a black window. Logs the problem, tells the player and
- * returns 0 so main can exit. */
-static int check_required_files(const pvz2_config_t *cfg) {
-    char msg[2200];
-    msg[0] = '\0';
-    int missing = 0;
-    if (!required_file_ok(cfg->so_path)) {
-        pvz2_log("[boot] ERROR: libPVZ2.so not found or empty: %s", cfg->so_path);
-        SDL_snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), "Missing game library (.so):\n%s\n\n", cfg->so_path);
-        missing = 1;
-    }
-    if (!required_file_ok(cfg->obb_path)) {
-        pvz2_log("[boot] ERROR: data .obb not found or empty: %s", cfg->obb_path);
-        SDL_snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), "Missing game data (.obb):\n%s\n\n", cfg->obb_path);
-        missing = 1;
-    }
-    if (missing) {
-        SDL_snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg),
-                     "Put the files at that location or change [paths] in config.ini.");
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PvZ2 - Missing files", msg, NULL);
-    }
-    return !missing;
-}
-
 int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -1896,7 +1861,7 @@ int main(int argc, char **argv) {
     load_runtime_shortcuts(cfg);
     pvz2_log("[path] so=%s", cfg->so_path);
     pvz2_log("[path] obb=%s", cfg->obb_path);
-    if (!check_required_files(cfg)) {
+    if (!pvz2_ensure_required_files(cfg)) {
         pvz2_host_pre_sdl_quit();
         SDL_Quit();
         return 1;

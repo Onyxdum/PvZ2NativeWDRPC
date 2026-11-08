@@ -256,6 +256,8 @@ obb = main.147.com.ea.game.pvz2_row.obb
 
 Las rutas relativas se resuelven respecto a la carpeta del ejecutable. También se aceptan rutas absolutas.
 
+**Asistente de primer inicio:** Si `libPVZ2.so` o `data.obb` no se encuentran al iniciar, PvZ2Native abre automáticamente un asistente interactivo que te permite seleccionar tu APK (o XAPK) y OBB de la versión 4.5.2. Extrae automáticamente `libPVZ2.so`, copia el OBB, detecta tu variante de paquete (`pvz2_row` o `pvz2_na`), configura `config.ini` y arranca de inmediato sin configuraciones manuales. Si los archivos ya están presentes, el juego inicia directamente sin ninguna ventana ni espera.
+
 En el primer arranque el host escribe un `config.ini` documentado. Lo cotidiano se cambia desde la pantalla de ajustes; lo avanzado queda en el archivo / CLI.
 
 ### 🍎 macOS (mediante Whisky / Wine)
@@ -276,7 +278,7 @@ Fuente única de verdad para rutas y depuración (las antiguas variables `PVZ2_*
 | `[paths]` | `save` | Carpeta de guardado opcional; sin valor, `prefs.dat` junto al exe. |
 | `[log]` | `console` | Mostrar consola/log (por defecto `0`). |
 | `[log]` | `verbose` / `trace` / `input` | `verbose`: boot + línea de tiempo con número de frame (`[engine]`, `[java]`, `[screen]`, `[census]`, `[state]`, `[quest]`, `[quest-save]`, `[quest-io]`) para cazar una UI muerta (implica `input`; necesita `console=1` o un `logfile`); `trace`: imports; `input`: eventos. |
-| `[video]` | `fullscreen`, `display`, `width`, `height`, `fps_limit` | Pantalla / índice de monitor (también en la UI de ajustes). |
+| `[video]` | `fullscreen`, `display`, `width`, `height`, `fps_limit`, `lock_cursor` | Pantalla / índice de monitor (también en la UI de ajustes). |
 | `[game]` | `user_locale`, `currency_*`, `emulate_iap` | Idioma, monedas, IAP gratis (también en la UI). |
 | `[game]` | `achievement_notifications` | Toast + SFX al desbloquear (`1` por defecto; `0` solo silencia la UI). |
 | `[runtime]` | `use_cdn`, `rewrite_cdn` | CDN emulado activado/desactivado (por defecto activado) y re-copia forzada desde el OBB (también en la UI → Eventos). |

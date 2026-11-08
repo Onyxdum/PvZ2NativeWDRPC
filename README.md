@@ -256,6 +256,8 @@ obb = main.147.com.ea.game.pvz2_row.obb
 
 Relative paths are resolved against the folder that contains the executable. Absolute paths are also accepted.
 
+**First-Boot Setup Wizard:** If `libPVZ2.so` or `data.obb` are not found on launch, PvZ2Native automatically starts an interactive setup wizard that asks for your 4.5.2 APK (or XAPK) and OBB file. It automatically extracts `libPVZ2.so`, copies the OBB, detects your package variant (`pvz2_row` or `pvz2_na`), configures `config.ini`, and launches immediately. If the files are already present, the game starts with zero prompts.
+
 On first launch the host writes a documented `config.ini`. Everyday options are meant to be changed from the in-game settings screen; advanced keys stay in the file / CLI.
 
 ### 🍎 macOS (via Whisky / Wine)
@@ -276,7 +278,7 @@ Single source of truth for paths and debugging (legacy `PVZ2_*` environment vari
 | `[paths]` | `save` | Optional save folder; unset stores `prefs.dat` next to the exe. |
 | `[log]` | `console` | Show console/log output (default `0`). |
 | `[log]` | `verbose` / `trace` / `input` | `verbose`: boot + frame-stamped timeline (`[engine]`, `[java]`, `[screen]`, `[census]`, `[state]`, `[quest]`, `[quest-save]`, `[quest-io]`) for hunting a dead UI (implies `input`; needs `console=1` or a `logfile`); `trace`: imports; `input`: events. |
-| `[video]` | `fullscreen`, `display`, `width`, `height`, `fps_limit` | Display / monitor index (also in settings UI). |
+| `[video]` | `fullscreen`, `display`, `width`, `height`, `fps_limit`, `lock_cursor` | Display / monitor index (also in settings UI). |
 | `[game]` | `user_locale`, `currency_*`, `emulate_iap` | Locale, store cosmetics, free IAP (also in settings UI). |
 | `[game]` | `achievement_notifications` | Unlock toast + SFX (`1` default; `0` silences UI only). |
 | `[runtime]` | `use_cdn`, `rewrite_cdn` | Emulated CDN on/off (default on) and forced re-seed from the OBB (also in settings UI → Events). |

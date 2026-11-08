@@ -2203,3 +2203,41 @@ extern "C" int pvz2_config_apply_overlay_settings(int fullscreen, int width, int
 extern "C" void pvz2_config_set_lock_cursor(int lock_cursor) {
     g_config.lock_cursor = lock_cursor ? 1 : 0;
 }
+
+extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name) {
+    if (so_path && so_path[0]) {
+        std::snprintf(g_config.so_path, sizeof(g_config.so_path), "%s", so_path);
+    }
+    if (obb_path && obb_path[0]) {
+        std::snprintf(g_config.obb_path, sizeof(g_config.obb_path), "%s", obb_path);
+    }
+    if (package_name && package_name[0]) {
+        std::snprintf(g_config.package_name, sizeof(g_config.package_name), "%s", package_name);
+    }
+
+    char *base = pvz2_host_data_path();
+    if (!base) return;
+    char ini_path[1024];
+    SDL_snprintf(ini_path, sizeof(ini_path), "%sconfig.ini", base);
+    SDL_free(base);
+
+    std::vector<std::string> lines;
+    {
+        FILE *f = std::fopen(ini_path, "rb");
+        if (f) {
+            char buf[512];
+            while (std::fgets(buf, sizeof(buf), f)) lines.push_back(buf);
+            std::fclose(f);
+        }
+    }
+
+    if (so_path && so_path[0]) patch_ini_section_key(lines, "paths", "so", so_path);
+    if (obb_path && obb_path[0]) patch_ini_section_key(lines, "paths", "obb", obb_path);
+    if (package_name && package_name[0]) patch_ini_section_key(lines, "game", "package_name", package_name);
+
+    FILE *f = std::fopen(ini_path, "wb");
+    if (f) {
+        for (const auto &l : lines) std::fputs(l.c_str(), f);
+        std::fclose(f);
+    }
+}

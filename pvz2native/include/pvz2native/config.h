@@ -319,6 +319,9 @@ void pvz2_host_update_cursor_lock(void);
 /* Update lock_cursor setting in runtime memory. Defined in config.cpp. */
 void pvz2_config_set_lock_cursor(int lock_cursor);
 
+/* Updates [paths] so/obb and [game] package_name in memory and persists to config.ini. */
+void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif
