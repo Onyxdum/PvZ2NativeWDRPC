@@ -1437,6 +1437,26 @@ static void toggle_fullscreen(void) {
     if (!g_window) return;
     g_fullscreen = !g_fullscreen;
     SDL_SetWindowFullscreen(g_window, g_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+    if (!g_fullscreen) {
+        const pvz2_config_t *c = pvz2_config();
+        int w = c ? c->video_width : 0;
+        int h = c ? c->video_height : 0;
+        if (w <= 0 || h <= 0) {
+            SDL_DisplayMode dmode;
+            if (SDL_GetCurrentDisplayMode(pvz2_effective_display(), &dmode) == 0 && dmode.w > 0 && dmode.h > 0) {
+                const double aspect = (double)dmode.w / (double)dmode.h;
+                h = (dmode.h >= 1080) ? 720 : PVZ2_AUTO_BASE_HEIGHT;
+                w = (int)((double)h * aspect + 0.5);
+                if (w & 1) w++;
+            } else {
+                w = 1280; h = 720;
+            }
+        }
+        SDL_SetWindowSize(g_window, w, h);
+        const int disp = pvz2_effective_display();
+        SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED_DISPLAY(disp),
+                              SDL_WINDOWPOS_CENTERED_DISPLAY(disp));
+    }
     request_resize_sync();
     apply_pending_resize_sync(1);
 }
@@ -1450,8 +1470,18 @@ void pvz2_host_apply_video_settings(int fullscreen, int width, int height) {
         SDL_SetWindowFullscreen(g_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     } else {
         SDL_SetWindowFullscreen(g_window, 0);
-        if (width > 0 && height > 0)
-            SDL_SetWindowSize(g_window, width, height);
+        if (width <= 0 || height <= 0) {
+            SDL_DisplayMode dmode;
+            if (SDL_GetCurrentDisplayMode(pvz2_effective_display(), &dmode) == 0 && dmode.w > 0 && dmode.h > 0) {
+                const double aspect = (double)dmode.w / (double)dmode.h;
+                height = (dmode.h >= 1080) ? 720 : PVZ2_AUTO_BASE_HEIGHT;
+                width = (int)((double)height * aspect + 0.5);
+                if (width & 1) width++;
+            } else {
+                width = 1280; height = 720;
+            }
+        }
+        SDL_SetWindowSize(g_window, width, height);
         {
             const int d = pvz2_effective_display();
             SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED_DISPLAY(d),
@@ -1892,11 +1922,16 @@ int main(int argc, char **argv) {
              start_fullscreen ? " (fullscreen)" : "");
     const char *initial_title = g_live_window_title ? "PvZ2" : kGameTitle;
     const int launch_display = pvz2_effective_display();
+    Uint32 win_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN;
+    if (start_fullscreen) {
+        win_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        g_fullscreen = 1;
+    }
     SDL_Window *window = SDL_CreateWindow(initial_title,
                                            SDL_WINDOWPOS_CENTERED_DISPLAY(launch_display),
                                            SDL_WINDOWPOS_CENTERED_DISPLAY(launch_display),
                                            launch_w, launch_h,
-                                           SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+                                           win_flags);
     if (!window) {
         pvz2_log("[sdl] SDL_CreateWindow failed: %s", SDL_GetError());
         pvz2_host_pre_sdl_quit();

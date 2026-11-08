@@ -46,17 +46,17 @@ void pvz2_choose_window_size(int *width, int *height, int *fullscreen) {
         return;
     }
 
-    /* 2. Native -- the display's full resolution. */
-    if (strcmp(cfg->video_mode, "native") == 0) {
+    /* 2. Fullscreen or native -- the display's full native resolution. */
+    if (cfg->video_fullscreen || strcmp(cfg->video_mode, "native") == 0) {
         *width = dm.w;
         *height = dm.h;
         return;
     }
 
-    /* 3. Auto (the default) -- the display's aspect at a moderate base height,
+    /* 3. Auto (for windowed mode) -- the display's aspect at a moderate base height,
      * so proportions are right without paying for a full-native surface. */
     const double aspect = (double)dm.w / (double)dm.h;
-    int h = PVZ2_AUTO_BASE_HEIGHT;
+    int h = (dm.h >= 1080) ? 720 : PVZ2_AUTO_BASE_HEIGHT;
     int w = round_even((double)h * aspect);
     if (w < 320) w = 320; /* an implausibly narrow aspect still yields a usable window */
     *width = w;
