@@ -234,6 +234,11 @@ const Setting kSettings[] = {
      "the screen is whichever is lower, this or the monitor's refresh rate.\n"
      "  0 = no limit at all (vsync off too: tearing, one core saturated).",
      "60", nullptr},
+    {"video", "lock_cursor", nullptr, Kind::kBool, offsetof(pvz2_config_t, lock_cursor), 0,
+     "Confine the mouse cursor inside the game window during play (useful for\n"
+     "multi-monitor setups). Released when menus/settings are open or when alt-tabbed.\n"
+     "  0 = off (default), 1 = on.",
+     nullptr, "0"},
 
     {"game", "user_locale", nullptr, Kind::kString, offsetof(pvz2_config_t, user_locale),
      sizeof(g_config.user_locale),
@@ -2193,4 +2198,8 @@ extern "C" int pvz2_config_apply_overlay_settings(int fullscreen, int width, int
      * fixed for the session once the guest has asked. CDN: the engine reads its
      * event files once at boot. All need a relaunch. */
     return (locale_changed || iap_changed || cdn_changed) ? 1 : 0;
+}
+
+extern "C" void pvz2_config_set_lock_cursor(int lock_cursor) {
+    g_config.lock_cursor = lock_cursor ? 1 : 0;
 }

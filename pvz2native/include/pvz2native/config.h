@@ -158,6 +158,7 @@ typedef struct pvz2_config {
      * Anything negative reads as 0. Default 60 -- stated once, in kSettings in
      * config.cpp, which is also what the generated config.ini is written from. */
     int fps_limit;
+    int lock_cursor; /* Confine cursor to game window (0=off, 1=on) */
 
     /* What AndroidHttpProxy.GetNetworkStatus() reports to the engine:
      *   0 -- no network        1 -- mobile        2 -- Wi-Fi
@@ -311,6 +312,12 @@ void pvz2_host_apply_video_settings(int fullscreen, int width, int height);
  * normally via pvz2_effective_display()) without requiring a restart. Defined
  * in main.c. */
 void pvz2_host_apply_display_settings(int display_index);
+
+/* Confine cursor to game window when enabled. Defined in main.c. */
+void pvz2_host_update_cursor_lock(void);
+
+/* Update lock_cursor setting in runtime memory. Defined in config.cpp. */
+void pvz2_config_set_lock_cursor(int lock_cursor);
 
 #ifdef __cplusplus
 }  /* extern "C" */

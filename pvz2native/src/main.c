@@ -921,6 +921,7 @@ static void release_host_assets(void) {
 #endif
 
 void pvz2_host_pre_sdl_quit(void) {
+    if (g_window) SDL_SetWindowGrab(g_window, SDL_FALSE);
     pvz2_cloud_on_quit();
     pvz2_presence_stop();
     config_screen_shutdown();
@@ -1476,6 +1477,25 @@ void pvz2_host_apply_display_settings(int display_index) {
     apply_pending_resize_sync(1);
 }
 
+void pvz2_host_update_cursor_lock(void) {
+    if (!g_window) return;
+    int should_lock = 0;
+    const pvz2_config_t *cfg = pvz2_config();
+    if (cfg && cfg->lock_cursor) {
+        Uint32 flags = SDL_GetWindowFlags(g_window);
+        int has_focus = (flags & SDL_WINDOW_INPUT_FOCUS) && !(flags & SDL_WINDOW_MINIMIZED);
+        int overlay_open = config_screen_is_open() || achievements_screen_is_open() || credits_screen_is_open();
+        if (has_focus && !overlay_open) {
+            should_lock = 1;
+        }
+    }
+    SDL_bool current_grab = SDL_GetWindowGrab(g_window);
+    SDL_bool want_grab = should_lock ? SDL_TRUE : SDL_FALSE;
+    if (current_grab != want_grab) {
+        SDL_SetWindowGrab(g_window, want_grab);
+    }
+}
+
 static float clamp01(float v) {
     if (v < 0.0f) return 0.0f;
     if (v > 1.0f) return 1.0f;
@@ -1521,13 +1541,23 @@ static void handle_sdl_event(const SDL_Event *e) {
             refresh_window_metrics();
             request_resize_sync();
             apply_pending_resize_sync(0);
-        } else if (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+        } else if (e->window.event == SDL_WINDOWEVENT_FOCUS_GAINED ||
+                   e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+                   e->window.event == SDL_WINDOWEVENT_ENTER ||
                    e->window.event == SDL_WINDOWEVENT_LEAVE ||
                    e->window.event == SDL_WINDOWEVENT_HIDDEN ||
-                   e->window.event == SDL_WINDOWEVENT_MINIMIZED) {
-            release_active_mouse_touch();
-            hard_reset_touch_state();
-            g_last_touch_input_ms = SDL_GetTicks();
+                   e->window.event == SDL_WINDOWEVENT_SHOWN ||
+                   e->window.event == SDL_WINDOWEVENT_MINIMIZED ||
+                   e->window.event == SDL_WINDOWEVENT_RESTORED) {
+            if (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+                e->window.event == SDL_WINDOWEVENT_LEAVE ||
+                e->window.event == SDL_WINDOWEVENT_HIDDEN ||
+                e->window.event == SDL_WINDOWEVENT_MINIMIZED) {
+                release_active_mouse_touch();
+                hard_reset_touch_state();
+                g_last_touch_input_ms = SDL_GetTicks();
+            }
+            pvz2_host_update_cursor_lock();
         }
     }
 
@@ -2067,6 +2097,7 @@ int main(int argc, char **argv) {
                 maybe_force_touch_recovery();
                 sync_text_input();
             }
+            pvz2_host_update_cursor_lock();
             apply_pending_resize_sync(0);
             if (!running || g_quit_requested) break;
 
