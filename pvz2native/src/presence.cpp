@@ -952,11 +952,11 @@ void worker() {
             const PresStrings *ps_ev = pres_str();
 
             auto restore_world_activity = [&]() {
-                const std::string tgt_world = !current_world.empty() ? current_world : last_known_world;
+                const std::string tgt_world = lower(!current_world.empty() ? current_world : last_known_world);
                 if (!tgt_world.empty()) {
                     const std::string syn_ev = "state:worldmap current world=" + tgt_world;
                     for (const Rule &r : rules) {
-                        if (!r.is_temp && syn_ev.find(r.needle) != std::string::npos) {
+                        if (!r.is_temp && !r.is_regex && !r.needle.empty() && syn_ev.find(r.needle) != std::string::npos) {
                             persistent = Activity{r.details, r.state};
                             desired = persistent;
                             return;
@@ -964,7 +964,7 @@ void worker() {
                     }
                 }
                 for (const Rule &r : rules) {
-                    if (!r.is_temp && r.needle.find("universemap shown=true") != std::string::npos) {
+                    if (!r.is_temp && !r.is_regex && !r.needle.empty() && r.needle.find("universemap shown=true") != std::string::npos) {
                         persistent = Activity{r.details, r.state};
                         desired = persistent;
                         return;
@@ -1119,7 +1119,11 @@ void worker() {
                         if (current_game_state == "GAME_Almanac") return false;
                         return true;
                     }
-                    if (tok == "UI_VaseBreakerMenu" || tok == "UI_Store" || tok == "UI_Quests") {
+                    if (tok == "UI_Store") {
+                        if (current_game_state == "GAME_Store") return false;
+                        return true;
+                    }
+                    if (tok == "UI_VaseBreakerMenu" || tok == "UI_Quests") {
                         return true;
                     }
                     pos = comma + 1;
@@ -1141,25 +1145,30 @@ void worker() {
                         restore_world_activity();
                     }
                 }
-                const std::string cur_det = lower(persistent.details);
-                const std::string des_det = lower(desired.details);
-                if (cur_det.find("rompejarrones") != std::string::npos ||
-                    cur_det.find("vasebreaker") != std::string::npos ||
-                    cur_det.find("almanaque") != std::string::npos ||
-                    cur_det.find("almanac") != std::string::npos ||
-                    cur_det.find("tienda") != std::string::npos ||
-                    cur_det.find("store") != std::string::npos ||
-                    des_det.find("rompejarrones") != std::string::npos ||
-                    des_det.find("vasebreaker") != std::string::npos ||
-                    des_det.find("almanaque") != std::string::npos ||
-                    des_det.find("almanac") != std::string::npos ||
-                    des_det.find("tienda") != std::string::npos ||
-                    des_det.find("store") != std::string::npos ||
-                    vasebreaker_menu_open ||
-                    in_temp) {
-                    vasebreaker_menu_open = false;
-                    in_temp = false;
+                if (ev.find("Play_UI_Menu_Store_Close") != std::string::npos) {
+                    if (current_game_state == "GAME_Store") current_game_state.clear();
                     restore_world_activity();
+                } else if (current_game_state != "GAME_Store" && current_game_state != "GAME_Almanac") {
+                    const std::string cur_det = lower(persistent.details);
+                    const std::string des_det = lower(desired.details);
+                    if (cur_det.find("rompejarrones") != std::string::npos ||
+                        cur_det.find("vasebreaker") != std::string::npos ||
+                        cur_det.find("almanaque") != std::string::npos ||
+                        cur_det.find("almanac") != std::string::npos ||
+                        cur_det.find("tienda") != std::string::npos ||
+                        cur_det.find("store") != std::string::npos ||
+                        des_det.find("rompejarrones") != std::string::npos ||
+                        des_det.find("vasebreaker") != std::string::npos ||
+                        des_det.find("almanaque") != std::string::npos ||
+                        des_det.find("almanac") != std::string::npos ||
+                        des_det.find("tienda") != std::string::npos ||
+                        des_det.find("store") != std::string::npos ||
+                        vasebreaker_menu_open ||
+                        in_temp) {
+                        vasebreaker_menu_open = false;
+                        in_temp = false;
+                        restore_world_activity();
+                    }
                 }
             }
 
@@ -1272,7 +1281,7 @@ void worker() {
                 current_world.clear();
                 in_temp = false;
                 for (const Rule &r : rules) {
-                    if (!r.is_temp && r.needle.find("universemap shown=true") != std::string::npos) {
+                    if (!r.is_temp && !r.is_regex && !r.needle.empty() && r.needle.find("universemap shown=true") != std::string::npos) {
                         persistent = Activity{r.details, r.state};
                         desired = persistent;
                         break;

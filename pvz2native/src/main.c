@@ -398,20 +398,18 @@ static void feed_input_event(const SDL_Event *e) {
             break;
         case SDL_MOUSEBUTTONUP:
             if (e->button.button == SDL_BUTTON_LEFT) {
-                int tx = 0, ty = 0;
-                if (map_window_to_touch(e->button.x, e->button.y, &tx, &ty)) {
-                    pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
-                    g_mouse_touch_x = tx;
-                    g_mouse_touch_y = ty;
+                if (g_mouse_touch_active) {
+                    int tx = 0, ty = 0;
+                    if (map_window_to_touch(e->button.x, e->button.y, &tx, &ty)) {
+                        pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
+                        g_mouse_touch_x = tx;
+                        g_mouse_touch_y = ty;
+                    } else {
+                        pvz2_input_push_touch(PVZ2_TOUCH_UP, g_mouse_touch_x, g_mouse_touch_y);
+                    }
                     mark_touch_activity();
-                } else if (g_mouse_touch_active) {
-                    pvz2_input_push_touch(PVZ2_TOUCH_UP, g_mouse_touch_x, g_mouse_touch_y);
-                    mark_touch_activity();
-                } else {
-                    hard_reset_touch_state();
-                    mark_touch_activity();
+                    g_mouse_touch_active = 0;
                 }
-                g_mouse_touch_active = 0;
             } else if (e->button.button == SDL_BUTTON_RIGHT) {
                 pvz2_input_push_key(PVZ2_KEY_BACK, 0);
                 mark_touch_activity();
@@ -1548,6 +1546,8 @@ static int trigger_shortcut_for_scancode(SDL_Scancode scancode) {
         const float ny = clamp01(s->y);
         const int tx = (int)(nx * (tw - 1.0f) + 0.5f);
         const int ty = (int)(ny * (th - 1.0f) + 0.5f);
+
+        release_active_mouse_touch();
 
         pvz2_input_push_touch(PVZ2_TOUCH_DOWN, tx, ty);
         pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
