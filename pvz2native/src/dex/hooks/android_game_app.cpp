@@ -139,6 +139,7 @@ bool g_has_protect_plant = false;
 bool g_is_conveyor = false;
 bool g_is_paused = false;
 std::atomic<bool> g_can_select_plants{false};
+std::atomic<bool> g_is_in_level{false};
 
 static bool is_conveyor_or_special_level(const std::string &lvl) {
     if (lvl.empty()) return false;
@@ -167,9 +168,12 @@ static bool is_conveyor_or_special_level(const std::string &lvl) {
 }
 
 static void update_can_select_plants_locked() {
-    bool can = false;
     const bool in_board_gsm = (g_current_gsm_state == "GAME_Board" || g_current_gsm_state == "GAME_Game");
-    if (in_board_gsm && g_current_board_state == "PlayingLevel") {
+    const bool in_level = in_board_gsm && (g_current_board_state == "PlayingLevel");
+    g_is_in_level.store(in_level, std::memory_order_relaxed);
+
+    bool can = false;
+    if (in_level) {
         if (!g_in_seed_chooser && !g_is_paused && !g_is_conveyor) {
             if (!is_conveyor_or_special_level(g_last_board_level)) {
                 if (g_has_seed_chooser) {
@@ -1223,6 +1227,7 @@ void crashlytics_set_string(DexCall &d) {
     } else if (key == "GameStateMgr State") {
         g_current_gsm_state = val;
         if (val != "GAME_Board" && val != "GAME_Game") {
+            g_current_board_state.clear();
             g_has_seed_chooser = false;
             g_in_seed_chooser = false;
             g_has_protect_plant = false;
@@ -1414,4 +1419,13 @@ void register_android_game_app(HookTable &t) {
 
 extern "C" int pvz2_game_can_select_plants(void) {
     return pvz2native::dex::g_can_select_plants.load(std::memory_order_relaxed) ? 1 : 0;
+}
+
+extern "C" int pvz2_game_is_in_level(void) {
+    return pvz2native::dex::g_is_in_level.load(std::memory_order_relaxed) ? 1 : 0;
+}
+
+extern "C" int pvz2_game_is_paused(void) {
+    std::lock_guard<std::mutex> lk(pvz2native::dex::g_crashlytics_mu);
+    return pvz2native::dex::g_is_paused ? 1 : 0;
 }

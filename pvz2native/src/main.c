@@ -1569,6 +1569,58 @@ static int trigger_shortcut_for_scancode(SDL_Scancode scancode) {
     return 0;
 }
 
+static int trigger_named_shortcut(const char *name) {
+    if (!name) return 0;
+    for (int i = 0; i < g_shortcut_count; ++i) {
+        const runtime_shortcut_t *s = &g_shortcuts[i];
+        if (strcmp(s->name, name) != 0) continue;
+
+        const float tw = (float)pvz2_touch_space_width();
+        const float th = (float)pvz2_touch_space_height();
+        if (tw <= 0.0f || th <= 0.0f) return 0;
+
+        const float nx = clamp01(s->x);
+        const float ny = clamp01(s->y);
+        const int tx = (int)(nx * (tw - 1.0f) + 0.5f);
+        const int ty = (int)(ny * (th - 1.0f) + 0.5f);
+
+        release_active_mouse_touch();
+
+        pvz2_input_push_touch(PVZ2_TOUCH_DOWN, tx, ty);
+        pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
+        mark_touch_activity();
+        return 1;
+    }
+    return 0;
+}
+
+static void trigger_pause_shortcut(void) {
+    if (pvz2_game_is_paused()) {
+        hard_reset_touch_state();
+        pvz2_input_push_key(PVZ2_KEY_BACK, 1);
+        pvz2_input_push_key(PVZ2_KEY_BACK, 0);
+        mark_touch_activity();
+        return;
+    }
+
+    if (trigger_named_shortcut("pause")) return;
+
+    const float tw = (float)pvz2_touch_space_width();
+    const float th = (float)pvz2_touch_space_height();
+    if (tw <= 0.0f || th <= 0.0f) return;
+
+    const float nx = g_bind_use_43 ? 0.97f : 0.96f;
+    const float ny = g_bind_use_43 ? 0.07f : 0.06f;
+    const int tx = (int)(nx * (tw - 1.0f) + 0.5f);
+    const int ty = (int)(ny * (th - 1.0f) + 0.5f);
+
+    release_active_mouse_touch();
+
+    pvz2_input_push_touch(PVZ2_TOUCH_DOWN, tx, ty);
+    pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
+    mark_touch_activity();
+}
+
 /* The single place an SDL event turns into an action. Both drain sites -- the
  * boot-time host_pump and the steady-state loop -- route through here so quit,
  * F11 and resize behave identically in both, and adding a shortcut is a one-line
@@ -1660,6 +1712,12 @@ static void host_pump(void) {
         }
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE &&
             event.key.repeat == 0) {
+            if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
+                if (pvz2_game_is_in_level()) {
+                    trigger_pause_shortcut();
+                    continue;
+                }
+            }
             config_screen_request_escape();
             continue;
         }
@@ -2069,6 +2127,12 @@ int main(int argc, char **argv) {
                 }
                 if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE &&
                     event.key.repeat == 0) {
+                    if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
+                        if (pvz2_game_is_in_level()) {
+                            trigger_pause_shortcut();
+                            continue;
+                        }
+                    }
                     config_screen_request_escape();
                     continue;
                 }

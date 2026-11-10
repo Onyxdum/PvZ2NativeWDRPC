@@ -68,6 +68,13 @@ void pvz2_input_push_text(const char *utf8);
  * Used to restrict plant selection shortcuts (e.g. bind_plant_1 .. bind_plant_8). */
 int pvz2_game_can_select_plants(void);
 
+/* Returns 1 if the game is currently in an active level (PlayingLevel state).
+ * Used so pressing Escape pauses the level instead of opening the custom settings menu. */
+int pvz2_game_is_in_level(void);
+
+/* Returns 1 if the current board is paused (pause dialog open). */
+int pvz2_game_is_paused(void);
+
 /* Host-side safety reset for stuck touch sequences: emits a synthetic
  * TOUCH_CANCEL and rotates the active touch id so future events cannot match a
  * stale in-guest capture. */
