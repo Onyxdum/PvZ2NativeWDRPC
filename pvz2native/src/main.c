@@ -1531,12 +1531,24 @@ static float clamp01(float v) {
     return v;
 }
 
+static int is_plant_slot_shortcut(const char *name) {
+    if (!name) return 0;
+    if (strncmp(name, "plant_", 6) == 0 && strcmp(name, "plant_food") != 0) {
+        return 1;
+    }
+    return 0;
+}
+
 static int trigger_shortcut_for_scancode(SDL_Scancode scancode) {
     if (scancode == SDL_SCANCODE_UNKNOWN) return 0;
 
     for (int i = 0; i < g_shortcut_count; ++i) {
         const runtime_shortcut_t *s = &g_shortcuts[i];
         if (s->scancode != scancode) continue;
+
+        if (is_plant_slot_shortcut(s->name)) {
+            if (!pvz2_game_can_select_plants()) return 0;
+        }
 
         const float tw = (float)pvz2_touch_space_width();
         const float th = (float)pvz2_touch_space_height();

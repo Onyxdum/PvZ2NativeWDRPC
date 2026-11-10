@@ -22,6 +22,7 @@
 
 #include <SDL.h>
 
+#include <atomic>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -105,7 +106,6 @@ void log_records(DexCall &d, const std::vector<std::uint8_t> &r) {
 
 /* Reads whether the Board is currently paused by inspecting m_pauseSources (+1084). */
 bool is_board_paused(DexCall &d) {
-    if (!pvz2_presence_enabled()) return false;
     if (!d.c.img || d.c.img->so_base == 0) return false;
     if (sym().global.lawn_app_got == 0 || sym().global.lawn_app_board == 0 ||
         sym().global.board_pause_sources == 0 || sym().global.board_state == 0) return false;
@@ -124,6 +124,61 @@ bool is_board_paused(DexCall &d) {
     if (pause_set == 0 || !d.c.in_bounds(pause_set + 12u, 4)) return false;
     const std::uint32_t count = d.c.read32(pause_set + 12u);
     return count > 0;
+}
+
+std::mutex g_crashlytics_mu;
+std::string g_last_board_level;
+std::string g_last_world;
+std::string g_current_gsm_state;
+std::string g_current_board_state;
+std::int32_t g_last_level_num = 0;
+std::int32_t g_last_goals_count = 0;
+bool g_has_seed_chooser = false;
+bool g_in_seed_chooser = false;
+bool g_has_protect_plant = false;
+bool g_is_conveyor = false;
+bool g_is_paused = false;
+std::atomic<bool> g_can_select_plants{false};
+
+static bool is_conveyor_or_special_level(const std::string &lvl) {
+    if (lvl.empty()) return false;
+    std::string s = lvl;
+    for (char &c : s) c = (char)std::tolower((unsigned char)c);
+    if (s.find("conveyor") != std::string::npos ||
+        s.find("vasebreaker") != std::string::npos ||
+        s.find("zomboss") != std::string::npos ||
+        s.find("specialdelivery") != std::string::npos ||
+        s.find("dangerroom") != std::string::npos ||
+        s.find("tutorial") != std::string::npos ||
+        s == "egypt11" || s == "egypt25" ||
+        s == "pirate11" || s == "pirate14" || s == "pirate25" ||
+        s == "cowboy8" || s == "cowboy14" || s == "cowboy25" ||
+        s == "future12" || s == "future25" ||
+        s == "dark11" || s == "dark20" ||
+        s == "beach13" || s == "beach21" || s == "beach32" ||
+        s == "iceage12" || s == "iceage16" || s == "iceage30" || s == "iceage32" ||
+        s == "lostcity14" || s == "lostcity32" ||
+        s == "eighties13" || s == "eighties32" ||
+        s == "dino12" || s == "dino32" ||
+        s == "modern12" || s == "modern32" || s == "modern33" || s == "modern34") {
+        return true;
+    }
+    return false;
+}
+
+static void update_can_select_plants_locked() {
+    bool can = false;
+    const bool in_board_gsm = (g_current_gsm_state == "GAME_Board" || g_current_gsm_state == "GAME_Game");
+    if (in_board_gsm && g_current_board_state == "PlayingLevel") {
+        if (!g_in_seed_chooser && !g_is_paused && !g_is_conveyor) {
+            if (!is_conveyor_or_special_level(g_last_board_level)) {
+                if (g_has_seed_chooser) {
+                    can = true;
+                }
+            }
+        }
+    }
+    g_can_select_plants.store(can, std::memory_order_relaxed);
 }
 
 /* Same walk as log_records, but only to learn whether a touch started or ended
@@ -172,12 +227,19 @@ void scan_touches(const std::vector<std::uint8_t> &r, bool &had_down, bool &had_
  * 1024 bytes, so 1008 remain for records; input_queue::drain leaves anything
  * that does not fit queued for the next frame. */
 void ui_process_events(DexCall &d) {
+    const bool paused = is_board_paused(d);
     if (pvz2_presence_enabled()) {
         static bool s_last_paused = false;
-        const bool paused = is_board_paused(d);
         if (paused != s_last_paused) {
             s_last_paused = paused;
             pvz2_presence_note("state", paused ? "Board Paused=true" : "Board Paused=false");
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_crashlytics_mu);
+        if (g_is_paused != paused) {
+            g_is_paused = paused;
+            update_can_select_plants_locked();
         }
     }
 
@@ -512,16 +574,6 @@ std::int32_t count_level_challenges(const std::string &level_id) {
 
     return 0;
 }
-
-std::mutex g_crashlytics_mu;
-std::string g_last_board_level;
-std::string g_last_world;
-std::int32_t g_last_level_num = 0;
-std::int32_t g_last_goals_count = 0;
-bool g_has_seed_chooser = false;
-bool g_in_seed_chooser = false;
-bool g_has_protect_plant = false;
-
 
 /* String Resources_GetAssetFileInfo(String InFilename, long[] outFileInfo)
  *
@@ -989,9 +1041,20 @@ void crashlytics_set_string(DexCall &d) {
     }
 
     std::lock_guard<std::mutex> lk(g_crashlytics_mu);
-    if (key == "Last PrepareLoadGroups") {
+    if (key == "Last Force LoadGroups") {
+        if (val.find("UI_PauseMenu") != std::string::npos) {
+            g_is_paused = true;
+            update_can_select_plants_locked();
+        }
+    } else if (key == "Last DeleteGroups") {
+        if (val.find("UI_PauseMenu") != std::string::npos) {
+            g_is_paused = false;
+            update_can_select_plants_locked();
+        }
+    } else if (key == "Last PrepareLoadGroups") {
         if (val.find("UI_SeedChooser") != std::string::npos) {
             g_has_seed_chooser = true;
+            update_can_select_plants_locked();
         }
         if (val.find("ProtectThePlantChallengeModule") != std::string::npos) {
             g_has_protect_plant = true;
@@ -1003,6 +1066,11 @@ void crashlytics_set_string(DexCall &d) {
     } else if (key == "Board Level" && !val.empty()) {
         g_last_board_level = val;
         dex::set_current_board_level(val);
+        if (is_conveyor_or_special_level(val)) {
+            g_is_conveyor = true;
+            g_has_seed_chooser = false;
+        }
+        update_can_select_plants_locked();
         const std::string node = read_guest_worldmap_node_dex(d);
         const bool is_md34 = (val == "modern34" || node == "modern34");
         credits_set_modern34_active(is_md34 ? 1 : 0);
@@ -1035,17 +1103,23 @@ void crashlytics_set_string(DexCall &d) {
         g_has_seed_chooser = false;
         g_in_seed_chooser = false;
         g_has_protect_plant = false;
+        g_is_conveyor = false;
+        g_is_paused = false;
         g_last_goals_count = 0;
+        update_can_select_plants_locked();
         if (presence) {
             pvz2_presence_note("state", "Board Chooser=false");
             pvz2_presence_note("state", "Board Paused=false");
             pvz2_presence_note("state", "Board Goals=0");
         }
     } else if (key == "Board State") {
+        g_current_board_state = val;
         if (val == "LoadingLevel" || val == "Initial") {
             g_has_seed_chooser = false;
             g_in_seed_chooser = false;
             g_has_protect_plant = false;
+            g_is_conveyor = is_conveyor_or_special_level(g_last_board_level);
+            g_is_paused = false;
             if (presence) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
@@ -1055,6 +1129,14 @@ void crashlytics_set_string(DexCall &d) {
             if (presence) pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
         } else if (val == "LoadingSave") {
             g_in_seed_chooser = false;
+            g_is_paused = false;
+            if (!is_conveyor_or_special_level(g_last_board_level)) {
+                g_has_seed_chooser = true;
+                g_is_conveyor = false;
+            } else {
+                g_has_seed_chooser = false;
+                g_is_conveyor = true;
+            }
             if (presence) {
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
@@ -1063,31 +1145,23 @@ void crashlytics_set_string(DexCall &d) {
             g_last_goals_count = goals;
             if (presence) pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
         } else if (val == "LevelIntro") {
-            if (g_has_seed_chooser ||
-                (!g_last_board_level.empty() &&
-                 g_last_board_level.find("vasebreaker") == std::string::npos &&
-                 g_last_board_level.find("tutorial") == std::string::npos &&
-                 g_last_board_level.find("zomboss") == std::string::npos &&
-                 g_last_board_level.find("dangerroom") == std::string::npos &&
-                 g_last_board_level != "egypt25" && g_last_board_level != "pirate25" &&
-                 g_last_board_level != "cowboy25" && g_last_board_level != "future25" &&
-                 g_last_board_level != "dark20" && g_last_board_level != "beach32" &&
-                 g_last_board_level != "iceage30" && g_last_board_level != "iceage32" &&
-                 g_last_board_level != "lostcity32" && g_last_board_level != "eighties32" &&
-                 g_last_board_level != "dino32" && g_last_board_level != "modern32" &&
-                 g_last_board_level != "modern33" && g_last_board_level != "modern34")) {
+            if (g_has_seed_chooser || !is_conveyor_or_special_level(g_last_board_level)) {
                 g_in_seed_chooser = true;
                 if (presence) pvz2_presence_note("state", "Board Chooser=true");
             }
         } else if (val == "PlayingLevel") {
-            if (g_in_seed_chooser) {
-                g_in_seed_chooser = false;
-                if (presence) pvz2_presence_note("state", "Board Chooser=false");
+            g_in_seed_chooser = false;
+            if (is_conveyor_or_special_level(g_last_board_level)) {
+                g_is_conveyor = true;
+                g_has_seed_chooser = false;
             }
+            if (presence) pvz2_presence_note("state", "Board Chooser=false");
         } else if (val == "PlayerWonOutro") {
             g_has_seed_chooser = false;
             g_in_seed_chooser = false;
             g_has_protect_plant = false;
+            g_is_conveyor = false;
+            g_is_paused = false;
             g_last_goals_count = 0;
             if (presence) {
                 pvz2_presence_note("state", "Board Chooser=false");
@@ -1116,6 +1190,8 @@ void crashlytics_set_string(DexCall &d) {
             g_has_seed_chooser = false;
             g_in_seed_chooser = false;
             g_has_protect_plant = false;
+            g_is_conveyor = false;
+            g_is_paused = false;
             g_last_goals_count = 0;
             if (presence) {
                 pvz2_presence_note("state", "Board Chooser=false");
@@ -1123,6 +1199,7 @@ void crashlytics_set_string(DexCall &d) {
                 pvz2_presence_note("state", "Board Goals=0");
             }
         }
+        update_can_select_plants_locked();
 
         if (presence && !g_last_board_level.empty()) {
             int goals = count_level_challenges(g_last_board_level);
@@ -1144,6 +1221,17 @@ void crashlytics_set_string(DexCall &d) {
             }
         }
     } else if (key == "GameStateMgr State") {
+        g_current_gsm_state = val;
+        if (val != "GAME_Board" && val != "GAME_Game") {
+            g_has_seed_chooser = false;
+            g_in_seed_chooser = false;
+            g_has_protect_plant = false;
+            g_is_conveyor = false;
+            g_is_paused = false;
+            g_last_goals_count = 0;
+        }
+        update_can_select_plants_locked();
+
         if (presence) {
             if (val == "GAME_Game" && !g_last_board_level.empty()) {
                 int goals = count_level_challenges(g_last_board_level);
@@ -1164,10 +1252,6 @@ void crashlytics_set_string(DexCall &d) {
                     pvz2_presence_note("state", lvl.c_str());
                 }
             } else if (val == "GAME_WorldMap") {
-                g_has_seed_chooser = false;
-                g_in_seed_chooser = false;
-                g_has_protect_plant = false;
-                g_last_goals_count = 0;
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
@@ -1176,10 +1260,6 @@ void crashlytics_set_string(DexCall &d) {
                     pvz2_presence_note("state", w.c_str());
                 }
             } else {
-                g_has_seed_chooser = false;
-                g_in_seed_chooser = false;
-                g_has_protect_plant = false;
-                g_last_goals_count = 0;
                 pvz2_presence_note("state", "Board Chooser=false");
                 pvz2_presence_note("state", "Board Paused=false");
                 pvz2_presence_note("state", "Board Goals=0");
@@ -1213,6 +1293,16 @@ void crashlytics_log(DexCall &d) {
     const std::string msg = d.string_arg(0);
     if (pvz2_presence_enabled() && !msg.empty()) {
         pvz2_presence_note("log", msg.c_str());
+    }
+    if (!msg.empty()) {
+        if (msg.find("Conveyor_Arrive") != std::string::npos ||
+            msg.find("Play_ConveyorBelt_LP") != std::string::npos ||
+            msg.find("ConveyorSeedBank") != std::string::npos) {
+            std::lock_guard<std::mutex> lk(g_crashlytics_mu);
+            g_is_conveyor = true;
+            g_has_seed_chooser = false;
+            update_can_select_plants_locked();
+        }
     }
     d.ret(0);
 }
@@ -1321,3 +1411,7 @@ void register_android_game_app(HookTable &t) {
 
 }  // namespace dex
 }  // namespace pvz2native
+
+extern "C" int pvz2_game_can_select_plants(void) {
+    return pvz2native::dex::g_can_select_plants.load(std::memory_order_relaxed) ? 1 : 0;
+}

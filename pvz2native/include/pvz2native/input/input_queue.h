@@ -63,6 +63,11 @@ void pvz2_input_push_key(int android_keycode, int down);
 /* UTF-8, as SDL_TEXTINPUT delivers it. */
 void pvz2_input_push_text(const char *utf8);
 
+/* Returns 1 if the game is currently in a playable level with selected plants
+ * (regular level seed bank active, not in seed chooser, not conveyor belt, not vasebreaker, not paused).
+ * Used to restrict plant selection shortcuts (e.g. bind_plant_1 .. bind_plant_8). */
+int pvz2_game_can_select_plants(void);
+
 /* Host-side safety reset for stuck touch sequences: emits a synthetic
  * TOUCH_CANCEL and rotates the active touch id so future events cannot match a
  * stale in-guest capture. */
