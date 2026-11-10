@@ -21,7 +21,8 @@ const char *kApiUrl = "https://api.github.com/repos/Onyxdum/PvZ2NativeWDRPC/rele
 const char kUpdaterPs1Script[] = R"ps1(
 param(
     [string]$DownloadUrl,
-    [string]$TargetExe
+    [string]$TargetExe,
+    [int]$GamePid = 0
 )
 
 $Host.UI.RawUI.WindowTitle = "Actualizador de Plants vs. Zombies 2"
@@ -31,12 +32,25 @@ Write-Host "========================================================" -Foregroun
 Write-Host ""
 Write-Host "Cerrando el juego y preparando la actualizacion..." -ForegroundColor Yellow
 
-while ((Get-Process -Name "pvz2", "pvz2native" -ErrorAction SilentlyContinue).Count -gt 0) {
-    Start-Sleep -Seconds 1
+if ($GamePid -gt 0) {
+    try {
+        $proc = Get-Process -Id $GamePid -ErrorAction SilentlyContinue
+        if ($proc) {
+            $null = $proc.WaitForExit(10000)
+        }
+    } catch {}
+}
+
+$deadline = (Get-Date).AddSeconds(8)
+while ((Get-Date) -lt $deadline) {
+    $running = @(Get-Process -Name "pvz2", "pvz2native" -ErrorAction SilentlyContinue)
+    if ($running.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 500
 }
 Start-Sleep -Seconds 1
 
 $gameDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (!$gameDir) { $gameDir = (Get-Location).Path }
 Set-Location $gameDir
 
 Write-Host "Descargando la nueva version desde GitHub..." -ForegroundColor Cyan
@@ -221,6 +235,22 @@ function Merge-IniConfig([string]$destFile, [string]$srcFile) {
     }
 }
 
+function Safe-CopyFile([string]$srcPath, [string]$dstPath) {
+    $copied = $false
+    for ($attempt = 1; $attempt -le 10; $attempt++) {
+        try {
+            Copy-Item -Path $srcPath -Destination $dstPath -Force -ErrorAction Stop
+            $copied = $true
+            break
+        } catch {
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if (!$copied) {
+        Write-Host "  [ERROR] No se pudo sobrescribir $(Split-Path -Leaf $dstPath): archivo bloqueado o en uso." -ForegroundColor Red
+    }
+}
+
 Write-Host "Instalando y fusionando archivos actualizados..." -ForegroundColor Cyan
 $src = $tmpDir
 $dirs = Get-ChildItem -Path $src -Directory
@@ -253,12 +283,12 @@ Get-ChildItem -Path $src -Recurse | ForEach-Object {
         return
     }
 
-    # Resto de archivos (ejecutables, dlls, recursos): copiar directamente
-    Copy-Item $_.FullName -Destination $dest -Force
+    # Resto de archivos (ejecutables, dlls, recursos): copiar de forma segura con reintentos
+    Safe-CopyFile $_.FullName $dest
 }
 
 if (Test-Path (Join-Path $gameDir "pvz2.exe")) {
-    Copy-Item (Join-Path $gameDir "pvz2.exe") -Destination (Join-Path $gameDir "pvz2native.exe") -Force
+    Safe-CopyFile (Join-Path $gameDir "pvz2.exe") (Join-Path $gameDir "pvz2native.exe")
 }
 
 Write-Host "Limpiando archivos temporales..." -ForegroundColor DarkGray
@@ -270,7 +300,7 @@ Write-Host "========================================================" -Foregroun
 Write-Host "   Actualizacion completada con exito!" -ForegroundColor Green
 Write-Host "   Reiniciando el juego..." -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 1
 
 if ($TargetExe -and (Test-Path (Join-Path $gameDir $TargetExe))) {
     Start-Process (Join-Path $gameDir $TargetExe)
@@ -280,16 +310,11 @@ if ($TargetExe -and (Test-Path (Join-Path $gameDir $TargetExe))) {
     Start-Process (Join-Path $gameDir "pvz2native.exe")
 }
 
-$selfPath = $MyInvocation.MyCommand.Path
-Start-Process powershell -ArgumentList "-NoProfile -Command Start-Sleep -Seconds 1; Remove-Item -Force '$selfPath'" -WindowStyle Hidden
+$self = $MyInvocation.MyCommand.Path
+if ($self -and (Test-Path $self)) {
+    Start-Process cmd.exe -ArgumentList "/c ping 127.0.0.1 -n 2 >nul & del `"$self`"" -WindowStyle Hidden
+}
 )ps1";
-
-const char kUpdaterBatScript[] =
-    "@echo off\r\n"
-    "setlocal\r\n"
-    "cd /d \"%~dp0\"\r\n"
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%~dp0updater.ps1\" -DownloadUrl \"%~1\" -TargetExe \"%~2\"\r\n"
-    "(goto) 2>nul & del \"%~f0\"\r\n";
 
 struct SemVer {
     int major = 0;
@@ -409,11 +434,10 @@ void check_updates_worker() {
     std::string download_url = extract_windows_download_url(json);
     pvz2_log("[updater] new version found: %s, download: %s", tag_name.c_str(), download_url.c_str());
 
-    /* Show modal prompt to player:
-     * "Nueva version disponible ¿Deseas actualizar el Juego? Solo tomara un minuto" */
+    /* Show modal prompt to player without encoding glitches */
     int btn = MessageBoxW(
         NULL,
-        L"Nueva version disponible \x00bfDeseas actualizar el Juego? Solo tomara un minuto",
+        L"Nueva versi\u00f3n disponible.\n\n\u00bfDeseas actualizar el juego ahora autom\u00e1ticamente?\n(Solo tomar\u00e1 un minuto)",
         L"Plants vs. Zombies 2",
         MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND
     );
@@ -423,14 +447,9 @@ void check_updates_worker() {
         return;
     }
 
-    pvz2_log("[updater] user accepted update. Opening release page and starting updater...");
+    pvz2_log("[updater] user accepted update. Preparing updater...");
 
-    /* 1. Open the GitHub release page in the default web browser */
-    if (!html_url.empty()) {
-        ShellExecuteA(NULL, "open", html_url.c_str(), NULL, NULL, SW_SHOWNORMAL);
-    }
-
-    /* 2. Resolve current executable path and installation directory */
+    /* 1. Resolve current executable path and installation directory */
     char exe_path_buf[MAX_PATH] = {0};
     GetModuleFileNameA(NULL, exe_path_buf, MAX_PATH);
     std::string current_exe(exe_path_buf);
@@ -438,34 +457,51 @@ void check_updates_worker() {
     std::string game_dir = (sep_pos != std::string::npos) ? current_exe.substr(0, sep_pos) : ".";
     std::string exe_filename = (sep_pos != std::string::npos) ? current_exe.substr(sep_pos + 1) : "pvz2.exe";
 
-    /* If no direct zip URL was found, user has the release page opened in browser */
+    /* If no direct zip URL was found, open release page for manual download */
     if (download_url.empty()) {
-        pvz2_log("[updater] direct zip download url not found, release page opened");
+        pvz2_log("[updater] direct zip download url not found, opening release page in browser");
+        if (!html_url.empty()) {
+            ShellExecuteA(NULL, "open", html_url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        }
         return;
     }
 
-    /* 3. Write updater.ps1 and updater.bat */
+    /* 2. Write updater.ps1 */
     std::string ps1_path = game_dir + "\\updater.ps1";
-    std::string bat_path = game_dir + "\\updater.bat";
-
     {
         std::ofstream ps1(ps1_path, std::ios::binary);
         if (ps1) {
             ps1.write(kUpdaterPs1Script, sizeof(kUpdaterPs1Script) - 1);
         }
     }
-    {
-        std::ofstream bat(bat_path, std::ios::binary);
-        if (bat) {
-            bat.write(kUpdaterBatScript, sizeof(kUpdaterBatScript) - 1);
+
+    /* 3. Launch powershell.exe directly with its own console window */
+    DWORD game_pid = GetCurrentProcessId();
+    std::string cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" + ps1_path +
+                      "\" -DownloadUrl \"" + download_url +
+                      "\" -TargetExe \"" + exe_filename +
+                      "\" -GamePid " + std::to_string(game_pid);
+
+    STARTUPINFOA si = {0};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = {0};
+
+    std::vector<char> cmd_buf(cmd.begin(), cmd.end());
+    cmd_buf.push_back('\0');
+
+    if (CreateProcessA(NULL, cmd_buf.data(), NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, game_dir.c_str(), &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        pvz2_log("[updater] updater process launched successfully (pid=%lu), exiting game", pi.dwProcessId);
+    } else {
+        pvz2_log("[updater] CreateProcessA failed: %lu, falling back to release page in browser", GetLastError());
+        if (!html_url.empty()) {
+            ShellExecuteA(NULL, "open", html_url.c_str(), NULL, NULL, SW_SHOWNORMAL);
         }
+        return;
     }
 
-    /* 4. Launch updater.bat detached */
-    std::string args = "\"" + download_url + "\" \"" + exe_filename + "\"";
-    ShellExecuteA(NULL, "open", bat_path.c_str(), args.c_str(), game_dir.c_str(), SW_SHOWNORMAL);
-
-    /* 5. Exit game process so the binary can be updated */
+    /* 4. Exit game process so the binary and files can be cleanly replaced */
     exit(0);
 }
 
