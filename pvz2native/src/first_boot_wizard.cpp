@@ -12,11 +12,13 @@
 #include <fstream>
 #include <cstring>
 #include <cstdio>
+#include <thread>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <commdlg.h>
+#include <objbase.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -69,22 +71,39 @@ static std::string wide_to_utf8(const std::wstring &wstr) {
 }
 
 static std::string open_file_dialog_win(const wchar_t *title, const wchar_t *filter, const wchar_t *def_ext) {
-    wchar_t buf[MAX_PATH * 2] = {0};
-    OPENFILENAMEW ofn;
-    ZeroMemory(&ofn, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = NULL;
-    ofn.lpstrFilter = filter;
-    ofn.lpstrFile = buf;
-    ofn.nMaxFile = sizeof(buf) / sizeof(buf[0]);
-    ofn.lpstrTitle = title;
-    ofn.lpstrDefExt = def_ext;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+    std::string result = "";
+    wchar_t original_cwd[MAX_PATH * 2] = {0};
+    GetCurrentDirectoryW(MAX_PATH * 2, original_cwd);
 
-    if (GetOpenFileNameW(&ofn)) {
-        return wide_to_utf8(buf);
+    std::thread t([&]() {
+        HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+        wchar_t buf[MAX_PATH * 2] = {0};
+        OPENFILENAMEW ofn;
+        ZeroMemory(&ofn, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = NULL;
+        ofn.lpstrFilter = filter;
+        ofn.lpstrFile = buf;
+        ofn.nMaxFile = sizeof(buf) / sizeof(buf[0]);
+        ofn.lpstrTitle = title;
+        ofn.lpstrDefExt = def_ext;
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+
+        if (GetOpenFileNameW(&ofn)) {
+            result = wide_to_utf8(buf);
+        }
+
+        if (SUCCEEDED(hr)) {
+            CoUninitialize();
+        }
+    });
+    t.join();
+
+    if (original_cwd[0] != L'\0') {
+        SetCurrentDirectoryW(original_cwd);
     }
-    return "";
+    return result;
 }
 
 static bool copy_file_platform(const std::string &src, const std::string &dst) {
@@ -139,6 +158,28 @@ static bool extract_current_unz_file(unzFile uf, const std::string &dest_path) {
     return ok;
 }
 
+/* Shared libraries that newer builds list in DT_NEEDED and that ship inside
+ * the APK next to libPVZ2.so: 6.6.1 needs libNimble.so, 9.6.1 additionally
+ * libc++_shared.so. The ELF loader maps them only when they sit beside
+ * libPVZ2.so, so they are extracted to the same folder. Only the 32-bit ARM
+ * copies are taken -- an arm64 library would be unusable by the emulator.
+ * Returns the destination file name, or nullptr if the entry is not one. */
+static const char *companion_lib_name(const std::string &lower_entry) {
+    if (lower_entry.find("arm64") != std::string::npos) return nullptr;
+    if (lower_entry.find("x86") != std::string::npos) return nullptr;
+    static const char *const kCompanions[] = {"libNimble.so", "libc++_shared.so"};
+    for (const char *name : kCompanions) {
+        const std::string lower_name = to_lower_str(name);
+        const std::size_t n = lower_name.size();
+        if (lower_entry.size() >= n &&
+            lower_entry.compare(lower_entry.size() - n, n, lower_name) == 0 &&
+            (lower_entry.size() == n || lower_entry[lower_entry.size() - n - 1] == '/')) {
+            return name;
+        }
+    }
+    return nullptr;
+}
+
 static bool scan_and_extract_archive(const std::string &archive_path, const std::string &dest_dir,
                                      bool &out_so, bool &out_obb, std::string &out_pkg) {
     unzFile uf = unzOpen64(archive_path.c_str());
@@ -164,6 +205,10 @@ static bool scan_and_extract_archive(const std::string &archive_path, const std:
                 if (extract_current_unz_file(uf, dest_so)) {
                     out_so = true;
                 }
+            }
+            /* Companion libraries (libNimble.so, libc++_shared.so) */
+            else if (const char *companion = companion_lib_name(lower_entry)) {
+                extract_current_unz_file(uf, dest_dir + companion);
             }
             /* Check for .obb file */
             else if (lower_entry.size() > 4 && lower_entry.compare(lower_entry.size() - 4, 4, ".obb") == 0) {
@@ -200,8 +245,9 @@ static bool scan_and_extract_archive(const std::string &archive_path, const std:
                                     const std::string dest_so = dest_dir + "libPVZ2.so";
                                     if (extract_current_unz_file(inner_uf, dest_so)) {
                                         out_so = true;
-                                        break;
                                     }
+                                } else if (const char *companion = companion_lib_name(lower_entry)) {
+                                    extract_current_unz_file(inner_uf, dest_dir + companion);
                                 }
                             }
                         } while (unzGoToNextFile(inner_uf) == UNZ_OK);
@@ -219,6 +265,25 @@ static bool scan_and_extract_archive(const std::string &archive_path, const std:
 
 static void show_message_box(const char *title, const char *msg, Uint32 flags = SDL_MESSAGEBOX_INFORMATION) {
     SDL_ShowSimpleMessageBox(flags, title, msg, NULL);
+}
+
+static std::string detect_lib_version(const std::string &so_path, const std::string &base_dir) {
+    if (file_exists_and_not_empty(base_dir + "libNimble.so") ||
+        file_exists_and_not_empty(base_dir + "lib/libNimble.so")) {
+        return "6.6.1";
+    }
+    if (FILE *f = fopen(so_path.c_str(), "rb")) {
+        char buf[65536];
+        size_t n = fread(buf, 1, sizeof(buf), f);
+        fclose(f);
+        if (n > 0) {
+            std::string header(buf, n);
+            if (header.find("libNimble.so") != std::string::npos) {
+                return "6.6.1";
+            }
+        }
+    }
+    return "4.5.2";
 }
 
 } // namespace
@@ -273,25 +338,29 @@ extern "C" int pvz2_ensure_required_files(const pvz2_config_t *cfg) {
 
     /* If both were found already in folder, auto-configure and proceed without any prompt */
     if (!found_so.empty() && !found_obb.empty()) {
+        std::string detected_ver = detect_lib_version(found_so, base_dir);
         pvz2_config_set_paths_and_package(found_so.c_str(), found_obb.c_str(),
-                                          detected_pkg.empty() ? nullptr : detected_pkg.c_str());
+                                          detected_pkg.empty() ? nullptr : detected_pkg.c_str(),
+                                          detected_ver.c_str());
         return 1;
     }
 
     /* 3. Missing files -> First-boot setup wizard */
     const bool es = is_spanish_locale();
 
-    const char *title = es ? "PvZ2Native - Instalación Inicial" : "PvZ2Native - Initial Setup";
+    const char *title = es ? "PvZ2Native - Asistente de Configuración" : "PvZ2Native - Setup Wizard";
     const char *welcome_msg = es
-        ? "No se han encontrado los archivos originales del juego (libPVZ2.so y/o data.obb).\n\n"
-          "Para jugar a Plants vs. Zombies 2 Native en PC necesitas suministrar el archivo APK y/o OBB de la versión 4.5.2 de Android.\n\n"
-          "¿Deseas seleccionarlos ahora mediante el asistente?"
-        : "The original game files (libPVZ2.so and/or data.obb) were not found.\n\n"
-          "To play Plants vs. Zombies 2 Native on PC, you need to provide the APK and/or OBB file from Android version 4.5.2.\n\n"
-          "Would you like to select them now with the setup wizard?";
+        ? "¡Bienvenido a Plants vs. Zombies 2 Native para PC!\n\n"
+          "Para comenzar a jugar, es necesario suministrar los archivos del juego original de Android (compatible con versiones 4.5.2 y 6.6.1).\n\n"
+          "El asistente extraerá automáticamente las librerías necesarias (.so) y el archivo de datos (.obb) a partir del APK, XAPK o ZIP oficial del juego.\n\n"
+          "¿Deseas iniciar el asistente para seleccionar tus archivos?"
+        : "Welcome to Plants vs. Zombies 2 Native for PC!\n\n"
+          "To start playing, original Android game files are required (supporting versions 4.5.2 and 6.6.1).\n\n"
+          "The setup wizard will automatically extract the required libraries (.so) and game data (.obb) from your official APK, XAPK, or ZIP archive.\n\n"
+          "Would you like to start the setup wizard now to select your files?";
 
     const SDL_MessageBoxButtonData buttons[] = {
-        { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, es ? "Seleccionar archivos" : "Select Files" },
+        { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, es ? "Iniciar asistente" : "Start Wizard" },
         { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, es ? "Salir" : "Exit" },
     };
 
@@ -317,11 +386,11 @@ extern "C" int pvz2_ensure_required_files(const pvz2_config_t *cfg) {
     /* Step A: Ask for APK / XAPK if libPVZ2.so is missing */
     if (!has_so) {
 #ifdef _WIN32
-        const wchar_t *filter_win = L"Android Package / XAPK (*.apk;*.xapk;*.zip)\0*.apk;*.xapk;*.zip\0Todos los archivos (*.*)\0*.*\0\0";
-        const wchar_t *title_win = es ? L"Selecciona el archivo APK o XAPK de PvZ 2 (v4.5.2)" : L"Select PvZ 2 APK or XAPK (v4.5.2)";
+        const wchar_t *filter_win = L"Paquetes de Android (*.apk;*.xapk;*.zip)\0*.apk;*.xapk;*.zip\0Todos los archivos (*.*)\0*.*\0\0";
+        const wchar_t *title_win = es ? L"Selecciona el archivo APK, XAPK o ZIP de PvZ 2 (v4.5.2 o v6.6.1)" : L"Select PvZ 2 APK, XAPK or ZIP (v4.5.2 or v6.6.1)";
         std::string chosen_apk = open_file_dialog_win(title_win, filter_win, L"apk");
 #else
-        std::string chosen_apk = open_file_dialog_linux(es ? "Selecciona el archivo APK o XAPK de PvZ 2 (v4.5.2)" : "Select PvZ 2 APK or XAPK (v4.5.2)", "*.apk *.xapk *.zip");
+        std::string chosen_apk = open_file_dialog_linux(es ? "Selecciona el archivo APK, XAPK o ZIP de PvZ 2 (v4.5.2 o v6.6.1)" : "Select PvZ 2 APK, XAPK or ZIP (v4.5.2 or v6.6.1)", "*.apk *.xapk *.zip");
 #endif
         if (chosen_apk.empty()) {
             return 0; /* User cancelled file picker */
@@ -348,10 +417,10 @@ extern "C" int pvz2_ensure_required_files(const pvz2_config_t *cfg) {
 
         if (!has_so) {
             show_message_box(title, es
-                ? "No se pudo encontrar libPVZ2.so dentro del archivo seleccionado.\n"
-                  "Asegúrate de seleccionar un APK o XAPK válido de la versión 4.5.2 (armeabi-v7a)."
-                : "Could not find libPVZ2.so inside the selected archive.\n"
-                  "Please ensure you select a valid version 4.5.2 (armeabi-v7a) APK or XAPK.",
+                ? "No se pudo encontrar libPVZ2.so dentro del archivo seleccionado.\n\n"
+                  "Asegúrate de seleccionar un paquete APK o XAPK válido de la versión 4.5.2 o 6.6.1 (arquitectura armeabi-v7a de 32 bits)."
+                : "Could not find libPVZ2.so inside the selected archive.\n\n"
+                  "Please ensure you select a valid version 4.5.2 or 6.6.1 APK or XAPK (32-bit armeabi-v7a architecture).",
                 SDL_MESSAGEBOX_ERROR);
             return 0;
         }
@@ -382,17 +451,17 @@ extern "C" int pvz2_ensure_required_files(const pvz2_config_t *cfg) {
         /* If still not found, prompt the user for the OBB */
         if (!has_obb) {
             show_message_box(title, es
-                ? "Librería libPVZ2.so preparada con éxito.\n\n"
-                  "Ahora selecciona el archivo de datos OBB (.obb) de PvZ 2 (v4.5.2)."
-                : "libPVZ2.so extracted successfully.\n\n"
-                  "Now please select the PvZ 2 OBB data file (.obb) for version 4.5.2.");
+                ? "Librerías del juego preparadas con éxito.\n\n"
+                  "Ahora selecciona el archivo de datos OBB (.obb) correspondiente a tu versión (v4.5.2 o v6.6.1)."
+                : "Game libraries extracted successfully.\n\n"
+                  "Now please select the matching PvZ 2 OBB data file (.obb) for your version (v4.5.2 or v6.6.1).");
 
 #ifdef _WIN32
             const wchar_t *filter_obb = L"PvZ 2 OBB Data (*.obb)\0*.obb\0Todos los archivos (*.*)\0*.*\0\0";
-            const wchar_t *title_obb = es ? L"Selecciona el archivo OBB de PvZ 2 (v4.5.2)" : L"Select PvZ 2 OBB file (v4.5.2)";
+            const wchar_t *title_obb = es ? L"Selecciona el archivo OBB de PvZ 2 (v4.5.2 o v6.6.1)" : L"Select PvZ 2 OBB file (v4.5.2 or v6.6.1)";
             std::string chosen_obb = open_file_dialog_win(title_obb, filter_obb, L"obb");
 #else
-            std::string chosen_obb = open_file_dialog_linux(es ? "Selecciona el archivo OBB de PvZ 2 (v4.5.2)" : "Select PvZ 2 OBB file (v4.5.2)", "*.obb");
+            std::string chosen_obb = open_file_dialog_linux(es ? "Selecciona el archivo OBB de PvZ 2 (v4.5.2 o v6.6.1)" : "Select PvZ 2 OBB file (v4.5.2 or v6.6.1)", "*.obb");
 #endif
             if (chosen_obb.empty()) {
                 return 0;
@@ -418,12 +487,22 @@ extern "C" int pvz2_ensure_required_files(const pvz2_config_t *cfg) {
 
     /* Final verification */
     if (file_exists_and_not_empty(found_so) && file_exists_and_not_empty(found_obb)) {
+        std::string detected_ver = detect_lib_version(found_so, base_dir);
         pvz2_config_set_paths_and_package("libPVZ2.so", "data.obb",
-                                          detected_pkg.empty() ? "com.ea.game.pvz2_row" : detected_pkg.c_str());
+                                          detected_pkg.empty() ? "com.ea.game.pvz2_row" : detected_pkg.c_str(),
+                                          detected_ver.c_str());
 
-        show_message_box(title, es
-            ? "¡Plants vs. Zombies 2 configurado con éxito!\n\nIniciando el juego..."
-            : "Plants vs. Zombies 2 configured successfully!\n\nLaunching the game...");
+        char success_msg[512];
+        if (es) {
+            std::snprintf(success_msg, sizeof(success_msg),
+                          "¡Plants vs. Zombies 2 (versión %s) configurado con éxito!\n\nIniciando el juego...",
+                          detected_ver.c_str());
+        } else {
+            std::snprintf(success_msg, sizeof(success_msg),
+                          "Plants vs. Zombies 2 (version %s) configured successfully!\n\nLaunching the game...",
+                          detected_ver.c_str());
+        }
+        show_message_box(title, success_msg);
         return 1;
     }
 

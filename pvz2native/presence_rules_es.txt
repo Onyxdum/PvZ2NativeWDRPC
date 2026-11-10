@@ -1,4 +1,9 @@
 ; === 1. NIVELES (Nuevos desde cero y partidas guardadas via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(?::\d+)?$ | Rompejarrones | Antiguo Egipto
+regex:state:Board Level=vasebreaker_pirate(?::\d+)?$ | Rompejarrones | Mares Piratas
+regex:state:Board Level=vasebreaker_cowboy(?::\d+)?$ | Rompejarrones | Salvaje Oeste
+regex:state:Board Level=vasebreaker_future(?::\d+)?$ | Rompejarrones | Futuro Lejano
+regex:state:Board Level=vasebreaker_dark(?::\d+)?$ | Rompejarrones | Edad Oscura
 regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Rompejarrones | Antiguo Egipto - Nivel $1
 regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Rompejarrones | Mares Piratas - Nivel $1
 regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Rompejarrones | Salvaje Oeste - Nivel $1
@@ -90,12 +95,20 @@ state:GameStateMgr State=GAME_Almanac | En el Almanaque | Consultando plantas y 
 state:GameStateMgr State=GAME_Store | En la Tienda | Viendo mejoras y plantas
 state:GameStateMgr State=GAME_ZenGarden | Jardín Zen | Cuidando las plantas
 state:GameStateMgr State=GAME_ArcadeMenu | Rompejarrones | Eligiendo nivel
+state:ArcadeMenu Shown=true | Rompejarrones | Eligiendo nivel
 state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | En el menú principal
+state:GameStateMgr State=GAME_JoustOrAdventureSelector | Menú Principal | Eligiendo modo de juego
+state:GameStateMgr State=GAME_JoustLoadDashboard | Batallaz | En la arena
 
 rsb:ZenGardenGroup_ | Jardín Zen | Cuidando las plantas
 rsb:DelayLoad_Background_Zen | Jardín Zen | Cuidando las plantas
 rsb:UI_Quests_ | Tronco de Viaje | Viendo misiones
 rsb:UI_VaseBreakerMenu_ | Rompejarrones | Eligiendo nivel
+temp:state:Dialog=PinataReward | Recompensas | Abriendo piñata
+temp:state:Dialog=PVZ2UIPinataRewardDialog | Recompensas | Abriendo piñata
+temp:rsb:SpinePinatas_ | Recompensas | Abriendo piñata
+temp:rsb:PinataRewards_ | Recompensas | Abriendo piñata
+temp:rsb:PrizePinata_ | Recompensas | Abriendo piñata
 
 ; === 5. MAPAS DE MUNDOS ===
 state:UniverseMap Shown=true | En el mapa | Eligiendo mundo

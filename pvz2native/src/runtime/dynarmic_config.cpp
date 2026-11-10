@@ -1096,6 +1096,36 @@ void run_init_array(pvz2_elf_image_t *img, GuestRuntime *rt) {
             set_status("booting: static constructors %u/%u", done, total);
             run_one_ctor(img, rt, entry_addr, ".init_array", m.name, i);
         }
+
+        /* Dependency JNI_OnLoad: on Android, each library loaded via System.loadLibrary
+         * runs its JNI_OnLoad immediately upon loading, before later libraries run their
+         * static constructors. For example, 6.6.1's libPVZ2.so static constructor 870
+         * calls into libNimble.so's getEnv(), which requires libNimble.so's JNI_OnLoad
+         * to have set up its JavaVM global. */
+        const std::uint32_t jni_on_load = pvz2_elf_find_symbol_in(&m, "JNI_OnLoad");
+        if (jni_on_load != 0) {
+            pvz2_log("[runtime] ---- running JNI_OnLoad [%s] at 0x%08x ----", m.name, jni_on_load);
+            GuestThreadCtx &ctx = main_ctx(img, rt);
+            GuestCallSetup setup;
+            setup.r0 = dex::kJavaVmPtrAddr; /* JavaVM* vm */
+            setup.r1 = 0;                   /* void* reserved */
+            setup.sp = kStackTop;
+            setup.lr = img->trampoline_base;
+            setup.entry_pc = jni_on_load;
+            apply_call_setup(ctx.jit, ctx.env, img, setup);
+
+            Dynarmic::HaltReason hr = run_jit_sliced(ctx.jit, ctx.env);
+            const std::uint32_t ret = ctx.jit.Regs()[0];
+            pvz2_log("[runtime] JNI_OnLoad [%s] returned 0x%08x, halt_reason=0x%08x, import_calls=%u, "
+                     "jni_calls=%u, ticks_used=%llu",
+                     m.name, ret, static_cast<unsigned>(hr), ctx.env.import_calls,
+                     ctx.env.jni_calls, (unsigned long long)ctx.env.ticks_used);
+
+            if ((std::int32_t)ret < 0) {
+                pvz2_log("[!] %s's JNI_OnLoad failed (JNI_ERR) -- its JavaVM and any cached "
+                         "classes are unset; calls into it will branch through NULL", m.name);
+            }
+        }
     }
 }
 
@@ -1122,41 +1152,10 @@ void run_init_array(pvz2_elf_image_t *img, GuestRuntime *rt) {
  * In init_order, i.e. dependency before dependent -- the same order the
  * constructors ran in, and the order the Java side would load them. */
 void run_jni_onload(pvz2_elf_image_t *img, GuestRuntime *rt) {
-    unsigned ran = 0;
-    for (std::uint32_t i = 0; i < img->module_count; ++i) {
-        const pvz2_elf_module_t &m = img->modules[img->init_order[i]];
-        const std::uint32_t entry_addr = pvz2_elf_find_symbol_in(&m, "JNI_OnLoad");
-        if (entry_addr == 0) continue; /* most libraries have none -- normal */
-
-        pvz2_log("[runtime] ---- running JNI_OnLoad [%s] at 0x%08x ----", m.name, entry_addr);
-
-        GuestThreadCtx &ctx = main_ctx(img, rt);
-        GuestCallSetup setup;
-        setup.r0 = dex::kJavaVmPtrAddr; /* JavaVM* vm */
-        setup.r1 = 0;                   /* void* reserved */
-        setup.sp = kStackTop;
-        setup.lr = img->trampoline_base;
-        setup.entry_pc = entry_addr;
-        apply_call_setup(ctx.jit, ctx.env, img, setup);
-
-        Dynarmic::HaltReason hr = run_jit_sliced(ctx.jit, ctx.env);
-        const std::uint32_t ret = ctx.jit.Regs()[0];
-        pvz2_log("[runtime] JNI_OnLoad [%s] returned 0x%08x, halt_reason=0x%08x, import_calls=%u, "
-                    "jni_calls=%u, ticks_used=%llu",
-                    m.name, ret, static_cast<unsigned>(hr), ctx.env.import_calls,
-                    ctx.env.jni_calls, (unsigned long long)ctx.env.ticks_used);
-
-        /* It returns the JNI version it wants, or JNI_ERR. A library that
-         * refuses here has NOT set up its globals, and every later call into it
-         * dereferences them -- so say it now rather than let it surface as a
-         * null branch somewhere unrelated. */
-        if ((std::int32_t)ret < 0) {
-            pvz2_log("[!] %s's JNI_OnLoad failed (JNI_ERR) -- its JavaVM and any cached "
-                        "classes are unset; calls into it will branch through NULL", m.name);
-        }
-        ++ran;
-    }
-    if (ran == 0) pvz2_log("[runtime] symbol 'JNI_OnLoad' not found in any module, skipping");
+    /* Each module's JNI_OnLoad is now invoked directly in run_init_array as each module
+     * is initialized in dependency order (matching Android's System.loadLibrary order). */
+    (void)img;
+    (void)rt;
 }
 
 void run_export(pvz2_elf_image_t *img, GuestRuntime *rt, const char *entry_name,

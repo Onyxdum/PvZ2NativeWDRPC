@@ -1,4 +1,9 @@
 ; === 1. NIVEAUX (Nouveaux et sauvegardes via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(?::\d+)?$ | Casse-vase | Égypte ancienne
+regex:state:Board Level=vasebreaker_pirate(?::\d+)?$ | Casse-vase | Mers pirates
+regex:state:Board Level=vasebreaker_cowboy(?::\d+)?$ | Casse-vase | Far West
+regex:state:Board Level=vasebreaker_future(?::\d+)?$ | Casse-vase | Futur éloigné
+regex:state:Board Level=vasebreaker_dark(?::\d+)?$ | Casse-vase | Moyen Âge
 regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Briseur de vase | Égypte antique - Niveau $1
 regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Briseur de vase | Mers pirates - Niveau $1
 regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Briseur de vase | Far West - Niveau $1
@@ -95,12 +100,20 @@ state:GameStateMgr State=GAME_Almanac | Dans l'Almanach | Consultation des plant
 state:GameStateMgr State=GAME_Store | Dans la Boutique | Améliorations et plantes
 state:GameStateMgr State=GAME_ZenGarden | Jardin zen | Soin des plantes
 state:GameStateMgr State=GAME_ArcadeMenu | Briseur de vase | Choix du niveau
+state:ArcadeMenu Shown=true | Casse-vase | Choix du niveau
 state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Dans le menu principal
+state:GameStateMgr State=GAME_JoustOrAdventureSelector | Menu Principal | Choix du mode de jeu
+state:GameStateMgr State=GAME_JoustLoadDashboard | Battlez | Dans l'arène
 
 rsb:ZenGardenGroup_ | Jardin zen | Soin des plantes
 rsb:DelayLoad_Background_Zen | Jardin zen | Soin des plantes
 rsb:UI_Quests_ | Carnet de voyage | Consultation des quêtes
-temp:rsb:UI_Almanac_ | Dans l'Almanach | Consultation des plantes et zombies
+temp:rsb:UI_Almanac_Almanac_ | Dans l'Almanach | Consultation des plantes et zombies
+temp:state:Dialog=PinataReward | Récompenses | Ouverture de piñata
+temp:state:Dialog=PVZ2UIPinataRewardDialog | Récompenses | Ouverture de piñata
+temp:rsb:SpinePinatas_ | Récompenses | Ouverture de piñata
+temp:rsb:PinataRewards_ | Récompenses | Ouverture de piñata
+temp:rsb:PrizePinata_ | Récompenses | Ouverture de piñata
 rsb:UI_VaseBreakerMenu_ | Briseur de vase | Choix du niveau
 
 ; === 5. CARTES DES MONDES ===

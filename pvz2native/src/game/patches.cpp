@@ -123,6 +123,9 @@ unsigned patch_gate_list(pvz2_elf_image_t *img, const std::uint32_t *gates, std:
     return patched;
 }
 
+bool install_svc_at(pvz2_elf_image_t *img, std::uint32_t offset, std::uint32_t expect_word,
+                    const char *enter_name, ImportHandler enter_fn, const char *what);
+
 /* Replaces one instruction, but only if it is exactly the one the table
  * promised -- a mismatch means the address belongs to another build and writing
  * over it would corrupt the engine silently, so it is reported and skipped. */
@@ -236,6 +239,16 @@ bool accept_receipt_locally(pvz2_elf_image_t *img) {
                                          kMovR1Zero, "receipt: finish without the server");
     const bool verdict = rewrite_word(img, sym().patch.purchase_receipt_verdict, kMovR0Zero,
                                       kMovR0One, "receipt: verdict");
+    if (sym().patch.purchase_delivery_gate != 0) {
+        const std::uint32_t gate = sym().patch.purchase_delivery_gate;
+        if (in_image(img, gate)) {
+            const std::uint32_t w = read_word(img, gate);
+            if ((w & 0xFF000000u) == 0x0A000000u) {
+                write_word(img, gate, kNopMovR0R0);
+                pvz2_log("[patch] purchase delivery gate at 0x%x bypassed (forced delivered)", gate);
+            }
+        }
+    }
     if (finish_now == verdict) return finish_now;
 
     /* Exactly one landed. Say so plainly rather than leaving a half-patched
@@ -250,16 +263,18 @@ static std::string s_locked_boss_name;
 
 void zomboss_stage_hook(GuestCall &call) {
     const std::uint32_t zomboss = call.arg(0);
-    const std::uint32_t stage = call.arg(1);
+    const std::uint32_t stage_arg = call.arg(1);
+    /* In 6.6.1 stage is already 1-indexed (1, 2, 3...); in 4.5.2 it is 0-indexed (0, 1, 2...). */
+    const std::uint32_t phase = (std::strcmp(sym().version, "6.6.1") == 0) ? stage_arg : (stage_arg + 1);
     if (pvz2_presence_enabled()) {
         char buf[64];
-        std::snprintf(buf, sizeof(buf), "Board BossPhase=%u", stage + 1);
+        std::snprintf(buf, sizeof(buf), "Board BossPhase=%u", phase);
         pvz2_presence_note("state", buf);
 
         std::string detected_boss;
-        if (stage == 0) {
+        if (phase <= 1) {
             s_locked_boss_name.clear();
-        } else if (stage >= 3) {
+        } else if (phase > 3) {
             detected_boss = "eighties";
             s_locked_boss_name = "eighties";
         } else if (!s_locked_boss_name.empty()) {
@@ -318,8 +333,8 @@ void zomboss_stage_hook(GuestCall &call) {
                     }
                 }
             }
-            // Also check inline bytes on stage 0 in case strings are short/inline
-            if (detected_boss.empty() && stage == 0) {
+            // Also check inline bytes on stage 0/1 in case strings are short/inline
+            if (detected_boss.empty() && phase <= 1) {
                 for (std::uint32_t off = 0; off + 8 <= 0x800; ++off) {
                     char b[9];
                     for (int k = 0; k < 8; ++k) b[k] = (char)std::tolower((unsigned char)call.read8(zomboss + off + k));
@@ -443,6 +458,24 @@ void game_apply_patches(pvz2_elf_image_t *img) {
 void game_apply_late_patches(pvz2_elf_image_t *img) {
     if (img == nullptr) return;
     if (sym().patch.zomboss_setup_stage == 0) return;
+
+    /* Hook ZombieZombossMech::SetupStage directly at its entry point */
+    const std::uint32_t target = sym().patch.zomboss_setup_stage;
+    const std::uint32_t expect = (std::strcmp(sym().version, "6.6.1") == 0) ? 0xe92d4ff0u : 0xe92d48f0u;
+    if (in_image(img, target) && read_word(img, target) == expect) {
+        install_svc_at(img, target, expect, "zomboss.stage.enter", [](GuestCall &call) {
+            zomboss_stage_hook(call);
+            if (std::strcmp(sym().version, "6.6.1") == 0) {
+                emulate_push(call, {4, 5, 6, 7, 8, 9, 10, 11}, call.lr());
+            } else {
+                emulate_push(call, {4, 5, 6, 7, 11}, call.lr());
+            }
+            call.no_return();
+            call.regs[15] = call.img->so_base + sym().patch.zomboss_setup_stage + 4;
+        }, "zomboss stage probe");
+        pvz2_log("[patch] hooked zomboss stage entry at 0x%x directly", target);
+        return;
+    }
 
     const std::uint32_t trampoline =
         make_guest_callback("ZombieZombossMech.SetupStage", zomboss_stage_hook);
@@ -816,7 +849,8 @@ std::string guest_std_string(GuestCall &c, std::uint32_t p) {
 }
 
 std::uint32_t read_guest_lawn_app(GuestCall &c) {
-    const std::uint32_t got_slot = c.img->so_base + 0x110c734u;
+    if (sym().global.lawn_app_got == 0) return 0;
+    const std::uint32_t got_slot = c.img->so_base + sym().global.lawn_app_got;
     if (!c.in_bounds(got_slot, 4)) return 0;
     const std::uint32_t ptr_addr = c.read32(got_slot);
     if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
@@ -824,7 +858,8 @@ std::uint32_t read_guest_lawn_app(GuestCall &c) {
 }
 
 std::uint32_t read_guest_gsm(GuestCall &c) {
-    const std::uint32_t got_slot = c.img->so_base + 0x110c7a0u;
+    if (sym().global.gsm_got == 0) return 0;
+    const std::uint32_t got_slot = c.img->so_base + sym().global.gsm_got;
     if (!c.in_bounds(got_slot, 4)) return 0;
     const std::uint32_t ptr_addr = c.read32(got_slot);
     if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
@@ -833,7 +868,8 @@ std::uint32_t read_guest_gsm(GuestCall &c) {
 
 std::string read_guest_worldmap_node(GuestCall &c) {
     if (!c.img || c.img->so_base == 0) return "";
-    const std::uint32_t slot = c.img->so_base + 0x115bc00u;
+    if (sym().global.world_map_slot == 0) return "";
+    const std::uint32_t slot = c.img->so_base + sym().global.world_map_slot;
     if (!c.in_bounds(slot, 4)) return "";
     const std::uint32_t mgr = c.read32(slot);
     if (mgr == 0 || !c.in_bounds(mgr + 0x84u, 12)) return "";
@@ -1339,6 +1375,8 @@ void zen_state_guard_enter(GuestCall &c) {
 
 void game_install_reward_screen_fix(pvz2_elf_image_t *img) {
     if (img == nullptr) return;
+    /* The reward screen fix and MD34 credits hooks are strictly mapped for 4.5.2 */
+    if (std::strcmp(sym().version, "4.5.2") != 0) return;
     const auto &p = sym().patch;
     install_svc_at(img, p.scr_create, kScrCreatePush, "scr.create", scr_create, "screen create");
     install_svc_at(img, p.scr_destroy, kScrDestroyPush, "scr.destroy", scr_destroy, "screen destroy");

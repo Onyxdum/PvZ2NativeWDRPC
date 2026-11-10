@@ -148,6 +148,13 @@ const GameSymbols kVersions[] = {
             /* LawnApp is not located yet; the driver is the pointer
              * onSurfaceCreated and onDrawFrame dereference (1.6's dword_DC8FD4). */
             .app_driver = 0x117a734,
+            .lawn_app_got   = 0x110c734,
+            .gsm_got        = 0x110c7a0,
+            .world_map_slot = 0x115bc00,
+            .lawn_app_board = 1668,
+            .board_state    = 156,
+            .board_pause_sources = 1084,
+            .board_level_num     = 184,
         },
         .jni_native = {
             /* 5-entry HTTP array at 0x10a5978 -- previous map pointed Error at
@@ -237,6 +244,7 @@ const GameSymbols kVersions[] = {
              * delivering; 1 is what sub_738F3C writes when a real server replies
              * "passed". */
             .purchase_receipt_verdict = 0x737ea4,
+            .purchase_delivery_gate   = 0x7305f0,
             .zomboss_setup_stage       = 0xa56f60,
             .zomboss_stage_init_call   = 0xa520d4,
             .zomboss_stage_change_call = 0xa57444,
@@ -250,6 +258,80 @@ const GameSymbols kVersions[] = {
         .fingerprint_game_app_init = 0xE24DD084E92D4FF0ull, /* PUSH {R4-R11,LR}; SUB SP,SP,#0x84    */
         .game_app_init_args      = kGameAppInitArgsLegacy,
         .game_app_init_arg_count = kCount(kGameAppInitArgsLegacy),
+    },
+
+    /* --- 6.6.1 (2017, the Battlez / Arena update, armeabi-v7a, 20MB) -------
+     *
+     * versionCode 316, pairs with main.316.com.ea.game.pvz2_row.obb.
+     *
+     * Structurally this is already the 9.6.1 engine, not the 4.5.2 one: the
+     * natives carry the Native_ prefix, GameAppInitialize declares the same
+     * seven objects (no AndroidFacebookDriver -- the JNI signature string is
+     * byte-identical to 9.6.1's), the lifecycle array has the same 15 entries
+     * including the three (Z)V Notify* setters, and libNimble.so is a
+     * DT_NEEDED dependency (the only one that is not shimmed; it is 13 KB of
+     * JNI glue and must sit beside libPVZ2.so). No libc++_shared.so yet -- it
+     * still links the system libstdc++. And unlike 9.6.1 there is no
+     * Native_createNativeApplicationLifecycleObserver.
+     *
+     * JNINativeMethod arrays, all {name, sig, fn}, located by decoding them
+     * whole (scratch dump_jni_tables.py):
+     *   0x12d6f10 (3)  GameAppInitialize, GameAppTeardown, getGooglePlayAPIKey
+     *   0x12d6f38 (15) the lifecycle family
+     *   0x12d7020 (6)  the surface family + PumpMessageQueue + Cloud*Loaded
+     *   0x12d76f0 (3)  GooglePlayPurchaseDriver: FireDidRefresh/PaymentComplete/Incomplete
+     *   0x12d79a8 (5)  the HTTP callbacks
+     *
+     * patch/probe/input: not mapped yet. The 4.5.2 store, LoD and credits
+     * rewrites mean nothing here, so the engine runs its own offline paths. */
+    {
+        .version = "6.6.1",
+        .native = {
+            .game_app_initialize                = 0xd6fe90,
+            .application_will_finish_launching  = 0xd709b0,
+            .application_did_finish_launching   = 0xd70a6c, /* a bare BX LR */
+            .application_will_become_foreground = 0xd70a78,
+            .application_did_become_active      = 0xd70a7c,
+            .on_surface_created                 = 0xd75688,
+            .on_surface_changed                 = 0xd7571c,
+            .on_draw_frame                      = 0xd757dc,
+            .pump_message_queue                 = 0xd75678,
+            .notify_surface_change              = 0xd70bfc,
+            .notify_app_running                 = 0xd70be8,
+            .notify_focus_change                = 0xd70bd4,
+        },
+        .surface_changed_pad = 1, /* body does MOV R5,R2 / MOV R4,R3, as in 9.6.1 */
+        .global = {
+            /* onDrawFrame: LDR r0,=0x5e833c; LDR r0,[pc,r0] at 0xd757e0 -> 0x135db24,
+             * past the end of the file-backed data, i.e. the .bss global itself. */
+            .app_driver     = 0x135db24,
+            .lawn_app_got   = 0x12e87bc,
+            .gsm_got        = 0x12e87c0,
+            .world_map_slot = 0,
+            .lawn_app_board = 1724,
+            .board_state    = 152,
+            .board_pause_sources = 1104,
+            .board_level_num     = 180,
+        },
+        .jni_native = {
+            .http_received_response    = 0xd88e20,
+            .http_received_data        = 0xd88eb4,
+            .http_transaction_complete = 0xd89000,
+            .http_transaction_error    = 0xd89094,
+        },
+        .patch = {
+            .purchase_online_gate   = { 0x93f704, 0x93fbf8, 0x93fdf8 },
+            .purchase_local_receipt = 0x94b810,
+            .purchase_receipt_verdict = 0x94b8a8,
+            .purchase_delivery_gate = 0x941d38,
+            .zomboss_setup_stage    = 0xa57c50,
+            .zomboss_stage_init_call = 0xa566dc,
+            .zomboss_stage_change_call = 0xa5681c,
+        },
+        .fingerprint_draw_frame    = 0xE79F0000E59F0004ull, /* LDR R0,[PC,#4]; LDR R0,[PC,R0]     */
+        .fingerprint_game_app_init = 0xE28DB01CE92D4FF0ull, /* PUSH {R4-R11,LR}; ADD R11,SP,#0x1C */
+        .game_app_init_args      = kGameAppInitArgs961,
+        .game_app_init_arg_count = kCount(kGameAppInitArgs961),
     },
 
     /* --- 9.6.1 (PvZ2 Reflourished 1.3.1, armeabi-v7a, 30MB) ---------------

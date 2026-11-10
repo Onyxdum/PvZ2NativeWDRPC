@@ -11,6 +11,7 @@
 #include <pvz2native/dependencies/vfs.h>
 #include <pvz2native/dex/config_store.h>
 #include <pvz2native/dex/dex.h>
+#include <pvz2native/game/symbols.h>
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/input/input_queue.h>
 #include <pvz2native/presence.h>
@@ -106,22 +107,23 @@ void log_records(DexCall &d, const std::vector<std::uint8_t> &r) {
 bool is_board_paused(DexCall &d) {
     if (!pvz2_presence_enabled()) return false;
     if (!d.c.img || d.c.img->so_base == 0) return false;
-    const std::uint32_t got_slot = d.c.img->so_base + 0x110c734u;
+    if (sym().global.lawn_app_got == 0 || sym().global.lawn_app_board == 0 ||
+        sym().global.board_pause_sources == 0 || sym().global.board_state == 0) return false;
+    const std::uint32_t got_slot = d.c.img->so_base + sym().global.lawn_app_got;
     if (!d.c.in_bounds(got_slot, 4)) return false;
     const std::uint32_t app_ptr_addr = d.c.read32(got_slot);
     if (app_ptr_addr == 0 || !d.c.in_bounds(app_ptr_addr, 4)) return false;
     const std::uint32_t lawn_app = d.c.read32(app_ptr_addr);
-    if (lawn_app == 0 || !d.c.in_bounds(lawn_app + 1668u, 4)) return false;
-    const std::uint32_t board = d.c.read32(lawn_app + 1668u);
-    if (board == 0 || !d.c.in_bounds(board + 1084u, 4)) return false;
-    if (!d.c.in_bounds(board + 156u, 4)) return false;
-    const std::uint32_t bstate = d.c.read32(board + 156u);
+    if (lawn_app == 0 || !d.c.in_bounds(lawn_app + sym().global.lawn_app_board, 4)) return false;
+    const std::uint32_t board = d.c.read32(lawn_app + sym().global.lawn_app_board);
+    if (board == 0 || !d.c.in_bounds(board + sym().global.board_pause_sources, 4)) return false;
+    if (!d.c.in_bounds(board + sym().global.board_state, 4)) return false;
+    const std::uint32_t bstate = d.c.read32(board + sym().global.board_state);
     if (bstate == 0 || bstate == 9) return false; // Initial or EndLevel
-    const std::uint32_t pause_set = d.c.read32(board + 1084u);
+    const std::uint32_t pause_set = d.c.read32(board + sym().global.board_pause_sources);
     if (pause_set == 0 || !d.c.in_bounds(pause_set + 12u, 4)) return false;
-    const std::uint32_t root = d.c.read32(pause_set + 8u);
     const std::uint32_t count = d.c.read32(pause_set + 12u);
-    return root != 0 && count > 0;
+    return count > 0;
 }
 
 /* Same walk as log_records, but only to learn whether a touch started or ended
@@ -282,6 +284,7 @@ static const std::unordered_map<std::string_view, std::int32_t> kLevelChallengeG
     {"cowboy19", 2},
     {"cowboy20", 1},
     {"cowboy21", 2},
+    {"cowboy22", 2},
     {"cowboy23", 2},
     {"cowboy24", 1},
     {"cowboy4", 1},
@@ -902,21 +905,23 @@ constexpr const char *kCrashlyticsClass = "com/crashlytics/android/Crashlytics";
  * current stage/streak/level number (1, 2, 3...). */
 std::int32_t read_board_level_number(DexCall &d) {
     if (!d.c.img || d.c.img->so_base == 0) return 0;
-    const std::uint32_t got_slot = d.c.img->so_base + 0x110c734u;
+    if (sym().global.lawn_app_got == 0 || sym().global.lawn_app_board == 0 || sym().global.board_level_num == 0) return 0;
+    const std::uint32_t got_slot = d.c.img->so_base + sym().global.lawn_app_got;
     if (!d.c.in_bounds(got_slot, 4)) return 0;
     const std::uint32_t app_ptr_addr = d.c.read32(got_slot);
     if (app_ptr_addr == 0 || !d.c.in_bounds(app_ptr_addr, 4)) return 0;
     const std::uint32_t lawn_app = d.c.read32(app_ptr_addr);
-    if (lawn_app == 0 || !d.c.in_bounds(lawn_app + 1668u, 4)) return 0;
-    const std::uint32_t board = d.c.read32(lawn_app + 1668u);
-    if (board == 0 || !d.c.in_bounds(board + 184u, 4)) return 0;
-    const std::int32_t lvl = (std::int32_t)d.c.read32(board + 184u);
+    if (lawn_app == 0 || !d.c.in_bounds(lawn_app + sym().global.lawn_app_board, 4)) return 0;
+    const std::uint32_t board = d.c.read32(lawn_app + sym().global.lawn_app_board);
+    if (board == 0 || !d.c.in_bounds(board + sym().global.board_level_num, 4)) return 0;
+    const std::int32_t lvl = (std::int32_t)d.c.read32(board + sym().global.board_level_num);
     return (lvl > 0 && lvl < 100000) ? lvl : 0;
 }
 
 static std::string read_guest_worldmap_node_dex(DexCall &d) {
     if (!d.c.img || d.c.img->so_base == 0) return "";
-    const std::uint32_t slot = d.c.img->so_base + 0x115bc00u;
+    if (sym().global.world_map_slot == 0) return "";
+    const std::uint32_t slot = d.c.img->so_base + sym().global.world_map_slot;
     if (!d.c.in_bounds(slot, 4)) return "";
     const std::uint32_t mgr = d.c.read32(slot);
     if (mgr == 0 || !d.c.in_bounds(mgr + 0x84u, 12)) return "";
@@ -947,6 +952,30 @@ void crashlytics_set_string(DexCall &d) {
 
     const bool presence = pvz2_presence_enabled();
     if (presence) {
+        if (key == "Last Force LoadGroups") {
+            if (val.find("UI_PauseMenu") != std::string::npos) {
+                pvz2_presence_note("state", "Board Paused=true");
+            }
+            if (val.find("UI_Quests") != std::string::npos) {
+                pvz2_presence_note("state", "TravelLog Shown=true");
+            }
+            if (val.find("PinataRewards") != std::string::npos ||
+                val.find("PrizePinata") != std::string::npos ||
+                val.find("SpinePinatas") != std::string::npos) {
+                pvz2_presence_note("state", "Dialog=PinataReward");
+            }
+        } else if (key == "Last DeleteGroups") {
+            if (val.find("UI_PauseMenu") != std::string::npos) {
+                pvz2_presence_note("state", "Board Paused=false");
+            }
+            if (val.find("UI_Quests") != std::string::npos) {
+                pvz2_presence_note("state", "TravelLog Shown=false");
+            }
+            if (val.find("PinataRewards") != std::string::npos) {
+                pvz2_presence_note("state", "DialogClose=PinataReward");
+            }
+        }
+
         /* Filter out high-frequency resource tracking strings from trace/queue */
         if (key != "Last Serialized Object Class" &&
             key != "Resgroup Preload Refcounts" &&
@@ -954,6 +983,8 @@ void crashlytics_set_string(DexCall &d) {
             key != "Last Force LoadGroups") {
             const std::string kv = key + "=" + val;
             pvz2_presence_note("state", kv.c_str());
+        } else if (key == "Last Serialized Object Class" && val == "PVZ2UIPinataRewardDialog") {
+            pvz2_presence_note("state", "Dialog=PinataReward");
         }
     }
 
@@ -1011,7 +1042,7 @@ void crashlytics_set_string(DexCall &d) {
             pvz2_presence_note("state", "Board Goals=0");
         }
     } else if (key == "Board State") {
-        if (val == "LoadingLevel") {
+        if (val == "LoadingLevel" || val == "Initial") {
             g_has_seed_chooser = false;
             g_in_seed_chooser = false;
             g_has_protect_plant = false;
@@ -1022,8 +1053,29 @@ void crashlytics_set_string(DexCall &d) {
             const int goals = count_level_challenges(g_last_board_level);
             g_last_goals_count = goals;
             if (presence) pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+        } else if (val == "LoadingSave") {
+            g_in_seed_chooser = false;
+            if (presence) {
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+            }
+            const int goals = count_level_challenges(g_last_board_level);
+            g_last_goals_count = goals;
+            if (presence) pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
         } else if (val == "LevelIntro") {
-            if (g_has_seed_chooser) {
+            if (g_has_seed_chooser ||
+                (!g_last_board_level.empty() &&
+                 g_last_board_level.find("vasebreaker") == std::string::npos &&
+                 g_last_board_level.find("tutorial") == std::string::npos &&
+                 g_last_board_level.find("zomboss") == std::string::npos &&
+                 g_last_board_level.find("dangerroom") == std::string::npos &&
+                 g_last_board_level != "egypt25" && g_last_board_level != "pirate25" &&
+                 g_last_board_level != "cowboy25" && g_last_board_level != "future25" &&
+                 g_last_board_level != "dark20" && g_last_board_level != "beach32" &&
+                 g_last_board_level != "iceage30" && g_last_board_level != "iceage32" &&
+                 g_last_board_level != "lostcity32" && g_last_board_level != "eighties32" &&
+                 g_last_board_level != "dino32" && g_last_board_level != "modern32" &&
+                 g_last_board_level != "modern33" && g_last_board_level != "modern34")) {
                 g_in_seed_chooser = true;
                 if (presence) pvz2_presence_note("state", "Board Chooser=true");
             }

@@ -1,4 +1,9 @@
 ; === 1. LIVELLI (Nuovi e salvataggi via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(?::\d+)?$ | Spaccavasi | Antico Egitto
+regex:state:Board Level=vasebreaker_pirate(?::\d+)?$ | Spaccavasi | Mari dei pirati
+regex:state:Board Level=vasebreaker_cowboy(?::\d+)?$ | Spaccavasi | Selvaggio West
+regex:state:Board Level=vasebreaker_future(?::\d+)?$ | Spaccavasi | Futuro lontano
+regex:state:Board Level=vasebreaker_dark(?::\d+)?$ | Spaccavasi | Secoli bui
 regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Spaccavasi | Antico Egitto - Livello $1
 regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Spaccavasi | Mari dei pirati - Livello $1
 regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Spaccavasi | Selvaggio west - Livello $1
@@ -95,12 +100,20 @@ state:GameStateMgr State=GAME_Almanac | Nell'Almanacco | Consultando piante e zo
 state:GameStateMgr State=GAME_Store | Nel Negozio | Potenziamenti e piante
 state:GameStateMgr State=GAME_ZenGarden | Giardino zen | Curando le piante
 state:GameStateMgr State=GAME_ArcadeMenu | Spaccavasi | Scelta del livello
+state:ArcadeMenu Shown=true | Spaccavasi | Scelta livello
 state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Nel menu principale
+state:GameStateMgr State=GAME_JoustOrAdventureSelector | Menu Principale | Scelta modalità di gioco
+state:GameStateMgr State=GAME_JoustLoadDashboard | Battlez | Nell'arena
 
 rsb:ZenGardenGroup_ | Giardino zen | Curando le piante
 rsb:DelayLoad_Background_Zen | Giardino zen | Curando le piante
 rsb:UI_Quests_ | Diario di viaggio | Controllando le missioni
-temp:rsb:UI_Almanac_ | Nell'Almanacco | Consultando piante e zombi
+temp:rsb:UI_Almanac_Almanac_ | Nell'Almanacco | Consultando piante e zombi
+temp:state:Dialog=PinataReward | Ricompense | Apertura pignatta
+temp:state:Dialog=PVZ2UIPinataRewardDialog | Ricompense | Apertura pignatta
+temp:rsb:SpinePinatas_ | Ricompense | Apertura pignatta
+temp:rsb:PinataRewards_ | Ricompense | Apertura pignatta
+temp:rsb:PrizePinata_ | Ricompense | Apertura pignatta
 rsb:UI_VaseBreakerMenu_ | Spaccavasi | Scelta del livello
 
 ; === 5. MAPPE DEI MONDI ===

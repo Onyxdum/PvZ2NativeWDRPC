@@ -117,6 +117,27 @@ struct GameSymbols {
     struct {
         std::uint32_t app;
         std::uint32_t app_driver;
+
+        /* GOT slots / globals the Rich Presence, credits and pause readers walk.
+         * They used to be 4.5.2 literals at their use sites (dex hooks, liblog,
+         * patches), so on any other build they read whatever happened to sit at
+         * those offsets. 0 = not mapped: every reader then reports "unknown".
+         *   lawn_app_got   -- GOT slot holding &LawnApp (deref twice for the app).
+         *   gsm_got        -- GOT slot holding &GameStateManager.
+         *   world_map_slot -- global holding the world-map manager (node id at +0x84). */
+        std::uint32_t lawn_app_got;
+        std::uint32_t gsm_got;
+        std::uint32_t world_map_slot;
+
+        /* Board and pause offsets within LawnApp / Board for Rich Presence & pause check:
+         *   lawn_app_board      -- offset of LawnApp::mBoard inside LawnApp (1668 in 4.5.2, 1724 in 6.6.1).
+         *   board_state         -- offset of Board::mBoardState (156 in 4.5.2, 152 in 6.6.1).
+         *   board_pause_sources -- offset of Board::mPauseSources (1084 in 4.5.2, 1104 in 6.6.1).
+         *   board_level_num     -- offset of Board::mLevelNumber (184 in 4.5.2, 180 in 6.6.1). */
+        std::uint32_t lawn_app_board;
+        std::uint32_t board_state;
+        std::uint32_t board_pause_sources;
+        std::uint32_t board_level_num;
     } global;
 
     /* Guest functions the harness calls directly rather than through a native. */
@@ -268,6 +289,7 @@ struct GameSymbols {
          * "Unable to contact store" dialog, which is that branch being honest. */
         std::uint32_t purchase_local_receipt;
         std::uint32_t purchase_receipt_verdict;
+        std::uint32_t purchase_delivery_gate;
 
         /* Zomboss stage transitions.
          * setup_stage is ZombieZombossMech::SetupStage.
