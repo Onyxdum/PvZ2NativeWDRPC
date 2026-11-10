@@ -146,7 +146,7 @@ BINARY_F(m_nextafterf, std::nextafter(x, y))
  * so they differ in whether the result needs r1 as well. */
 void m_lrint(GuestCall &c) { c.set_result((std::uint32_t)(long)std::lrint(c.argd(0))); }
 void m_llrint(GuestCall &c) { c.set_result64((std::uint64_t)std::llrint(c.argd(0))); }
-void m_lroundf(GuestCall &c) { c.set_result((std::uint32_t)(long)std::lroundf(c.argf(0))); }
+void m_lroundf(GuestCall &c) { c.set_result((std::uint32_t)(long)std::lround(c.argf(0))); }
 
 /* double frexp(double value, int *exp) */
 void m_frexp(GuestCall &c) {
@@ -165,7 +165,7 @@ void m_frexpf(GuestCall &c) {
     float value = c.argf(0);
     std::uint32_t exp_ptr = c.arg(1);
     int exp = 0;
-    float frac = std::frexpf(value, &exp);
+    float frac = std::frexp(value, &exp);
     if (exp_ptr != 0 && c.in_bounds(exp_ptr, 4)) {
         c.write32(exp_ptr, (std::uint32_t)exp);
     }
