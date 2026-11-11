@@ -261,6 +261,11 @@ const Setting kSettings[] = {
      "Show the achievement unlock popup and sound. Achievements are still saved\n"
      "when this is off; only the toast is suppressed. Default on.",
      nullptr, "1"},
+    {"game", "difficulty", nullptr, Kind::kLower,
+     offsetof(pvz2_config_t, difficulty), sizeof(g_config.difficulty),
+     "Game difficulty mode: auto, off, 1..8, hard_plus, hard_plus_plus, point_zero.\n"
+     "Default is auto (original dynamic difficulty).",
+     "auto", nullptr},
 
     {"game", "package_name", nullptr, Kind::kString, offsetof(pvz2_config_t, package_name),
      sizeof(g_config.package_name),
@@ -1329,6 +1334,10 @@ void finish_defaults(const char *base_dir) {
         std::snprintf(g_config.player_uuid, sizeof(g_config.player_uuid), "%s", player_uuid.c_str());
     }
 
+    if (g_config.difficulty[0] == '\0') {
+        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
+    }
+
     if (g_config.fps_limit <= 0) {
         g_config.fps_limit = detected_default_fps_limit();
     }
@@ -2252,4 +2261,16 @@ extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const cha
         for (const auto &l : lines) std::fputs(l.c_str(), f);
         std::fclose(f);
     }
+}
+
+const char *pvz2_config_get_difficulty(void) {
+    if (g_config.difficulty[0] == '\0') {
+        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
+    }
+    return g_config.difficulty;
+}
+
+void pvz2_config_set_difficulty(const char *mode) {
+    if (!mode || mode[0] == '\0') mode = "auto";
+    std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "%s", mode);
 }

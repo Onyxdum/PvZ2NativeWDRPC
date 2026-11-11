@@ -457,6 +457,174 @@ void game_apply_patches(pvz2_elf_image_t *img) {
 
 void game_apply_late_patches(pvz2_elf_image_t *img) {
     if (img == nullptr) return;
+
+    /* Dynamic Difficulty override hook */
+    if (sym().patch.dynamic_difficulty_fn != 0) {
+        const std::uint32_t dda_target = sym().patch.dynamic_difficulty_fn;
+        constexpr std::uint32_t kDdaPush = 0xe92d4830u; /* push {r4, r5, fp, lr} */
+        install_svc_at(img, dda_target, kDdaPush, "board.dynamic_difficulty", [](GuestCall &call) {
+            const char *mode = pvz2_config_get_difficulty();
+            if (!mode || std::strcmp(mode, "auto") == 0) {
+                emulate_push(call, {4, 5, 11}, call.lr());
+                call.no_return();
+                call.regs[15] = call.img->so_base + sym().patch.dynamic_difficulty_fn + 4;
+                return;
+            }
+
+            std::uint32_t tier = 999;
+            if (std::strcmp(mode, "off") == 0) {
+                tier = 999;
+            } else if (mode[0] >= '1' && mode[0] <= '8' && mode[1] == '\0') {
+                tier = static_cast<std::uint32_t>(mode[0] - '1');
+            } else if (std::strcmp(mode, "hard_plus") == 0 ||
+                       std::strcmp(mode, "hard_plus_plus") == 0 ||
+                       std::strcmp(mode, "point_zero") == 0) {
+                tier = 7;
+            }
+            call.set_result(tier);
+        }, "dynamic difficulty override");
+    }
+
+    /* Dynamic extra wave zombies (+70% extra zombies in campaign waves for hard_plus_plus and point_zero) */
+    if (sym().patch.scripted_wave_spawn_fn != 0) {
+        const std::uint32_t sws_target = sym().patch.scripted_wave_spawn_fn;
+        constexpr std::uint32_t kSwsExpect = 0xe3520001u; /* cmp r2, #1 */
+        install_svc_at(img, sws_target, kSwsExpect, "wave.extra_zombies", [](GuestCall &call) {
+            const char *mode = pvz2_config_get_difficulty();
+            if (mode && (std::strcmp(mode, "hard_plus_plus") == 0 || std::strcmp(mode, "point_zero") == 0)) {
+                const std::uint32_t sb = call.regs[9];
+                const std::uint32_t total = call.regs[0];
+                const std::int32_t remaining = static_cast<std::int32_t>(call.regs[2]);
+
+                static std::unordered_map<std::uint32_t, int> s_wave_extra;
+                if (remaining < 1 && total > 0 && sb != 0) {
+                    auto it = s_wave_extra.find(sb);
+                    if (it == s_wave_extra.end()) {
+                        int extra = static_cast<int>(total * 0.70f + 0.99f);
+                        if (extra < 1) extra = 1;
+                        s_wave_extra[sb] = extra;
+                        it = s_wave_extra.find(sb);
+                    }
+
+                    if (it != s_wave_extra.end() && it->second > 0) {
+                        const int to_spawn = std::min(it->second, static_cast<int>(total));
+                        it->second -= to_spawn;
+                        const std::uint32_t new_spawned = total - to_spawn;
+                        call.write32(sb + 0x2c, new_spawned);
+                        call.regs[1] = new_spawned;
+                        call.regs[2] = to_spawn;
+                    } else if (it != s_wave_extra.end()) {
+                        s_wave_extra.erase(it);
+                    }
+                }
+
+                if (s_wave_extra.size() > 128) {
+                    s_wave_extra.clear();
+                }
+            }
+
+            if (static_cast<std::int32_t>(call.regs[2]) < 1) {
+                // Wave done: branch to 0x8948ec
+                call.no_return();
+                call.regs[15] = call.img->so_base + 0x8948ec;
+            } else {
+                // Spawn wave batch: fall through to 0x894768 (skip the blt at +4)
+                call.no_return();
+                call.regs[15] = call.img->so_base + sym().patch.scripted_wave_spawn_fn + 8;
+            }
+        }, "wave extra zombies");
+    }
+
+    /* Lawnmower suppression for hard_plus_plus and point_zero */
+    if (sym().patch.show_lawn_mowers_fn != 0) {
+        const std::uint32_t slm_target = sym().patch.show_lawn_mowers_fn;
+        const bool is_661 = (std::strcmp(sym().version, "6.6.1") == 0);
+        const std::uint32_t kSlmExpect = is_661 ? 0xe92d4df0u : 0xe92d47f0u;
+        install_svc_at(img, slm_target, kSlmExpect, "board.spawn_lawn_mower", [](GuestCall &call) {
+            const char *mode = pvz2_config_get_difficulty();
+            if (mode && (std::strcmp(mode, "hard_plus_plus") == 0 || std::strcmp(mode, "point_zero") == 0)) {
+                call.set_result(0);
+                return;
+            }
+            const bool is_v661 = (std::strcmp(sym().version, "6.6.1") == 0);
+            if (is_v661) {
+                emulate_push(call, {4, 5, 6, 7, 8, 10, 11}, call.lr());
+            } else {
+                emulate_push(call, {4, 5, 6, 7, 8, 9, 10}, call.lr());
+            }
+            call.no_return();
+            call.regs[15] = call.img->so_base + sym().patch.show_lawn_mowers_fn + 4;
+        }, "spawn lawn mower suppression");
+    }
+
+    /* Potion zombie attributes hook for Punto 0 */
+    if (sym().patch.zombie_spawn_hook != 0) {
+        const std::uint32_t zsh_target = sym().patch.zombie_spawn_hook;
+        const bool is_661 = (std::strcmp(sym().version, "6.6.1") == 0);
+        const std::uint32_t kZshExpect = is_661 ? 0xe1a05000u : 0xe1a00004u;
+        install_svc_at(img, zsh_target, kZshExpect, "zombie.spawn_attributes", [](GuestCall &call) {
+            const bool is_v661 = (std::strcmp(sym().version, "6.6.1") == 0);
+            const std::uint32_t zombie = is_v661 ? call.regs[0] : call.regs[4];
+
+            const char *mode = pvz2_config_get_difficulty();
+            if (mode && std::strcmp(mode, "point_zero") == 0 && zombie != 0 && call.in_bounds(zombie + 0x100, 4)) {
+                static std::mt19937 rng(1337);
+                std::uniform_int_distribution<int> dist_pct(1, 100);
+                if (dist_pct(rng) <= 35) {
+                    std::uniform_int_distribution<int> dist_type(0, 1);
+                    const int potion_type = dist_type(rng);
+                    if (potion_type == 0) {
+                        /* Speed Potion: 1.85x speed modifier, 0.92x scale */
+                        float speed = 1.0f;
+                        const std::uint32_t raw_speed = call.read32(zombie + 0xe8);
+                        std::memcpy(&speed, &raw_speed, sizeof(float));
+                        speed *= 1.85f;
+                        std::uint32_t new_speed;
+                        std::memcpy(&new_speed, &speed, sizeof(float));
+                        call.write32(zombie + 0xe8, new_speed);
+
+                        float scale = 0.92f;
+                        std::uint32_t new_scale;
+                        std::memcpy(&new_scale, &scale, sizeof(float));
+                        call.write32(zombie + 0xd8, new_scale);
+                        call.write32(zombie + 0xc0, new_scale);
+                    } else {
+                        /* Giant / Tough Potion: 1.38x visual scale, 2.5x max and cur HP */
+                        float scale = 1.38f;
+                        std::uint32_t new_scale;
+                        std::memcpy(&new_scale, &scale, sizeof(float));
+                        call.write32(zombie + 0xd8, new_scale);
+                        call.write32(zombie + 0xc0, new_scale);
+
+                        float max_hp = 0.0f;
+                        const std::uint32_t raw_max = call.read32(zombie + 0xd0);
+                        std::memcpy(&max_hp, &raw_max, sizeof(float));
+                        max_hp *= 2.5f;
+                        std::uint32_t new_max;
+                        std::memcpy(&new_max, &max_hp, sizeof(float));
+                        call.write32(zombie + 0xd0, new_max);
+
+                        float cur_hp = 0.0f;
+                        const std::uint32_t raw_cur = call.read32(zombie + 0xd4);
+                        std::memcpy(&cur_hp, &raw_cur, sizeof(float));
+                        cur_hp *= 2.5f;
+                        std::uint32_t new_cur;
+                        std::memcpy(&new_cur, &cur_hp, sizeof(float));
+                        call.write32(zombie + 0xd4, new_cur);
+                    }
+                }
+            }
+
+            if (is_v661) {
+                call.regs[5] = call.regs[0];
+            } else {
+                call.regs[0] = call.regs[4];
+            }
+            call.no_return();
+            call.regs[15] = call.img->so_base + sym().patch.zombie_spawn_hook + 4;
+        }, "zombie spawn attributes");
+    }
+
     if (sym().patch.zomboss_setup_stage == 0) return;
 
     /* Hook ZombieZombossMech::SetupStage directly at its entry point */

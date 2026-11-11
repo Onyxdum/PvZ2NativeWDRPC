@@ -120,6 +120,9 @@ typedef struct pvz2_config {
     char product_version_string[32];
     char player_uuid[64];
 
+    /* Dynamic Difficulty override: "auto", "off", "1".."8", "hard_plus", "hard_plus_plus", "point_zero" */
+    char difficulty[32];
+
     /* [video] -- how the window and the guest surface are sized.
      *
      * mode picks the launch resolution when width/height are left at 0:
@@ -323,6 +326,10 @@ void pvz2_config_set_lock_cursor(int lock_cursor);
 
 /* Updates [paths] so/obb, [game] package_name, and [game] product_version_string in memory and persists to config.ini. */
 void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name, const char *version_str);
+
+/* Difficulty mode accessors */
+const char *pvz2_config_get_difficulty(void);
+void pvz2_config_set_difficulty(const char *mode);
 
 #ifdef __cplusplus
 }  /* extern "C" */

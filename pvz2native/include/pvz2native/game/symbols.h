@@ -300,6 +300,11 @@ struct GameSymbols {
         std::uint32_t zomboss_stage_change_call;
         std::uint32_t company_link_allowed_fn;
         std::uint32_t company_button_skip_branch;
+        std::uint32_t dynamic_difficulty_fn;
+        std::uint32_t wave_spawn_fn;
+        std::uint32_t scripted_wave_spawn_fn;
+        std::uint32_t show_lawn_mowers_fn;
+        std::uint32_t zombie_spawn_hook;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.

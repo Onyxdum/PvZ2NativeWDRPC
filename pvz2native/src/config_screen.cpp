@@ -223,6 +223,12 @@ struct Strings {
 	const char *cloud_discord_rpc;
 	const char *view_credits;
 	const char *lock_cursor;
+	const char *difficulty;
+	const char *diff_auto;
+	const char *diff_off;
+	const char *diff_hard_plus;
+	const char *diff_hard_plus_plus;
+	const char *diff_point_zero;
 };
 
 static const Strings kStringsEN = {
@@ -257,7 +263,10 @@ static const Strings kStringsEN = {
 	"Add game to Steam",
 	"Discord Rich Presence",
 	"Credits",
-	"Lock Mouse to Window"
+	"Lock Mouse to Window",
+	"Difficulty", "Dynamic (Vanilla)", "Disabled (Level 0)",
+	"Hard + (Level 9)", "Hard ++ (70% More Zombies, No Mowers)",
+	"Point 0 (Hard ++ & Zombie Potions)"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -291,7 +300,10 @@ static const Strings kStringsES = {
 	"Añadir juego a Steam",
 	"Discord Rich Presence",
 	"Créditos",
-	"Bloquear ratón en ventana"
+	"Bloquear ratón en ventana",
+	"Dificultad", "Dinámica (Vanilla)", "Desactivada (Nivel 0)",
+	"Difícil + (Nivel 9)", "Difícil ++ (+70% Zombies, Sin Podadoras)",
+	"Punto 0 (Difícil ++ y Pociones)"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -325,7 +337,10 @@ static const Strings kStringsFR = {
 	"Ajouter le jeu à Steam",
 	"Discord Rich Presence",
 	"Crédits",
-	"Bloquer la souris dans la fenêtre"
+	"Bloquer la souris dans la fenêtre",
+	"Difficulté", "Dynamique (Original)", "Désactivée (Niveau 0)",
+	"Difficile + (Niveau 9)", "Difficile ++ (+70% Zombies, Sans Tondeuses)",
+	"Point 0 (Difficile ++ et Potions)"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -359,7 +374,10 @@ static const Strings kStringsDE = {
 	"Spiel zu Steam hinzufügen",
 	"Discord Rich Presence",
 	"Credits",
-	"Maus im Fenster sperren"
+	"Maus im Fenster sperren",
+	"Schwierigkeit", "Dynamisch (Original)", "Deaktiviert (Stufe 0)",
+	"Schwer + (Stufe 9)", "Schwer ++ (+70% Zombies, Keine Rasenmäher)",
+	"Punkt 0 (Schwer ++ und Tränke)"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -393,7 +411,10 @@ static const Strings kStringsPT = {
 	"Adicionar jogo à Steam",
 	"Discord Rich Presence",
 	"Créditos",
-	"Bloquear mouse na janela"
+	"Bloquear mouse na janela",
+	"Dificuldade", "Dinâmica (Original)", "Desativada (Nível 0)",
+	"Difícil + (Nível 9)", "Difícil ++ (+70% Zumbis, Sem Cortadores)",
+	"Ponto 0 (Difícil ++ e Poções)"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -427,7 +448,10 @@ static const Strings kStringsIT = {
 	"Aggiungi gioco a Steam",
 	"Discord Rich Presence",
 	"Riconoscimenti",
-	"Blocca mouse nella finestra"
+	"Blocca mouse nella finestra",
+	"Difficoltà", "Dinamica (Originale)", "Disattivata (Livello 0)",
+	"Difficile + (Livello 9)", "Difficile ++ (+70% Zombie, Senza Tosaerba)",
+	"Punto 0 (Difficile ++ e Pozioni)"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -1393,6 +1417,7 @@ struct EditConfig {
 	int  use_cdn      = 1;
 	int  rewrite_cdn  = 0;
 	int  lock_cursor  = 0;
+	char difficulty[32] = "auto";
 
 	void load_from_live() {
 		const pvz2_config_t *c = pvz2_config();
@@ -1404,6 +1429,7 @@ struct EditConfig {
 		SDL_strlcpy(locale,     c->user_locale,      sizeof(locale));
 		SDL_strlcpy(cur_symbol, c->currency_symbol,  sizeof(cur_symbol));
 		SDL_strlcpy(cur_code,   c->currency_code,    sizeof(cur_code));
+		SDL_strlcpy(difficulty, pvz2_config_get_difficulty(), sizeof(difficulty));
 		emulate_iap  = c->emulate_iap;
 		achievement_notifications = c->achievement_notifications;
 		use_cdn      = c->use_cdn;
@@ -1421,6 +1447,7 @@ struct EditConfig {
 			   strcmp(locale,     c->user_locale)     != 0 ||
 			   strcmp(cur_symbol, c->currency_symbol)  != 0 ||
 			   strcmp(cur_code,   c->currency_code)    != 0 ||
+			   strcmp(difficulty, pvz2_config_get_difficulty()) != 0 ||
 			   emulate_iap != c->emulate_iap ||
 			   achievement_notifications != c->achievement_notifications ||
 			   use_cdn != c->use_cdn ||
@@ -1432,7 +1459,7 @@ struct EditConfig {
 /* =========================================================================
  * Menu navigation
  * ========================================================================= */
-enum class Screen { Main, Resolution, Fps, Language, Currency, Bindings, BindEdit,
+enum class Screen { Main, Resolution, Fps, Language, Currency, Difficulty, Bindings, BindEdit,
                     GamepadBinds, GamepadBindPick, GamepadDevicePick, DisplayPick, Events,
                     CloudSave, CloudProviderPick, CloudTextEdit };
 
@@ -1895,6 +1922,18 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         else if (strcmp(g_edit.cur_code,"MXN")==0||strcmp(g_edit.cur_code,"ARS")==0) cur_name=str->cur_peso;
         items.push_back({str->currency, true, false, false, cur_name});
 
+        const char *diff_name = str->diff_auto;
+        if      (strcmp(g_edit.difficulty, "off") == 0) diff_name = str->diff_off;
+        else if (strcmp(g_edit.difficulty, "hard_plus") == 0) diff_name = str->diff_hard_plus;
+        else if (strcmp(g_edit.difficulty, "hard_plus_plus") == 0) diff_name = str->diff_hard_plus_plus;
+        else if (strcmp(g_edit.difficulty, "point_zero") == 0) diff_name = str->diff_point_zero;
+        else if (g_edit.difficulty[0] >= '1' && g_edit.difficulty[0] <= '8' && g_edit.difficulty[1] == '\0') {
+            static char s_diff_buf[32];
+            SDL_snprintf(s_diff_buf, sizeof(s_diff_buf), "Nivel %c", g_edit.difficulty[0]);
+            diff_name = s_diff_buf;
+        }
+        items.push_back({str->difficulty, true, false, false, diff_name});
+
         items.push_back({str->input_config, true, false, false, ""});
         items.push_back({str->gamepad_config, true, false, false, ""});
         items.push_back({str->events_config, true, false, false, ""});
@@ -1943,6 +1982,26 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         for (int i = 0; i < kCurrencyOptCount; ++i)
             items.push_back({labels3[i], false, false,
                              strcmp(g_edit.cur_code, kCurrencyOpts[i].code)==0, ""});
+    } else if (screen == Screen::Difficulty) {
+        static const char *s_diff_modes[] = {
+            "auto", "off", "1", "2", "3", "4", "5", "6", "7", "8",
+            "hard_plus", "hard_plus_plus", "point_zero"
+        };
+        for (const char *m : s_diff_modes) {
+            std::string label;
+            if      (strcmp(m, "auto") == 0) label = str->diff_auto;
+            else if (strcmp(m, "off") == 0) label = str->diff_off;
+            else if (strcmp(m, "hard_plus") == 0) label = str->diff_hard_plus;
+            else if (strcmp(m, "hard_plus_plus") == 0) label = str->diff_hard_plus_plus;
+            else if (strcmp(m, "point_zero") == 0) label = str->diff_point_zero;
+            else {
+                char buf[32];
+                SDL_snprintf(buf, sizeof(buf), "Nivel %s", m);
+                label = buf;
+            }
+            bool sel = (strcmp(g_edit.difficulty, m) == 0);
+            items.push_back({label, false, false, sel, ""});
+        }
     } else if (screen == Screen::Bindings) {
         /* One edit-icon row per bind entry */
         const pvz2_config_t *cfg = pvz2_config();
@@ -2238,6 +2297,7 @@ static void write_overlay_settings_to_ini(void) {
 	set_key("game", "emulate_iap", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.achievement_notifications);
 	set_key("game", "achievement_notifications", tmp);
+	set_key("game", "difficulty", g_edit.difficulty);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.use_cdn);
 	set_key("runtime", "use_cdn", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.rewrite_cdn);
@@ -2639,6 +2699,7 @@ static void draw_panel_content(Screen screen, float dx,
     else if (screen == Screen::Fps)        title = str->fps;
     else if (screen == Screen::Language)   title = str->language;
     else if (screen == Screen::Currency)   title = str->currency;
+    else if (screen == Screen::Difficulty) title = str->difficulty;
     else if (screen == Screen::Bindings)   title = str->input_config;
     else if (screen == Screen::GamepadBinds) title = str->gamepad_config;
     else if (screen == Screen::GamepadDevicePick) title = str->gamepad_selected;
@@ -2937,7 +2998,7 @@ static void draw_panel_content(Screen screen, float dx,
                 icon_margin = sc(kSliderFromRight, s);
             } else if (items[i].is_arrow) {
                 icon_w = sc((float)g_tex_arrow_up.w, s);
-                if (screen == Screen::Main && (int)i == 14 && g_tex_exit_up.id)
+                if (screen == Screen::Main && (int)i == 15 && g_tex_exit_up.id)
                     icon_w = sc((float)g_tex_exit_up.w, s);
             } else if (items[i].is_edit) {
                 icon_w = sc((float)g_tex_edit_up.w, s);
@@ -2971,7 +3032,7 @@ static void draw_panel_content(Screen screen, float dx,
         if (items[i].is_slider) {
             draw_item_slider(item_x, iy, item_w, item_h, s, items[i].slider_t);
         } else if (items[i].is_arrow) {
-            bool is_exit_row = (screen == Screen::Main && (int)i == 14 && g_tex_exit_up.id && g_tex_exit_down.id);
+            bool is_exit_row = (screen == Screen::Main && (int)i == 15 && g_tex_exit_up.id && g_tex_exit_down.id);
             Tex &at = is_exit_row
                 ? (((int)i == g_arrow_pressed_idx) ? g_tex_exit_down : g_tex_exit_up)
                 : (((int)i == g_arrow_pressed_idx) ? g_tex_arrow_down : g_tex_arrow_up);
@@ -3215,23 +3276,31 @@ static void handle_event(const SDL_Event *e) {
 				   int fps_val; const char *locale; const char *cur_sym; const char *cur_code; };
 	std::vector<RItem> ritems;
 	if (g_screen == Screen::Main) {
-		/* 0=display 1=res 2=fps 3=lang 4=currency 5=input 6=gamepad
-		 * 7=events 8=achievements 9=achievement_notify 10=iap 11=exit */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* events */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* achievements */
-		ritems.push_back({false,false,false,g_edit.achievement_notifications!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({false,false,false,g_edit.lock_cursor!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* cloud save */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* credits */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* exit */
+		/* 0=display 1=res 2=fps 3=lang 4=currency 5=difficulty 6=input 7=gamepad
+		 * 8=events 9=achievements 10=achievement_notify 11=iap 12=lock_cursor 13=cloud 14=credits 15=exit */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 0 display */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 1 res */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 2 fps */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 3 lang */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 4 currency */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 5 difficulty */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 6 input */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 7 gamepad */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 8 events */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 9 achievements */
+		ritems.push_back({false,false,false,g_edit.achievement_notifications!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 10 */
+		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 11 */
+		ritems.push_back({false,false,false,g_edit.lock_cursor!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 12 */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 13 cloud save */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 14 credits */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 15 exit */
+	} else if (g_screen == Screen::Difficulty) {
+		static const char *s_diff_modes[] = {
+			"auto", "off", "1", "2", "3", "4", "5", "6", "7", "8",
+			"hard_plus", "hard_plus_plus", "point_zero"
+		};
+		for (const char *m : s_diff_modes)
+			ritems.push_back({false,false,false,strcmp(g_edit.difficulty, m) == 0,-1,0,0,0,0,m,nullptr,nullptr});
 	} else if (g_screen == Screen::Resolution) {
 		const std::vector<ResOpt> opts = filtered_res_opts(
 			g_edit.fullscreen, g_edit.video_width, g_edit.video_height);
@@ -3652,13 +3721,13 @@ static void handle_event(const SDL_Event *e) {
 
 			if (ritems[i].is_arrow) {
 				if (g_screen == Screen::Main) {
-					if (i == 14) {
+					if (i == 15) {
 						/* Exit: no menu click SFX — dialog open plays exit_click. */
 						show_quit_confirm();
-					} else if (i == 8) {
+					} else if (i == 9) {
 						/* View Achievements — open SFX is exit_click (same as quit). */
 						achievements_screen_request_open();
-					} else if (i == 13) {
+					} else if (i == 14) {
 						/* View Credits */
 						play_sound(g_snd_confirm);
 						credits_screen_request_open();
@@ -3670,10 +3739,11 @@ static void handle_event(const SDL_Event *e) {
 						else if (i == 2) to = Screen::Fps;
 						else if (i == 3) to = Screen::Language;
 						else if (i == 4) to = Screen::Currency;
-						else if (i == 5) to = Screen::Bindings;
-						else if (i == 6) to = Screen::GamepadBinds;
-						else if (i == 7) to = Screen::Events;
-						else if (i == 12) {
+						else if (i == 5) to = Screen::Difficulty;
+						else if (i == 6) to = Screen::Bindings;
+						else if (i == 7) to = Screen::GamepadBinds;
+						else if (i == 8) to = Screen::Events;
+						else if (i == 13) {
 							g_opened_directly_to_cloud = false;
 							pvz2_cloud_init();
 							g_cloud_status[0] = '\0';
@@ -3747,7 +3817,7 @@ static void handle_event(const SDL_Event *e) {
 			} else {
 				play_sound(g_snd_check);
 				if (g_screen == Screen::Main) {
-					if (i == 9) {
+					if (i == 10) {
 						g_edit.achievement_notifications = !g_edit.achievement_notifications;
 						write_overlay_settings_to_ini();
 						/* Apply live immediately — no relaunch needed. Keep other
@@ -3764,14 +3834,24 @@ static void handle_event(const SDL_Event *e) {
 							live->emulate_iap,
 							g_edit.achievement_notifications,
 							live->use_cdn, live->rewrite_cdn);
-					} else if (i == 10) {
+					} else if (i == 11) {
 						g_edit.emulate_iap = !g_edit.emulate_iap;
 						write_overlay_settings_to_ini();
-					} else if (i == 11) {
+					} else if (i == 12) {
 						g_edit.lock_cursor = !g_edit.lock_cursor;
 						write_overlay_settings_to_ini();
 						pvz2_config_set_lock_cursor(g_edit.lock_cursor);
 						pvz2_host_update_cursor_lock();
+					}
+				} else if (g_screen == Screen::Difficulty) {
+					static const char *s_diff_modes[] = {
+						"auto", "off", "1", "2", "3", "4", "5", "6", "7", "8",
+						"hard_plus", "hard_plus_plus", "point_zero"
+					};
+					if (i < sizeof(s_diff_modes)/sizeof(s_diff_modes[0])) {
+						SDL_strlcpy(g_edit.difficulty, s_diff_modes[i], sizeof(g_edit.difficulty));
+						pvz2_config_set_difficulty(g_edit.difficulty);
+						write_overlay_settings_to_ini();
 					}
 				} else if (g_screen == Screen::Events) {
 					if (i == 0) g_edit.use_cdn = !g_edit.use_cdn;
