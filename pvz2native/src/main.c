@@ -1575,6 +1575,10 @@ static int trigger_named_shortcut(const char *name) {
         const runtime_shortcut_t *s = &g_shortcuts[i];
         if (strcmp(s->name, name) != 0) continue;
 
+        if (is_plant_slot_shortcut(s->name)) {
+            if (!pvz2_game_can_select_plants()) return 0;
+        }
+
         const float tw = (float)pvz2_touch_space_width();
         const float th = (float)pvz2_touch_space_height();
         if (tw <= 0.0f || th <= 0.0f) return 0;

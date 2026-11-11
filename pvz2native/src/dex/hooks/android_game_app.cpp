@@ -147,21 +147,17 @@ static bool is_conveyor_or_special_level(const std::string &lvl) {
     for (char &c : s) c = (char)std::tolower((unsigned char)c);
     if (s.find("conveyor") != std::string::npos ||
         s.find("vasebreaker") != std::string::npos ||
+        s.find("beghouled") != std::string::npos ||
         s.find("zomboss") != std::string::npos ||
         s.find("specialdelivery") != std::string::npos ||
-        s.find("dangerroom") != std::string::npos ||
-        s.find("tutorial") != std::string::npos ||
-        s == "egypt11" || s == "egypt25" ||
-        s == "pirate11" || s == "pirate14" || s == "pirate25" ||
-        s == "cowboy8" || s == "cowboy14" || s == "cowboy25" ||
-        s == "future12" || s == "future25" ||
-        s == "dark11" || s == "dark20" ||
-        s == "beach13" || s == "beach21" || s == "beach32" ||
-        s == "iceage12" || s == "iceage16" || s == "iceage30" || s == "iceage32" ||
-        s == "lostcity14" || s == "lostcity32" ||
-        s == "eighties13" || s == "eighties32" ||
-        s == "dino12" || s == "dino32" ||
-        s == "modern12" || s == "modern32" || s == "modern33" || s == "modern34") {
+        s.find("cannonsaway") != std::string::npos ||
+        s.find("mummymemory") != std::string::npos ||
+        s == "pirate11" || s == "cowboy8" || s == "iceage16" ||
+        s == "egypt25" || s == "pirate25" || s == "cowboy25" ||
+        s == "future25" || s == "dark20" || s == "beach32" ||
+        s == "iceage30" || s == "iceage32" || s == "lostcity32" ||
+        s == "eighties32" || s == "dino32" ||
+        s == "modern32" || s == "modern33" || s == "modern34") {
         return true;
     }
     return false;
@@ -174,12 +170,8 @@ static void update_can_select_plants_locked() {
 
     bool can = false;
     if (in_level) {
-        if (!g_in_seed_chooser && !g_is_paused && !g_is_conveyor) {
-            if (!is_conveyor_or_special_level(g_last_board_level)) {
-                if (g_has_seed_chooser) {
-                    can = true;
-                }
-            }
+        if (!g_in_seed_chooser && !g_is_paused && !g_is_conveyor && !is_conveyor_or_special_level(g_last_board_level)) {
+            can = true;
         }
     }
     g_can_select_plants.store(can, std::memory_order_relaxed);
@@ -1070,8 +1062,8 @@ void crashlytics_set_string(DexCall &d) {
     } else if (key == "Board Level" && !val.empty()) {
         g_last_board_level = val;
         dex::set_current_board_level(val);
-        if (is_conveyor_or_special_level(val)) {
-            g_is_conveyor = true;
+        g_is_conveyor = is_conveyor_or_special_level(val);
+        if (g_is_conveyor) {
             g_has_seed_chooser = false;
         }
         update_can_select_plants_locked();
@@ -1149,7 +1141,7 @@ void crashlytics_set_string(DexCall &d) {
             g_last_goals_count = goals;
             if (presence) pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
         } else if (val == "LevelIntro") {
-            if (g_has_seed_chooser || !is_conveyor_or_special_level(g_last_board_level)) {
+            if (g_has_seed_chooser) {
                 g_in_seed_chooser = true;
                 if (presence) pvz2_presence_note("state", "Board Chooser=true");
             }
