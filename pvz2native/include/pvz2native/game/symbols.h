@@ -300,6 +300,15 @@ struct GameSymbols {
         std::uint32_t zomboss_stage_change_call;
         std::uint32_t company_link_allowed_fn;
         std::uint32_t company_button_skip_branch;
+        std::uint32_t dynamic_difficulty_fn;
+        std::uint32_t wave_spawn_fn;
+        std::uint32_t show_lawn_mowers_fn;
+        /* RtonReader open-from-memory (stream, data, size): every RTON the engine reads, levels included,
+         * passes through it as one buffer. */
+        std::uint32_t rton_open_memory_fn;
+        /* Wwise AK::SoundEngine::GetIDFromString(const char *): every sound event the game plays by
+         * name ("Play_CherryBomb") is hashed here first. */
+        std::uint32_t wwise_id_from_string_fn;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.

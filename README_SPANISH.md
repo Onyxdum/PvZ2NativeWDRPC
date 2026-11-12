@@ -1,23 +1,52 @@
-# PvZ2Native
+# PvZ2Native WDRPC
 
 📖 **Español** · [English](README.md)
 
-**Ejecuta la librería nativa real de *Plants vs. Zombies 2* para Android (`libPVZ2.so`, ARM32) en PC.** Lo único que se emula es el **procesador**: PvZ2 solo existe compilado para ARM (no hay build x86/x64), así que un JIT traduce sus instrucciones ARM a x86_64. Todo lo demás —Android, JNI, libc, OpenGL ES, sistema de archivos— **no se emula, se reimplementa de forma nativa**, igual que hace **Wine** con Windows.
-
-Este repositorio es un fork de [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (basado originalmente en [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)) con Discord Rich Presence y mejoras orientadas a PC (ajustes en el juego, atajos de teclado, mando, confirmación al salir, etc.).
+**Plants vs. Zombies 2 en PC, con sensación de juego de PC.** Es un fork de [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (basado originalmente en [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)), que ejecuta la `libPVZ2.so` real de Android de forma nativa en Windows y Linux. Encima de eso, este fork añade lo que esperarías de una versión de escritorio: **Discord Rich Presence**, **guardado en la nube**, un **modo mando estilo consola con vibración**, **dificultades extra**, **integración con la biblioteca de Steam** y **actualizador automático**, para **v4.5.2** y **v6.6.1** con un único ejecutable.
 
 > [!WARNING]
 > Proyecto experimental. **No incluye el juego**: debes aportar tu propio `libPVZ2.so` y tu propio `.obb`, obtenidos legalmente desde la versión de Android.
 
 ---
 
-## Discord Rich Presence
+## 🌟 Qué añade este fork
 
-Este fork añade soporte para Discord Rich Presence. Cambia automáticamente entre español e inglés según el idioma que tengas configurado en `presence_rules_es.txt` o `presence_rules_en.txt`.
+### 🎮 Modo mando estilo consola
+Se juega como la versión de Xbox 360 del juego original:
 
-Muestra en qué menú estás (Almanaque, Tienda, Jardín Zen, Tronco de Viaje) y cuando entras a jugar, el mundo y el día o noche actual, además de modos como Rompejarrones, Fiesta de Piñata, Misiones Épicas y las Zonas de Infinito con sus nombres traducidos. Si el nivel tiene objetivos o plantas en peligro añade una estrella (`⭐`) dependiendo de la cantidad de objetivos, en los niveles de jefe muestra el nombre del Zombot junto con la fase en la que vas, y también detecta cuando estás eligiendo plantas, en pausa o recogiendo la recompensa del nivel.
+| En un nivel | |
+| --- | --- |
+| Cruceta / stick izquierdo | Mueve el selector de casillas por el jardín |
+| `LB` / `RB` / stick derecho | Elige semilla |
+| `A` | Planta en la casilla seleccionada |
+| `X` / `Y` | Pala / fertilizante en la casilla seleccionada |
+| `B` | Quita la semilla o el potenciador elegido |
+| `Select` | Elige un potenciador; luego `A` lo usa en la casilla seleccionada |
+| `RT` | Plantas que se apuntan (Lanzaplátanos y similares): selecciona y dispara |
+| `LT` | Velocidad x2 |
+| `Start` | Pausa |
+| `L3` | Empieza la Última batalla cuando tengas lista tu defensa |
+| `R3` | Cambia al cursor libre |
 
-Ya viene activado por defecto en `config.ini`, así que solo necesitas tener Discord abierto:
+- `B`, `X`, `Y`, `L3` y `R3` siguen lo que configures en **Ajustes → Mando**, así que puedes poner la pala, el fertilizante o un potenciador en el botón que prefieras.
+- Los soles y monedas se recogen solo con pasar el selector por encima.
+- También funciona en los niveles con **cinta transportadora**: el selector se desliza por la cinta con el stick derecho.
+- **Selección de semillas**: recorre las cartas y tu barra de semillas con el selector. `A` elige o devuelve una planta, `X` vuelve a elegir las últimas, `RB` mejora, `LT` abre el Jardín Zen, `RT` muestra el jardín e `Y` empieza el nivel.
+- **Mapa del mundo**: `B` volver, `LB` Almanaque, `RB` Jardín Zen, `X` Tronco de viaje, `Y` Tienda, `LT` Rompejarrones y `RT` el evento del momento.
+- **Menú de ajustes**: muévete con la cruceta, `A` para elegir y `B` para volver.
+- Cada botón tiene su icono dibujado junto a lo que hace.
+- **Vibración** al plantar, en las oleadas grandes, explosiones, golpes al Zombot, cortacéspedes, "¡Preparados, listos, a plantar!" y al ganar o perder.
+- Si tocas el ratón o el teclado se aparta. Vuelve en cuanto coges el mando.
+
+### 💬 Discord Rich Presence
+Muestra lo que estás haciendo en tu idioma (español, inglés, francés, alemán, italiano y portugués):
+
+- El menú en el que estás (Almanaque, Tienda, Jardín Zen, Tronco de Viaje) y, al jugar, el mundo, el día o la noche y el icono de cada mundo.
+- Modos como Rompejarrones, Fiesta de Piñata, Misiones Épicas y las Zonas de Infinito con sus nombres traducidos.
+- Una estrella (`⭐`) por cada objetivo del nivel, el nombre del Zombot y la fase en la que vas en los jefes, y si estás eligiendo plantas, en pausa o recogiendo la recompensa.
+- Un botón en tu perfil que lleva a este repositorio.
+
+Viene activado por defecto; solo necesitas tener Discord abierto:
 
 ```ini
 [discord]
@@ -28,11 +57,30 @@ button_url = https://github.com/Onyxdum/PvZ2NativeWDRPC
 button_label = GitHub
 ```
 
+### ☁️ Guardado en la nube
+- Botón de la nube en el menú principal (o desde ajustes): **Cloud**, servidor privado, **Google Drive** o **GitHub Gist**.
+- Inicio de sesión con Discord para el Cloud por defecto; sincronización opcional al salir.
+- Exportar / importar tu partida como archivo `.json`.
+- Los resultados aparecen como una pequeña notificación arriba de la pantalla.
+
+### 💀 Dificultades extra
+Ajustes → **Dificultad**: elige cualquiera de los ocho niveles de dificultad dinámica del juego, o uno de los modos propios:
+
+- **Difícil+**: siempre la dificultad dinámica más alta.
+- **Difícil++**: sin cortacéspedes y cada oleada trae el triple de zombis, repartidos por todas las filas.
+- **Punto 0**: todo lo de Difícil++, el cuádruple de zombis y las pociones de la Edad Oscura en todos los jardines; los zombis se las beben al pasar.
+
+### 🚀 Integración con el escritorio
+- **Steam**: en el primer arranque ofrece añadir el juego a tu biblioteca de Steam, con sus imágenes.
+- **Actualizador automático**: busca nuevas versiones al iniciar y se actualiza solo; tu `config.ini` y tus reglas de presencia se fusionan, nunca se sobrescriben.
+- **Asistente del primer arranque**: le indicas el APK y el OBB (4.5.2 o 6.6.1) y lo deja todo listo.
+- **Créditos finales**: al reclamar la última recompensa del juego salen los créditos.
+
 ---
 
-## ✨ Qué incluye este build
+## ✨ También incluye (build para PC)
 
-Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en pruebas) en Windows y Linux, con ejecutable único universal y una experiencia más cómoda con ratón, teclado o mando.
+Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en pruebas) en Windows y Linux.
 
 ### Integración visual y de escritorio
 - Icono propio del ejecutable y cursor personalizado (escala con el tamaño de ventana/pantalla).
@@ -41,7 +89,7 @@ Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en 
 
 ### Ajustes dentro del juego
 - Se abren con `Esc` o desde el menú principal con el botón de **Google Play** (esquina inferior derecha).
-- Idioma, moneda, pantalla completa, monitor/pantalla, límite de FPS, compras gratuitas, eventos, atajos de teclado y opciones de mando, sin editar archivos a mano.
+- Idioma, moneda, pantalla completa, monitor/pantalla, límite de FPS, dificultad, compras gratuitas, eventos, atajos de teclado y opciones de mando, sin editar archivos a mano.
 - La mayoría de cambios se aplican al momento (incluido mover la ventana a otro monitor). Cambiar el idioma, las compras gratuitas o las opciones de Eventos relanza el proceso para que el motor las recargue.
 - Un `config.ini` viejo o incompleto se corrige al arrancar: faltantes con valores seguros; valores inválidos se sanean.
 
@@ -51,7 +99,7 @@ Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en 
 ### Logros
 - Logros locales que se desbloquean al jugar; el progreso se guarda en `prefs.dat`.
 - Toast animado al desbloquear (con SFX); lista completa desde ajustes (**Ver logros**).
-- Opcional: silenciar toast/SFX desde ajustes o con `[game] achievement_notifications = 0` — los desbloqueos se siguen guardando.
+- Opcional: silenciar toast/SFX desde ajustes o con `[game] achievement_notifications = 0`. Los desbloqueos se siguen guardando.
 
 ### Confirmación al salir
 - Confirmar o cancelar antes de cerrar (ratón, teclado o mando).
@@ -70,11 +118,9 @@ Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en 
 - Rueda del ratón para listas (gesto de arrastre), clic derecho = Atrás, clic medio = Menú donde aplica.
 - Correcciones de clics en pantalla completa / redimensionado y recuperación defensiva de entrada.
 
-### Mando
-- Stick izquierdo mueve el cursor; **A** confirma/clic.
-- D-pad salta entre controles y celdas del césped; hombros cambian de zona de menú.
-- Stick derecho arrastra (tipo swipe); acciones remapeables (pausa, poderes, Plant Food, pala, …).
-- Sliders de velocidad y zona muerta; elegir qué mando usar o desactivarlos.
+### Mando (menús)
+- Fuera de los niveles el stick izquierdo mueve el cursor y **A** hace clic; la cruceta salta entre los controles de la pantalla.
+- Acciones remapeables, sliders de velocidad y zona muerta; elegir qué mando usar o desactivarlos.
 - Ratón, teclado y mando funcionan a la vez.
 
 ### Otros
@@ -85,6 +131,10 @@ Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en 
 
 ---
 
+## 🧠 Cómo funciona
+
+**Ejecuta la librería nativa real de *Plants vs. Zombies 2* para Android (`libPVZ2.so`, ARM32) en PC.** Lo único que se emula es el **procesador**: PvZ2 solo existe compilado para ARM (no hay build x86/x64), así que un JIT traduce sus instrucciones ARM a x86_64. Todo lo demás (Android, JNI, libc, OpenGL ES, sistema de archivos) **no se emula, se reimplementa de forma nativa**, igual que hace **Wine** con Windows.
+
 ## 📖 Qué es (y qué NO es)
 
 No es un *port* del código fuente del juego. Es un **híbrido de dos técnicas**, y la distinción importa:
@@ -92,7 +142,7 @@ No es un *port* del código fuente del juego. Es un **híbrido de dos técnicas*
 - **Solo la CPU se emula.** El binario del juego es código máquina ARM y PvZ2 nunca se compiló para x86/x64, así que no hay forma de ejecutarlo directamente en un procesador de PC. Un JIT (dynarmic) lee esas instrucciones ARM y las traduce a x86_64 sobre la marcha. Esta es la única parte "emulada".
 - **Android NO se emula: se reimplementa.** Cuando el juego llama a una función de Android (abrir un archivo, dibujar con OpenGL ES, reservar memoria, invocar Java…), esa llamada la atiende **código nativo de PC** que hace el trabajo real usando la API equivalente del escritorio. No hay un Android virtual corriendo debajo; hay una **reimplementación** de las funciones que el juego necesita.
 
-Es exactamente el enfoque de **Wine** — *"Wine Is Not an Emulator"* — llevado un paso más allá: Wine reimplementa las llamadas de Windows sin emular nada porque los `.exe` ya son x86; aquí, como el juego es ARM, además hay que emular la CPU. El resto de la filosofía es idéntica: **traducir llamadas, no simular una máquina completa.**
+Es exactamente el enfoque de **Wine** (*"Wine Is Not an Emulator"*) llevado un paso más allá: Wine reimplementa las llamadas de Windows sin emular nada porque los `.exe` ya son x86; aquí, como el juego es ARM, además hay que emular la CPU. El resto de la filosofía es idéntica: **traducir llamadas, no simular una máquina completa.**
 
 ```text
 ┌──────────────────────────────────────────────┐
@@ -101,7 +151,7 @@ Es exactamente el enfoque de **Wine** — *"Wine Is Not an Emulator"* — llevad
                         │  instrucciones ARM
                         ▼
 ┌──────────────────────────────────────────────┐
-│  dynarmic  —  JIT ARM32 → x86_64             │   ← ÚNICO componente emulado
+│  dynarmic:  JIT ARM32 → x86_64               │   ← ÚNICO componente emulado
 └───────────────────────┬──────────────────────┘     (solo la CPU)
                         │  llamadas a "Android"
                         ▼
@@ -160,7 +210,7 @@ PvZ2Native utiliza un **único ejecutable universal**: tanto la versión 4.5.2 c
 
 ## ⚙️ Requisitos
 
-- **(64 bits) Windows o Linux** (el ejecutable es x86_64 estático; no hay build de 32 bits — dynarmic solo trae backends para x86_64/arm64/riscv64).
+- **(64 bits) Windows o Linux** (el ejecutable es x86_64 estático; no hay build de 32 bits, porque dynarmic solo trae backends para x86_64/arm64/riscv64).
 - **CMake** (se recomienda 3.5+).
 - **Windows:** MinGW-w64 (GCC con C++20) **o** Visual Studio con C++ / CMake / Ninja (`compile-ninja.bat`).
 - **Linux:** GCC o Clang con soporte C++20.
@@ -172,7 +222,7 @@ PvZ2Native utiliza un **único ejecutable universal**: tanto la versión 4.5.2 c
 
 ## 🔨 Compilación
 
-### Windows — Visual Studio + Ninja (recomendado)
+### Windows: Visual Studio + Ninja (recomendado)
 
 ```bat
 compile-ninja.bat
@@ -184,7 +234,7 @@ Usa `vswhere` para localizar Visual Studio (cualquier edición) y compila Releas
 out\build\x64-Release\pvz2native\pvz2.exe
 ```
 
-### Windows — MinGW
+### Windows: MinGW
 
 Si `gcc`, `g++` y `make` están en el `PATH`:
 
@@ -214,7 +264,7 @@ build/pvz2native/pvz2
 
 `compile.sh` también copia los assets de UI del host a `build/pvz2native/assets/` (splash, ajustes, cursor, logros). En Windows esos archivos van embebidos en el `.exe` vía `windows_resources.rc`; en Linux deben estar junto al binario bajo `assets/`.
 
-### Linux — AppImage
+### Linux: AppImage
 
 ```bash
 ./compile-appimage.sh
@@ -300,6 +350,7 @@ Archivo principal de configuración para rutas, pantalla, controles y opciones d
 | Ajustes | Botón Google Play del menú principal |
 | Lista de logros | Desde ajustes (**Ver logros**) |
 | Atajos / mando | Configurables en ajustes |
+| Mando en los niveles | Ver [Modo mando estilo consola](#-modo-mando-estilo-consola) |
 
 ---
 
@@ -316,5 +367,5 @@ Proyecto independiente, **sin afiliación, respaldo ni patrocinio** de Electroni
 ---
 
 <p align="center">
-  <b>PvZ2Native</b> — Ejecutando la <code>libPVZ2.so</code> de Android en PC mediante emulación ARM
+  <b>PvZ2Native</b>: ejecutando la <code>libPVZ2.so</code> de Android en PC mediante emulación ARM
 </p>

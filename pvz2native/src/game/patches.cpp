@@ -1,6 +1,7 @@
 /* Guest-code patches -- see include/pvz2native/game/patches.h for why. */
 
 #include <pvz2native/game/patches.h>
+#include <pvz2native/game/level_mods.h>
 
 #include <pvz2native/config.h>
 #include <pvz2native/dependencies/dependency.h>
@@ -11,9 +12,14 @@
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/log.h>
 #include <pvz2native/presence.h>
+#include <pvz2native/runtime/guest_runtime.h>
+#include <pvz2native/input/gamepad.h>
+#include <pvz2native/input/input_queue.h>
 #include <pvz2native/credits_screen.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <ctime>
@@ -25,6 +31,63 @@
 
 namespace pvz2native {
 namespace {
+
+/* Which game sounds shake the controller, and how hard (low motor, high motor, ms). Matched as a
+ * case-insensitive substring of the event name. Only while a level is being played, except the win and
+ * lose jingles, which play as it ends. */
+struct SoundRumble {
+    const char *part;
+    float low, high;
+    unsigned ms;
+    bool any_time;
+};
+constexpr SoundRumble kSoundRumbles[] = {
+    {"LoseMusic", 1.00f, 1.00f, 1000, true},  /* zombies reached the house */
+    {"WinMusic", 0.45f, 0.60f, 600, true},    /* level complete */
+    {"_Win", 0.45f, 0.60f, 600, true},        /* Pinata party wins */
+    {"Siren", 0.70f, 0.90f, 700, false},      /* "A huge wave of zombies is approaching" */
+    {"CherryBomb", 1.00f, 0.80f, 400, false},
+    {"Potato_Mine", 0.90f, 0.70f, 350, false},
+    {"Explo", 0.90f, 0.70f, 350, false},      /* General_Explo, Bird_Explo, SunBomb ..._Explo */
+    {"Jalepeno_Attack", 0.90f, 0.70f, 400, false},
+    {"Squash_Impact", 0.70f, 0.40f, 220, false},
+    {"Zomboss_Damage_Impact", 0.60f, 0.80f, 300, false},
+    {"Zomboss_Attack_Projectile_Impact", 0.70f, 0.50f, 300, false},
+    {"Zomboss_Attack_Rush", 0.80f, 0.60f, 450, false},
+    {"Lawnmower", 0.45f, 0.35f, 500, false},
+    {"LavaGuava", 0.90f, 0.70f, 400, false},
+    /* "Ready... Set... PLANT!" at the start of a level */
+    {"Wave_Ready", 0.25f, 0.25f, 120, true},
+    {"Wave_Set", 0.35f, 0.35f, 140, true},
+    {"Wave_Plant", 0.65f, 0.65f, 280, true},
+};
+
+bool icontains(const std::string &hay, const char *needle) {
+    const std::size_t n = std::strlen(needle);
+    if (n == 0 || hay.size() < n) return false;
+    for (std::size_t i = 0; i + n <= hay.size(); ++i) {
+        std::size_t k = 0;
+        while (k < n && std::tolower((unsigned char)hay[i + k]) == std::tolower((unsigned char)needle[k])) ++k;
+        if (k == n) return true;
+    }
+    return false;
+}
+
+std::atomic<bool> g_level_has_conveyor{false};
+std::atomic<bool> g_level_last_stand{false};
+
+void rumble_for_sound(const std::string &name) {
+    if (name.size() < 6 || std::strncmp(name.c_str(), "Play_", 5) != 0) return;
+    if (icontains(name, "_Stop")) return; /* the end of a looping sound, not an event */
+    for (const SoundRumble &r : kSoundRumbles) {
+        if (!icontains(name, r.part)) continue;
+        if (!r.any_time && !pvz2_game_is_in_level()) return;
+        pvz2_gamepad_rumble(r.low, r.high, r.ms);
+        if (pvz2_config()->verbose) pvz2_log("[rumble] %s", name.c_str());
+        return;
+    }
+}
+
 
 /* ARM (never Thumb here -- the engine's ARM32 code in both mapped builds is
  * A32): cond 1011 imm24 is BL. Masking the condition off means a conditional
@@ -457,6 +520,128 @@ void game_apply_patches(pvz2_elf_image_t *img) {
 
 void game_apply_late_patches(pvz2_elf_image_t *img) {
     if (img == nullptr) return;
+
+    /* Dynamic Difficulty override hook */
+    if (sym().patch.dynamic_difficulty_fn != 0) {
+        const std::uint32_t dda_target = sym().patch.dynamic_difficulty_fn;
+        constexpr std::uint32_t kDdaPush = 0xe92d4830u; /* push {r4, r5, fp, lr} */
+        install_svc_at(img, dda_target, kDdaPush, "board.dynamic_difficulty", [](GuestCall &call) {
+            const char *mode = pvz2_config_get_difficulty();
+            if (!mode || std::strcmp(mode, "auto") == 0) {
+                emulate_push(call, {4, 5, 11}, call.lr());
+                call.no_return();
+                call.regs[15] = call.img->so_base + sym().patch.dynamic_difficulty_fn + 4;
+                return;
+            }
+
+            std::uint32_t tier = 999;
+            if (std::strcmp(mode, "off") == 0) {
+                tier = 999;
+            } else if (mode[0] >= '1' && mode[0] <= '8' && mode[1] == '\0') {
+                tier = static_cast<std::uint32_t>(mode[0] - '1');
+            } else if (std::strcmp(mode, "hard_plus") == 0 ||
+                       std::strcmp(mode, "hard_plus_plus") == 0 ||
+                       std::strcmp(mode, "point_zero") == 0) {
+                tier = 7;
+            }
+            call.set_result(tier);
+        }, "dynamic difficulty override");
+    }
+
+    /* Lawnmower suppression for hard_plus_plus and point_zero */
+    if (sym().patch.show_lawn_mowers_fn != 0) {
+        const std::uint32_t slm_target = sym().patch.show_lawn_mowers_fn;
+        const bool is_661 = (std::strcmp(sym().version, "6.6.1") == 0);
+        const std::uint32_t kSlmExpect = is_661 ? 0xe92d4df0u : 0xe92d47f0u;
+        install_svc_at(img, slm_target, kSlmExpect, "board.spawn_lawn_mower", [](GuestCall &call) {
+            const char *mode = pvz2_config_get_difficulty();
+            if (mode && (std::strcmp(mode, "hard_plus_plus") == 0 || std::strcmp(mode, "point_zero") == 0)) {
+                call.set_result(0);
+                return;
+            }
+            const bool is_v661 = (std::strcmp(sym().version, "6.6.1") == 0);
+            if (is_v661) {
+                emulate_push(call, {4, 5, 6, 7, 8, 10, 11}, call.lr());
+            } else {
+                emulate_push(call, {4, 5, 6, 7, 8, 9, 10}, call.lr());
+            }
+            call.no_return();
+            call.regs[15] = call.img->so_base + sym().patch.show_lawn_mowers_fn + 4;
+        }, "spawn lawn mower suppression");
+    }
+
+    /* Hard++ and Point Zero change the level files themselves (see level_mods.h): the engine hands each RTON
+     * file to its reader as one buffer, and when that file is a level the reader gets a modified copy
+     * instead. The copy is never freed -- the reader keeps pointing into it while the level is built, and a
+     * level is a few KB. */
+    if (sym().patch.rton_open_memory_fn != 0) {
+        const bool is_661 = (std::strcmp(sym().version, "6.6.1") == 0);
+        const std::uint32_t kRtonOpenPush = is_661 ? 0xe92d4df0u  /* push {r4-r8, sl, fp, lr} */
+                                                   : 0xe92d48f0u; /* push {r4-r7, fp, lr} */
+        install_svc_at(img, sym().patch.rton_open_memory_fn, kRtonOpenPush, "rton.open_memory", [](GuestCall &call) {
+            const char *mode = pvz2_config_get_difficulty();
+            LevelMods mods;
+            if (mode != nullptr && std::strcmp(mode, "point_zero") == 0) {
+                mods.potions = true;
+                mods.horde_multiplier = 4;
+            } else if (mode != nullptr && std::strcmp(mode, "hard_plus_plus") == 0) {
+                mods.horde_multiplier = 3;
+            }
+            const std::uint32_t data = call.regs[1];
+            const std::uint32_t size = call.regs[2];
+            static const char kLevelClass[] = "LevelDefinition";
+            const auto *bytes = static_cast<const std::uint8_t *>(
+                size > 0 && size < (4u << 20) ? call.ptr(data, size) : nullptr);
+            const bool is_level =
+                bytes != nullptr &&
+                std::search(bytes, bytes + size, kLevelClass, kLevelClass + sizeof(kLevelClass) - 1) != bytes + size;
+            if (is_level) {
+                /* The level the game is about to play is the last one it read: remember whether it runs a
+                 * conveyor belt (the controller's lawn mode lays its seed slots out differently). */
+                static const char kConveyor[] = "ConveyorSeedBankProperties";
+                g_level_has_conveyor.store(std::search(bytes, bytes + size, kConveyor,
+                                                       kConveyor + sizeof(kConveyor) - 1) != bytes + size);
+                static const char kLastStand[] = "LastStandMinigameProperties";
+                g_level_last_stand.store(std::search(bytes, bytes + size, kLastStand,
+                                                     kLastStand + sizeof(kLastStand) - 1) != bytes + size);
+            }
+            if ((mods.potions || mods.horde_multiplier > 1) && is_level) {
+                const std::vector<std::uint8_t> level =
+                    level_with_mods(std::vector<std::uint8_t>(bytes, bytes + size), mods);
+                const std::uint32_t copy =
+                    level.empty() ? 0 : call.rt->heap.alloc((std::uint32_t)level.size(), call.lr());
+                if (copy != 0) {
+                    std::memcpy(call.ptr(copy, (std::uint32_t)level.size()), level.data(), level.size());
+                    call.regs[1] = copy;
+                    call.regs[2] = (std::uint32_t)level.size();
+                    pvz2_log("[difficulty] %s: level file modified (potions=%d, hordes x%d, %u -> %zu bytes)", mode,
+                             (int)mods.potions, mods.horde_multiplier, size, level.size());
+                }
+            }
+            if (std::strcmp(sym().version, "6.6.1") == 0) {
+                emulate_push(call, {4, 5, 6, 7, 8, 10, 11}, call.lr());
+            } else {
+                emulate_push(call, {4, 5, 6, 7, 11}, call.lr());
+            }
+            call.no_return();
+            call.regs[15] = call.img->so_base + sym().patch.rton_open_memory_fn + 4;
+        }, "difficulty level mods");
+    }
+
+    /* Controller rumble from the game's own sounds: every sound event is played by name and the name is
+     * hashed by Wwise's GetIDFromString first, so seeing the name is seeing the event. */
+    if (sym().patch.wwise_id_from_string_fn != 0) {
+        constexpr std::uint32_t kIdFromStringPush = 0xe92d4070u; /* push {r4, r5, r6, lr} */
+        install_svc_at(img, sym().patch.wwise_id_from_string_fn, kIdFromStringPush, "wwise.id_from_string",
+                       [](GuestCall &call) {
+            const std::uint32_t name_ptr = call.regs[0];
+            if (name_ptr != 0 && call.in_bounds(name_ptr, 1)) rumble_for_sound(call.cstr(name_ptr, 96));
+            emulate_push(call, {4, 5, 6}, call.lr());
+            call.no_return();
+            call.regs[15] = call.img->so_base + sym().patch.wwise_id_from_string_fn + 4;
+        }, "sound rumble");
+    }
+
     if (sym().patch.zomboss_setup_stage == 0) return;
 
     /* Hook ZombieZombossMech::SetupStage directly at its entry point */
@@ -1633,3 +1818,11 @@ void game_install_engine_clock(pvz2_elf_image_t *img) {
 }
 
 }  // namespace pvz2native
+
+extern "C" int pvz2_game_level_has_conveyor(void) {
+    return pvz2native::g_level_has_conveyor.load() ? 1 : 0;
+}
+
+extern "C" int pvz2_game_level_last_stand(void) {
+    return pvz2native::g_level_last_stand.load() ? 1 : 0;
+}

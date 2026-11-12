@@ -33,6 +33,7 @@
 #include <pvz2native/steam_shortcut.h>
 #include <pvz2native/updater.h>
 
+
 /* Set once the window exists, so input mapping can use logical window coords. */
 static SDL_Window *g_window = NULL;
 
@@ -2203,6 +2204,8 @@ int main(int argc, char **argv) {
                 credits_screen_open(window);
             }
             if (g_boot_overlay_active) draw_boot_splash_fade(window);
+            /* Controller lawn mode: the tile box and the chosen seed packet */
+            pvz2_gamepad_draw(window);
             /* Draw config screen overlay on top of the game frame (before swap) */
             if (config_screen_is_open()) config_screen_draw(window);
             /* Achievements: popup draws always (if animating), screen on top of config */

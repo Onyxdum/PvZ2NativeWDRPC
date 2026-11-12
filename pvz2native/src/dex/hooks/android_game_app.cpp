@@ -140,6 +140,7 @@ bool g_is_conveyor = false;
 bool g_is_paused = false;
 std::atomic<bool> g_can_select_plants{false};
 std::atomic<bool> g_is_in_level{false};
+std::atomic<bool> g_has_seed_packets{false};
 
 static bool is_conveyor_or_special_level(const std::string &lvl) {
     if (lvl.empty()) return false;
@@ -175,6 +176,16 @@ static void update_can_select_plants_locked() {
         }
     }
     g_can_select_plants.store(can, std::memory_order_relaxed);
+
+    /* Seed packets to pick from, conveyor belts and Zomboss fights included (the controller's lawn mode
+     * uses them); only Vasebreaker and Beghouled play without a seed bank of that kind. */
+    bool packets = false;
+    if (in_level && !g_in_seed_chooser && !g_is_paused) {
+        std::string lvl = g_last_board_level;
+        for (char &c : lvl) c = (char)std::tolower((unsigned char)c);
+        packets = lvl.find("vasebreaker") == std::string::npos && lvl.find("beghouled") == std::string::npos;
+    }
+    g_has_seed_packets.store(packets, std::memory_order_relaxed);
 }
 
 /* Same walk as log_records, but only to learn whether a touch started or ended
@@ -1413,8 +1424,25 @@ extern "C" int pvz2_game_can_select_plants(void) {
     return pvz2native::dex::g_can_select_plants.load(std::memory_order_relaxed) ? 1 : 0;
 }
 
+extern "C" int pvz2_game_has_seed_packets(void) {
+    return pvz2native::dex::g_has_seed_packets.load(std::memory_order_relaxed) ? 1 : 0;
+}
+
 extern "C" int pvz2_game_is_in_level(void) {
     return pvz2native::dex::g_is_in_level.load(std::memory_order_relaxed) ? 1 : 0;
+}
+
+extern "C" int pvz2_game_on_world_map(void) {
+    std::lock_guard<std::mutex> lk(pvz2native::dex::g_crashlytics_mu);
+    return pvz2native::dex::g_current_gsm_state == "GAME_WorldMap" ? 1 : 0;
+}
+
+extern "C" int pvz2_game_in_seed_chooser(void) {
+    std::lock_guard<std::mutex> lk(pvz2native::dex::g_crashlytics_mu);
+    return pvz2native::dex::g_in_seed_chooser &&
+                   pvz2native::dex::g_current_board_state == "LevelIntro" && !pvz2native::dex::g_is_paused
+               ? 1
+               : 0;
 }
 
 extern "C" int pvz2_game_is_paused(void) {

@@ -26,6 +26,14 @@ int pvz2_gamepad_handle_event(const SDL_Event *e);
 /* Per-frame: left stick, D-pad repeat, right-stick drag, trigger edges. */
 void pvz2_gamepad_tick(float dt_sec);
 
+/* Draws the lawn-mode box and the chosen seed packet over the game frame (no-op outside lawn mode).
+ * Call after the game frame, before the overlays and the swap. */
+void pvz2_gamepad_draw(SDL_Window *window);
+
+/* Vibrates the controller (strengths 0..1 for the low / high frequency motors). Safe from any thread:
+ * it is applied on the next pvz2_gamepad_tick. */
+void pvz2_gamepad_rumble(float low, float high, unsigned ms);
+
 #ifdef __cplusplus
 }
 #endif

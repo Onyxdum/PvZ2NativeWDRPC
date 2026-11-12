@@ -261,6 +261,11 @@ const Setting kSettings[] = {
      "Show the achievement unlock popup and sound. Achievements are still saved\n"
      "when this is off; only the toast is suppressed. Default on.",
      nullptr, "1"},
+    {"game", "difficulty", nullptr, Kind::kLower,
+     offsetof(pvz2_config_t, difficulty), sizeof(g_config.difficulty),
+     "Game difficulty mode: auto, off, 1..8, hard_plus, hard_plus_plus, point_zero.\n"
+     "Default is auto (original dynamic difficulty).",
+     "auto", nullptr},
 
     {"game", "package_name", nullptr, Kind::kString, offsetof(pvz2_config_t, package_name),
      sizeof(g_config.package_name),
@@ -674,10 +679,27 @@ struct DefaultGamepadBind {
     const char *bind;
 };
 
+/* In a level the controller's lawn mode applies these to the tile under its selector (shovel and Plant
+ * Food on that tile, a power-up activated and then aimed with A). A button left NULL keeps its lawn-mode
+ * job: B cancels, L3 starts a Last Stand, R3 switches to the free cursor. Back picks a power-up. */
 const DefaultGamepadBind kDefaultGamepadBinds[] = {
-    {"start", "bind_pause"}, {"x", "bind_power_1"},     {"y", "bind_power_2"},
-    {"b", "bind_power_3"},   {"l3", "bind_plant_food"}, {"r3", "bind_shovel"},
+    {"start", "bind_pause"}, {"x", "bind_shovel"}, {"y", "bind_plant_food"},
+    {"b", "NULL"},           {"l3", "NULL"},       {"r3", "NULL"},
 };
+
+/* The binds every config.ini got before the lawn mode existed. A file that still has exactly these is
+ * moved to the new defaults once; one the player changed is left alone. */
+bool bind_is(const char *button, const char *want) {
+    for (unsigned i = 0; i < g_config.gamepad_bind_count; ++i) {
+        if (SDL_strcasecmp(g_config.gamepad_binds[i].button, button) != 0) continue;
+        const char *v = g_config.gamepad_binds[i].bind_name;
+        if (SDL_strncasecmp(v, "bind_", 5) == 0) v += 5;
+        const char *w = want;
+        if (SDL_strncasecmp(w, "bind_", 5) == 0) w += 5;
+        return SDL_strcasecmp(v, w) == 0;
+    }
+    return false;
+}
 
 void seed_default_board_and_gamepad_binds(FILE *f) {
     fputs("\n[board]\n"
@@ -1329,6 +1351,10 @@ void finish_defaults(const char *base_dir) {
         std::snprintf(g_config.player_uuid, sizeof(g_config.player_uuid), "%s", player_uuid.c_str());
     }
 
+    if (g_config.difficulty[0] == '\0') {
+        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
+    }
+
     if (g_config.fps_limit <= 0) {
         g_config.fps_limit = detected_default_fps_limit();
     }
@@ -1695,6 +1721,14 @@ extern "C" void pvz2_config_load(const char *ini_path, const char *base_dir) {
     /* Fill gaps / fix garbage in an older config.ini so the player never has to
      * delete the file by hand after an upgrade. */
     if (ini_path != nullptr) heal_config_ini(ini_path);
+    if (bind_is("x", "power_1") && bind_is("y", "power_2") && bind_is("b", "power_3") &&
+        bind_is("l3", "plant_food") && bind_is("r3", "shovel")) {
+        pvz2_config_update_gamepad_bind("x", "bind_shovel");
+        pvz2_config_update_gamepad_bind("y", "bind_plant_food");
+        pvz2_config_update_gamepad_bind("b", "");
+        pvz2_config_update_gamepad_bind("l3", "");
+        pvz2_config_update_gamepad_bind("r3", "");
+    }
 }
 
 extern "C" int pvz2_config_override(const char *name, const char *value) {
@@ -2252,4 +2286,16 @@ extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const cha
         for (const auto &l : lines) std::fputs(l.c_str(), f);
         std::fclose(f);
     }
+}
+
+const char *pvz2_config_get_difficulty(void) {
+    if (g_config.difficulty[0] == '\0') {
+        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
+    }
+    return g_config.difficulty;
+}
+
+void pvz2_config_set_difficulty(const char *mode) {
+    if (!mode || mode[0] == '\0') mode = "auto";
+    std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "%s", mode);
 }

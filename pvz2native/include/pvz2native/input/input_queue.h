@@ -68,6 +68,25 @@ void pvz2_input_push_text(const char *utf8);
  * Used to restrict plant selection shortcuts (e.g. bind_plant_1 .. bind_plant_8). */
 int pvz2_game_can_select_plants(void);
 
+/* Returns 1 while playing a level that has seed packets to pick from -- like
+ * pvz2_game_can_select_plants, but conveyor-belt and Zomboss levels count too (not Vasebreaker or
+ * Beghouled). Used by the controller's lawn mode. */
+int pvz2_game_has_seed_packets(void);
+
+/* Returns 1 while the seed chooser (pick your plants before a level) is on screen. */
+int pvz2_game_in_seed_chooser(void);
+
+/* Returns 1 while the world map is the current screen. */
+int pvz2_game_on_world_map(void);
+
+/* Returns 1 when the level being played has a conveyor belt instead of a seed bank (the last level
+ * file the game read had a ConveyorSeedBankProperties module). */
+int pvz2_game_level_has_conveyor(void);
+
+/* Returns 1 when the level being played is a Last Stand (plant with a fixed sun budget, then press
+ * "Let's rock"): the last level file read had a LastStandMinigameProperties module. */
+int pvz2_game_level_last_stand(void);
+
 /* Returns 1 if the game is currently in an active level (PlayingLevel state).
  * Used so pressing Escape pauses the level instead of opening the custom settings menu. */
 int pvz2_game_is_in_level(void);

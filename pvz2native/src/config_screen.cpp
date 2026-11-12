@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <deque>
 #include <vector>
 #include <algorithm>
 
@@ -223,6 +224,12 @@ struct Strings {
 	const char *cloud_discord_rpc;
 	const char *view_credits;
 	const char *lock_cursor;
+	const char *difficulty;
+	const char *diff_auto;
+	const char *diff_off;
+	const char *diff_hard_plus;
+	const char *diff_hard_plus_plus;
+	const char *diff_point_zero;
 };
 
 static const Strings kStringsEN = {
@@ -257,7 +264,10 @@ static const Strings kStringsEN = {
 	"Add game to Steam",
 	"Discord Rich Presence",
 	"Credits",
-	"Lock Mouse to Window"
+	"Lock Mouse to Window",
+	"Difficulty", "Dynamic (Vanilla)", "Disabled (Level 0)",
+	"Hard + (Level 9)", "Hard ++ (70% More Zombies, No Mowers)",
+	"Point 0 (Hard ++ & Zombie Potions)"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -291,7 +301,10 @@ static const Strings kStringsES = {
 	"Añadir juego a Steam",
 	"Discord Rich Presence",
 	"Créditos",
-	"Bloquear ratón en ventana"
+	"Bloquear ratón en ventana",
+	"Dificultad", "Dinámica (Vanilla)", "Desactivada (Nivel 0)",
+	"Difícil + (Nivel 9)", "Difícil ++ (+70% Zombies, Sin Podadoras)",
+	"Punto 0 (Difícil ++ y Pociones)"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -325,7 +338,10 @@ static const Strings kStringsFR = {
 	"Ajouter le jeu à Steam",
 	"Discord Rich Presence",
 	"Crédits",
-	"Bloquer la souris dans la fenêtre"
+	"Bloquer la souris dans la fenêtre",
+	"Difficulté", "Dynamique (Original)", "Désactivée (Niveau 0)",
+	"Difficile + (Niveau 9)", "Difficile ++ (+70% Zombies, Sans Tondeuses)",
+	"Point 0 (Difficile ++ et Potions)"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -359,7 +375,10 @@ static const Strings kStringsDE = {
 	"Spiel zu Steam hinzufügen",
 	"Discord Rich Presence",
 	"Credits",
-	"Maus im Fenster sperren"
+	"Maus im Fenster sperren",
+	"Schwierigkeit", "Dynamisch (Original)", "Deaktiviert (Stufe 0)",
+	"Schwer + (Stufe 9)", "Schwer ++ (+70% Zombies, Keine Rasenmäher)",
+	"Punkt 0 (Schwer ++ und Tränke)"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -393,7 +412,10 @@ static const Strings kStringsPT = {
 	"Adicionar jogo à Steam",
 	"Discord Rich Presence",
 	"Créditos",
-	"Bloquear mouse na janela"
+	"Bloquear mouse na janela",
+	"Dificuldade", "Dinâmica (Original)", "Desativada (Nível 0)",
+	"Difícil + (Nível 9)", "Difícil ++ (+70% Zumbis, Sem Cortadores)",
+	"Ponto 0 (Difícil ++ e Poções)"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -427,7 +449,10 @@ static const Strings kStringsIT = {
 	"Aggiungi gioco a Steam",
 	"Discord Rich Presence",
 	"Riconoscimenti",
-	"Blocca mouse nella finestra"
+	"Blocca mouse nella finestra",
+	"Difficoltà", "Dinamica (Originale)", "Disattivata (Livello 0)",
+	"Difficile + (Livello 9)", "Difficile ++ (+70% Zombie, Senza Tosaerba)",
+	"Punto 0 (Difficile ++ e Pozioni)"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -1393,6 +1418,7 @@ struct EditConfig {
 	int  use_cdn      = 1;
 	int  rewrite_cdn  = 0;
 	int  lock_cursor  = 0;
+	char difficulty[32] = "auto";
 
 	void load_from_live() {
 		const pvz2_config_t *c = pvz2_config();
@@ -1404,6 +1430,7 @@ struct EditConfig {
 		SDL_strlcpy(locale,     c->user_locale,      sizeof(locale));
 		SDL_strlcpy(cur_symbol, c->currency_symbol,  sizeof(cur_symbol));
 		SDL_strlcpy(cur_code,   c->currency_code,    sizeof(cur_code));
+		SDL_strlcpy(difficulty, pvz2_config_get_difficulty(), sizeof(difficulty));
 		emulate_iap  = c->emulate_iap;
 		achievement_notifications = c->achievement_notifications;
 		use_cdn      = c->use_cdn;
@@ -1421,6 +1448,7 @@ struct EditConfig {
 			   strcmp(locale,     c->user_locale)     != 0 ||
 			   strcmp(cur_symbol, c->currency_symbol)  != 0 ||
 			   strcmp(cur_code,   c->currency_code)    != 0 ||
+			   strcmp(difficulty, pvz2_config_get_difficulty()) != 0 ||
 			   emulate_iap != c->emulate_iap ||
 			   achievement_notifications != c->achievement_notifications ||
 			   use_cdn != c->use_cdn ||
@@ -1432,7 +1460,7 @@ struct EditConfig {
 /* =========================================================================
  * Menu navigation
  * ========================================================================= */
-enum class Screen { Main, Resolution, Fps, Language, Currency, Bindings, BindEdit,
+enum class Screen { Main, Resolution, Fps, Language, Currency, Difficulty, Bindings, BindEdit,
                     GamepadBinds, GamepadBindPick, GamepadDevicePick, DisplayPick, Events,
                     CloudSave, CloudProviderPick, CloudTextEdit };
 
@@ -1861,6 +1889,115 @@ static void save_cloud_text_edit(void) {
 	SDL_StopTextInput();
 }
 
+/* -------------------------------------------------------------------------
+ * Notifications: one line of text that slides in at the top of the window for a few seconds. Used for
+ * what the cloud-save actions report (upload done, import failed, ...) and for the local Discord
+ * connecting, which used to sit in the cloud menu as rows. Queued, so two in a row both show.
+ * ---------------------------------------------------------------------- */
+struct Toast {
+	std::string text;
+	Uint32 start_ms = 0; /* 0 = not shown yet */
+};
+static std::deque<Toast> g_toasts;
+static const Uint32 kToastSlideMs = 220;
+static const Uint32 kToastShowMs = 3500;
+static std::string g_toast_discord_seen; /* last Discord connection already announced */
+
+static void toast_push(const char *text) {
+	if (!text || !text[0]) return;
+	if (!g_toasts.empty() && g_toasts.back().text == text) return; /* same message twice in a row */
+	g_toasts.push_back({text, 0});
+}
+
+/* The cloud functions report into g_cloud_status; hand that over as a notification. */
+static void toast_take_cloud_status(void) {
+	toast_push(g_cloud_status);
+	g_cloud_status[0] = '\0';
+}
+
+/* Whether the local Discord desktop app is connected; `line` (optional) gets the status text either way.
+ * A connection not announced yet is announced here, so this is the one place that sees it change. */
+static bool local_discord_connected(char *line, size_t cap) {
+	char buf[256] = {};
+	const bool ok = pvz2_cloud_sync_local_discord(false, buf, sizeof(buf), g_edit.locale);
+	if (ok && g_toast_discord_seen != buf) {
+		g_toast_discord_seen = buf;
+		toast_push(buf);
+	}
+	if (line && cap > 0) SDL_strlcpy(line, buf, cap);
+	return ok;
+}
+
+/* Filled rounded rectangle, untextured (GL_TEXTURE_2D must be off). */
+static void draw_round_rect(float x, float y, float w, float h, float r,
+							float cr, float cg, float cb, float ca) {
+	r = std::min(r, std::min(w, h) * 0.5f);
+	const int kSeg = 10; /* per corner */
+	const float cx[4] = {x + w - r, x + w - r, x + r, x + r};
+	const float cy[4] = {y + r, y + h - r, y + h - r, y + r};
+	const float a0[4] = {-0.5f, 0.0f, 0.5f, 1.0f}; /* start angle of each corner, in units of pi */
+	glColor4f(cr, cg, cb, ca);
+	glBegin(GL_TRIANGLE_FAN);
+	glVertex2f(x + w * 0.5f, y + h * 0.5f);
+	for (int c = 0; c < 4; ++c)
+		for (int i = 0; i <= kSeg; ++i) {
+			const float a = (a0[c] + 0.5f * (float)i / kSeg) * 3.14159265f;
+			glVertex2f(cx[c] + r * std::cos(a), cy[c] + r * std::sin(a));
+		}
+	glVertex2f(cx[0] + r * std::cos(-0.5f * 3.14159265f), cy[0] + r * std::sin(-0.5f * 3.14159265f));
+	glEnd();
+}
+
+static void draw_toast(float win_w, float win_h) {
+	while (!g_toasts.empty()) {
+		Toast &t = g_toasts.front();
+		const Uint32 now = SDL_GetTicks();
+		if (t.start_ms == 0) t.start_ms = now ? now : 1;
+		if (now - t.start_ms < kToastShowMs) break;
+		g_toasts.pop_front();
+	}
+	if (g_toasts.empty() || !g_font.ok || !g_tex_list_item.id) return;
+	const Toast &t = g_toasts.front();
+	const float s = ui_scale(win_w, win_h);
+	const float elapsed = (float)(SDL_GetTicks() - t.start_ms);
+
+	/* Slide down from above the window, hold, slide back up. */
+	float shown = 1.0f;
+	if (elapsed < kToastSlideMs) shown = elapsed / kToastSlideMs;
+	else if (elapsed > kToastShowMs - kToastSlideMs) shown = (kToastShowMs - elapsed) / kToastSlideMs;
+	shown = clampf(shown, 0.0f, 1.0f);
+	shown = 1.0f - (1.0f - shown) * (1.0f - shown); /* ease out */
+
+	const float w = sc((float)g_tex_list_item.w, s);
+	const float pad = sc(kItemTextOffX, s);
+	std::vector<std::string> lines = wrap_item_label(g_font, t.text.c_str(), w - 2.0f * pad, win_w, win_h);
+	if (lines.empty()) return;
+	const float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+	const float line_h = cap_h * 1.35f;
+	const float block_h = cap_h + (float)(lines.size() - 1) * line_h;
+	const float h = std::max(sc((float)g_tex_list_item.h, s), block_h + sc(40.0f, s));
+	const float x = (win_w - w) * 0.5f;
+	const float margin = sc(24.0f, s);
+	const float y = -h + (h + margin) * shown;
+
+	/* Rounded card: a blue border with the menu rows' cream inside. */
+	const float rim = sc(5.0f, s);
+	const float radius = sc(22.0f, s);
+	glDisable(GL_TEXTURE_2D);
+	draw_round_rect(x - rim, y - rim, w + 2.0f * rim, h + 2.0f * rim, radius + rim,
+					0x1f / 255.f, 0x5f / 255.f, 0xc4 / 255.f, 0.97f);
+	draw_round_rect(x, y, w, h, radius, 0xf3 / 255.f, 0xeb / 255.f, 0xc8 / 255.f, 1.0f);
+	glEnable(GL_TEXTURE_2D);
+
+	float baseline = y + (h - block_h) * 0.5f + cap_h;
+	for (const std::string &l : lines) {
+		const float lw = measure_string(g_font, l.c_str(), false, win_w, win_h);
+		draw_string(g_font, l.c_str(), false, x + (w - lw) * 0.5f, baseline,
+					0x48 / 255.f, 0x3e / 255.f, 0x00 / 255.f, win_w, win_h);
+		baseline += line_h;
+	}
+}
+
 static std::vector<Item> build_items(Screen screen, const Strings *str) {
     std::vector<Item> items;
     if (screen == Screen::Main) {
@@ -1895,6 +2032,18 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         else if (strcmp(g_edit.cur_code,"MXN")==0||strcmp(g_edit.cur_code,"ARS")==0) cur_name=str->cur_peso;
         items.push_back({str->currency, true, false, false, cur_name});
 
+        const char *diff_name = str->diff_auto;
+        if      (strcmp(g_edit.difficulty, "off") == 0) diff_name = str->diff_off;
+        else if (strcmp(g_edit.difficulty, "hard_plus") == 0) diff_name = str->diff_hard_plus;
+        else if (strcmp(g_edit.difficulty, "hard_plus_plus") == 0) diff_name = str->diff_hard_plus_plus;
+        else if (strcmp(g_edit.difficulty, "point_zero") == 0) diff_name = str->diff_point_zero;
+        else if (g_edit.difficulty[0] >= '1' && g_edit.difficulty[0] <= '8' && g_edit.difficulty[1] == '\0') {
+            static char s_diff_buf[32];
+            SDL_snprintf(s_diff_buf, sizeof(s_diff_buf), "Nivel %c", g_edit.difficulty[0]);
+            diff_name = s_diff_buf;
+        }
+        items.push_back({str->difficulty, true, false, false, diff_name});
+
         items.push_back({str->input_config, true, false, false, ""});
         items.push_back({str->gamepad_config, true, false, false, ""});
         items.push_back({str->events_config, true, false, false, ""});
@@ -1904,7 +2053,6 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->iap, false, false, g_edit.emulate_iap != 0, ""});
         items.push_back({str->lock_cursor, false, false, g_edit.lock_cursor != 0, ""});
         items.push_back({str->cloud_save, true, false, false, ""});
-        items.push_back({str->view_credits, true, false, false, ""});
         items.push_back({str->exit_program, true, false, false, ""});
 
     } else if (screen == Screen::Resolution) {
@@ -1943,6 +2091,26 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         for (int i = 0; i < kCurrencyOptCount; ++i)
             items.push_back({labels3[i], false, false,
                              strcmp(g_edit.cur_code, kCurrencyOpts[i].code)==0, ""});
+    } else if (screen == Screen::Difficulty) {
+        static const char *s_diff_modes[] = {
+            "auto", "off", "1", "2", "3", "4", "5", "6", "7", "8",
+            "hard_plus", "hard_plus_plus", "point_zero"
+        };
+        for (const char *m : s_diff_modes) {
+            std::string label;
+            if      (strcmp(m, "auto") == 0) label = str->diff_auto;
+            else if (strcmp(m, "off") == 0) label = str->diff_off;
+            else if (strcmp(m, "hard_plus") == 0) label = str->diff_hard_plus;
+            else if (strcmp(m, "hard_plus_plus") == 0) label = str->diff_hard_plus_plus;
+            else if (strcmp(m, "point_zero") == 0) label = str->diff_point_zero;
+            else {
+                char buf[32];
+                SDL_snprintf(buf, sizeof(buf), "Nivel %s", m);
+                label = buf;
+            }
+            bool sel = (strcmp(g_edit.difficulty, m) == 0);
+            items.push_back({label, false, false, sel, ""});
+        }
     } else if (screen == Screen::Bindings) {
         /* One edit-icon row per bind entry */
         const pvz2_config_t *cfg = pvz2_config();
@@ -2065,6 +2233,10 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
 
         items.push_back({str->cloud_upload, true, false, false, ""});
         items.push_back({str->cloud_download, true, false, false, ""});
+        /* After a download/import the game must restart to load it: offered right below Download. */
+        if (pvz2_cloud_writes_locked()) {
+            items.push_back({str->cloud_restart_now, true, false, false, ""});
+        }
         items.push_back({str->cloud_autosync, false, false, cc->auto_sync != 0, ""});
         const pvz2_config_t *cfg = pvz2_config();
         const bool rpc_on = cfg && cfg->discord_enabled != 0;
@@ -2073,17 +2245,13 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->cloud_import_local, true, false, false, ""});
         items.push_back({str->steam_add, true, false, false, ""});
 
-        if (pvz2_cloud_writes_locked()) {
-            items.push_back({str->cloud_restart_now, true, false, false, ""});
-        }
-        if (g_cloud_status[0] != '\0') {
-            items.push_back({g_cloud_status, true, false, false, ""});
-        }
-
-        /* Bottom row: Local Discord desktop status (stays at the bottom) */
+        /* What the actions above report, and the local Discord connection, are notifications (see
+         * toast_push), not rows. The Discord row stays only while Discord is not connected, as the
+         * button that connects it. */
         char local_disc_line[256] = {};
-        pvz2_cloud_sync_local_discord(false, local_disc_line, sizeof(local_disc_line), g_edit.locale);
-        items.push_back({local_disc_line, true, false, false, ""});
+        if (!local_discord_connected(local_disc_line, sizeof(local_disc_line))) {
+            items.push_back({local_disc_line, true, false, false, ""});
+        }
     } else if (screen == Screen::CloudProviderPick) {
         Pvz2CloudConfig *cc = pvz2_cloud_config();
         for (int p = 0; p < PVZ2_CLOUD_PROVIDER_COUNT; ++p) {
@@ -2238,6 +2406,7 @@ static void write_overlay_settings_to_ini(void) {
 	set_key("game", "emulate_iap", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.achievement_notifications);
 	set_key("game", "achievement_notifications", tmp);
+	set_key("game", "difficulty", g_edit.difficulty);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.use_cdn);
 	set_key("runtime", "use_cdn", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.rewrite_cdn);
@@ -2639,6 +2808,7 @@ static void draw_panel_content(Screen screen, float dx,
     else if (screen == Screen::Fps)        title = str->fps;
     else if (screen == Screen::Language)   title = str->language;
     else if (screen == Screen::Currency)   title = str->currency;
+    else if (screen == Screen::Difficulty) title = str->difficulty;
     else if (screen == Screen::Bindings)   title = str->input_config;
     else if (screen == Screen::GamepadBinds) title = str->gamepad_config;
     else if (screen == Screen::GamepadDevicePick) title = str->gamepad_selected;
@@ -3031,6 +3201,8 @@ static void draw_panel_content(Screen screen, float dx,
 /* =========================================================================
  * Draw a single frame of the config screen
  * ========================================================================= */
+void draw_pad_focus(void);
+
 static void draw(SDL_Window *window) {
 	/* Handle deferred open request (from hooks that lack the window pointer) */
 	if ((g_open_requested || g_open_cloud_requested) && !g_open) {
@@ -3046,7 +3218,7 @@ static void draw(SDL_Window *window) {
 			pvz2_cloud_sync_local_discord(false, nullptr, 0, g_edit.locale);
 		}
 	}
-	if (!g_open && !g_quit_confirm) return;
+	if (!g_open && !g_quit_confirm && g_toasts.empty()) return;
 
 	/* Quit-confirm alone still needs resources + window pointer. */
 	if (g_quit_confirm && !g_loaded) {
@@ -3089,7 +3261,8 @@ static void draw(SDL_Window *window) {
 	glMatrixMode(GL_TEXTURE);
 	glPushMatrix(); glLoadIdentity();
 
-	/* --- dim overlay (once, whether settings and/or quit confirm) --- */
+	/* --- dim overlay (once, whether settings and/or quit confirm; not for a notification alone) --- */
+	if (g_open || g_quit_confirm) {
 	glDisable(GL_TEXTURE_2D);
 	glColor4f(0, 0, 0, 0.5f);
 	glBegin(GL_QUADS);
@@ -3097,6 +3270,7 @@ static void draw(SDL_Window *window) {
 	glVertex2f(win_w, win_h); glVertex2f(0, win_h);
 	glEnd();
 	glEnable(GL_TEXTURE_2D);
+	}
 
 	if (g_open) {
 		/* --- panel background --- */
@@ -3136,6 +3310,7 @@ static void draw(SDL_Window *window) {
 		} else {
 			draw_panel_content(g_screen, 0.0f, g_scroll_offset,
 							   win_w, win_h, px, py, pw, ph, true);
+			draw_pad_focus();
 		}
 	}
 
@@ -3154,6 +3329,9 @@ static void draw(SDL_Window *window) {
 	/* Quit confirm draws above the settings panel when both are active. */
 	if (g_quit_confirm)
 		draw_quit_confirm(win_w, win_h);
+
+	/* Notifications sit above everything, menu open or not. */
+	draw_toast(win_w, win_h);
 
 	/* Restore GL state */
 	glMatrixMode(GL_TEXTURE);  glPopMatrix();
@@ -3187,8 +3365,14 @@ static void begin_transition(Screen to, bool forward) {
 /* =========================================================================
  * Input handling
  * ========================================================================= */
+/* Controller navigation state (see pad_button below). */
+int g_pad_focus = 0;
+bool g_pad_active = false;
+Screen g_pad_screen = Screen::Main;
+
 static void handle_event(const SDL_Event *e) {
 	if (!e) return;
+	if (e->type == SDL_MOUSEMOTION && std::abs(e->motion.xrel) + std::abs(e->motion.yrel) >= 3) g_pad_active = false;
 	int win_wi, win_hi;
 	SDL_GL_GetDrawableSize(g_window, &win_wi, &win_hi);
 	float win_w = (float)win_wi, win_h = (float)win_hi;
@@ -3215,23 +3399,30 @@ static void handle_event(const SDL_Event *e) {
 				   int fps_val; const char *locale; const char *cur_sym; const char *cur_code; };
 	std::vector<RItem> ritems;
 	if (g_screen == Screen::Main) {
-		/* 0=display 1=res 2=fps 3=lang 4=currency 5=input 6=gamepad
-		 * 7=events 8=achievements 9=achievement_notify 10=iap 11=exit */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* events */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* achievements */
-		ritems.push_back({false,false,false,g_edit.achievement_notifications!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({false,false,false,g_edit.lock_cursor!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* cloud save */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* credits */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* exit */
+		/* 0=display 1=res 2=fps 3=lang 4=currency 5=difficulty 6=input 7=gamepad
+		 * 8=events 9=achievements 10=achievement_notify 11=iap 12=lock_cursor 13=cloud 14=exit (Credits is reached from the game's own settings) */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 0 display */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 1 res */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 2 fps */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 3 lang */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 4 currency */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 5 difficulty */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 6 input */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 7 gamepad */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 8 events */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 9 achievements */
+		ritems.push_back({false,false,false,g_edit.achievement_notifications!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 10 */
+		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 11 */
+		ritems.push_back({false,false,false,g_edit.lock_cursor!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 12 */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 13 cloud save */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 14 exit */
+	} else if (g_screen == Screen::Difficulty) {
+		static const char *s_diff_modes[] = {
+			"auto", "off", "1", "2", "3", "4", "5", "6", "7", "8",
+			"hard_plus", "hard_plus_plus", "point_zero"
+		};
+		for (const char *m : s_diff_modes)
+			ritems.push_back({false,false,false,strcmp(g_edit.difficulty, m) == 0,-1,0,0,0,0,m,nullptr,nullptr});
 	} else if (g_screen == Screen::Resolution) {
 		const std::vector<ResOpt> opts = filtered_res_opts(
 			g_edit.fullscreen, g_edit.video_width, g_edit.video_height);
@@ -3288,6 +3479,10 @@ static void handle_event(const SDL_Event *e) {
 		/* 5=Upload, 6=Download, 7=Auto-sync, 11=Export JSON, 12=Import JSON */
 		ritems.push_back({true, false,false,false, 5,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 6,0,0,0,0,nullptr,nullptr,nullptr});
+		/* 8=Restart to load the downloaded save (right below Download, as in build_items) */
+		if (pvz2_cloud_writes_locked()) {
+			ritems.push_back({true, false,false,false, 8,0,0,0,0,nullptr,nullptr,nullptr});
+		}
 		ritems.push_back({false,false,false,cc->auto_sync!=0, 7,0,0,0,0,nullptr,nullptr,nullptr});
 		const pvz2_config_t *cfg = pvz2_config();
 		const bool rpc_on = cfg && cfg->discord_enabled != 0;
@@ -3295,14 +3490,10 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({true, false,false,false, 11,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 12,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 13,0,0,0,0,nullptr,nullptr,nullptr});
-		if (pvz2_cloud_writes_locked()) {
-			ritems.push_back({true, false,false,false, 8,0,0,0,0,nullptr,nullptr,nullptr});
+		/* 10=Connect the local Discord -- only while it is not connected, as in build_items */
+		if (!local_discord_connected(nullptr, 0)) {
+			ritems.push_back({true, false,false,false, 10,0,0,0,0,nullptr,nullptr,nullptr});
 		}
-		if (g_cloud_status[0] != '\0') {
-			ritems.push_back({true, false,false,false, 9,0,0,0,0,nullptr,nullptr,nullptr});
-		}
-		/* 10=Bottom Local Discord IPC status */
-		ritems.push_back({true, false,false,false, 10,0,0,0,0,nullptr,nullptr,nullptr});
 	} else if (g_screen == Screen::CloudProviderPick) {
 		for (int p = 0; p < PVZ2_CLOUD_PROVIDER_COUNT; ++p)
 			ritems.push_back({false,false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
@@ -3655,13 +3846,9 @@ static void handle_event(const SDL_Event *e) {
 					if (i == 14) {
 						/* Exit: no menu click SFX — dialog open plays exit_click. */
 						show_quit_confirm();
-					} else if (i == 8) {
+					} else if (i == 9) {
 						/* View Achievements — open SFX is exit_click (same as quit). */
 						achievements_screen_request_open();
-					} else if (i == 13) {
-						/* View Credits */
-						play_sound(g_snd_confirm);
-						credits_screen_request_open();
 					} else {
 						play_sound(g_snd_next);
 						Screen to = Screen::Main;
@@ -3670,10 +3857,11 @@ static void handle_event(const SDL_Event *e) {
 						else if (i == 2) to = Screen::Fps;
 						else if (i == 3) to = Screen::Language;
 						else if (i == 4) to = Screen::Currency;
-						else if (i == 5) to = Screen::Bindings;
-						else if (i == 6) to = Screen::GamepadBinds;
-						else if (i == 7) to = Screen::Events;
-						else if (i == 12) {
+						else if (i == 5) to = Screen::Difficulty;
+						else if (i == 6) to = Screen::Bindings;
+						else if (i == 7) to = Screen::GamepadBinds;
+						else if (i == 8) to = Screen::Events;
+						else if (i == 13) {
 							g_opened_directly_to_cloud = false;
 							pvz2_cloud_init();
 							g_cloud_status[0] = '\0';
@@ -3687,30 +3875,37 @@ static void handle_event(const SDL_Event *e) {
 					if (act == 1) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_start_provider_auth(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 2) {
 						play_sound(g_snd_next);
 						begin_transition(Screen::CloudProviderPick, true);
 					} else if (act == 5) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_upload(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 6) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_download(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 11) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_export_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 12) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_import_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 13) {
 						play_sound(g_snd_confirm);
 						pvz2_add_to_steam(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 8) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_restart_game();
 					} else if (act == 10) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_sync_local_discord(true, nullptr, 0, g_edit.locale);
+						local_discord_connected(nullptr, 0); /* notifies when it connected */
 					} else {
 						play_sound(g_snd_check);
 					}
@@ -3747,7 +3942,7 @@ static void handle_event(const SDL_Event *e) {
 			} else {
 				play_sound(g_snd_check);
 				if (g_screen == Screen::Main) {
-					if (i == 9) {
+					if (i == 10) {
 						g_edit.achievement_notifications = !g_edit.achievement_notifications;
 						write_overlay_settings_to_ini();
 						/* Apply live immediately — no relaunch needed. Keep other
@@ -3764,14 +3959,24 @@ static void handle_event(const SDL_Event *e) {
 							live->emulate_iap,
 							g_edit.achievement_notifications,
 							live->use_cdn, live->rewrite_cdn);
-					} else if (i == 10) {
+					} else if (i == 11) {
 						g_edit.emulate_iap = !g_edit.emulate_iap;
 						write_overlay_settings_to_ini();
-					} else if (i == 11) {
+					} else if (i == 12) {
 						g_edit.lock_cursor = !g_edit.lock_cursor;
 						write_overlay_settings_to_ini();
 						pvz2_config_set_lock_cursor(g_edit.lock_cursor);
 						pvz2_host_update_cursor_lock();
+					}
+				} else if (g_screen == Screen::Difficulty) {
+					static const char *s_diff_modes[] = {
+						"auto", "off", "1", "2", "3", "4", "5", "6", "7", "8",
+						"hard_plus", "hard_plus_plus", "point_zero"
+					};
+					if (i < sizeof(s_diff_modes)/sizeof(s_diff_modes[0])) {
+						SDL_strlcpy(g_edit.difficulty, s_diff_modes[i], sizeof(g_edit.difficulty));
+						pvz2_config_set_difficulty(g_edit.difficulty);
+						write_overlay_settings_to_ini();
 					}
 				} else if (g_screen == Screen::Events) {
 					if (i == 0) g_edit.use_cdn = !g_edit.use_cdn;
@@ -3866,6 +4071,165 @@ static void handle_event(const SDL_Event *e) {
 	}
 
 	(void)str;
+}
+
+/* -------------------------------------------------------------------------
+ * Controller navigation: the D-pad moves a highlight from row to row, A clicks the row and B presses
+ * Back / Close. A and B are delivered as left clicks at the row's (or button's) centre through
+ * handle_event, so every row does exactly what it does with the mouse. Moving the mouse hides the
+ * highlight again.
+ * ---------------------------------------------------------------------- */
+bool pad_screen_is_list(Screen s) {
+	return s != Screen::BindEdit && s != Screen::CloudTextEdit;
+}
+
+void pad_click_at(float x, float y) {
+	SDL_Event down{};
+	down.type = SDL_MOUSEBUTTONDOWN;
+	down.button.button = SDL_BUTTON_LEFT;
+	down.button.state = SDL_PRESSED;
+	down.button.x = (Sint32)x;
+	down.button.y = (Sint32)y;
+	SDL_Event up = down;
+	up.type = SDL_MOUSEBUTTONUP;
+	up.button.state = SDL_RELEASED;
+	const bool was_active = g_pad_active;
+	handle_event(&down);
+	handle_event(&up);
+	g_pad_active = was_active;
+}
+
+int pad_row_count(void) {
+	return (int)build_items(g_screen, get_strings(g_edit.locale)).size();
+}
+
+/* Row geometry in window pixels for row `i` of the current screen. */
+void pad_row_rect(int i, float &x, float &y, float &w, float &h) {
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float lx, ly, lw, lh;
+	get_list_rect(win_w, win_h, lx, ly, lw, lh);
+	w = sc((float)g_tex_list_item.w, s);
+	h = sc((float)g_tex_list_item.h, s);
+	x = lx + (lw - w) * 0.5f;
+	y = ly + sc(kItemStartY, s) + (float)i * h - g_scroll_offset;
+}
+
+/* Scrolls the list just enough to show the focused row. */
+void pad_scroll_to_focus(void) {
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float lx, ly, lw, lh;
+	get_list_rect(win_w, win_h, lx, ly, lw, lh);
+	float x, y, w, h;
+	pad_row_rect(g_pad_focus, x, y, w, h);
+	const float top = ly + sc(kListSolidEdge, s), bot = ly + lh - sc(kListSolidEdge, s);
+	if (y < top) g_scroll_offset -= top - y;
+	if (y + h > bot) g_scroll_offset += (y + h) - bot;
+	const float max_scroll = list_max_scroll(pad_row_count(), h, lh, s);
+	if (g_scroll_offset < 0) g_scroll_offset = 0;
+	if (g_scroll_offset > max_scroll) g_scroll_offset = max_scroll;
+}
+
+void pad_press_back(void) {
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float px, py, pw, ph;
+	get_panel_rect(win_w, win_h, px, py, pw, ph);
+	if (screen_uses_close_btn(g_screen)) {
+		const float w = sc((float)g_tex_close_up.w, s), h = sc((float)g_tex_close_up.h, s);
+		pad_click_at(px + pw - sc(kCloseBtnFromRight, s) - w * 0.5f, py + sc(kCloseBtnFromTop, s) + h * 0.5f);
+	} else {
+		const float w = sc((float)g_tex_back_up.w, s), h = sc((float)g_tex_back_up.h, s);
+		pad_click_at(px + sc(kBackBtnFromLeft, s) + w * 0.5f, py + sc(kBackBtnFromTop, s) + h * 0.5f);
+	}
+}
+
+/* Yellow corner brackets around the focused row (same look as the lawn selector). */
+void draw_pad_focus(void) {
+	if (!g_pad_active || g_in_transition || g_quit_confirm || !pad_screen_is_list(g_screen)) return;
+	if (g_pad_screen != g_screen) return;
+	const int n = pad_row_count();
+	if (g_pad_focus < 0 || g_pad_focus >= n) return;
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float lx, ly, lw, lh;
+	get_list_rect(win_w, win_h, lx, ly, lw, lh);
+	float x, y, w, h;
+	pad_row_rect(g_pad_focus, x, y, w, h);
+	const float top = ly + sc(kListSolidEdge, s), bot = ly + lh - sc(kListSolidEdge, s);
+	if (y < top - 1.0f || y + h > bot + 1.0f) return;
+	const float t = std::max(3.0f, sc(6.0f, s)), L = h * 0.30f;
+	const float pulse = 0.80f + 0.20f * std::sin((float)SDL_GetTicks() * 0.008f);
+	glDisable(GL_TEXTURE_2D);
+	for (int pass = 0; pass < 2; ++pass) {
+		const float o = pass == 0 ? 1.5f : 0.0f, tt = t + 2 * o, LL = L + o;
+		const float x0 = x + sc(4.0f, s) - o, y0 = y + sc(4.0f, s) - o;
+		const float x1 = x + w - sc(4.0f, s) + o, y1 = y + h - sc(4.0f, s) + o;
+		if (pass == 0) glColor4f(0, 0, 0, 0.55f);
+		else glColor4f(1.0f * pulse, 0.86f * pulse, 0.10f * pulse, 1.0f);
+		auto q = [](float qx, float qy, float qw, float qh) {
+			glVertex2f(qx, qy); glVertex2f(qx + qw, qy); glVertex2f(qx + qw, qy + qh); glVertex2f(qx, qy + qh);
+		};
+		glBegin(GL_QUADS);
+		q(x0, y0, LL, tt);           q(x0, y0 + tt, tt, LL - tt);
+		q(x1 - LL, y0, LL, tt);      q(x1 - tt, y0 + tt, tt, LL - tt);
+		q(x0, y1 - tt, LL, tt);      q(x0, y1 - LL, tt, LL - tt);
+		q(x1 - LL, y1 - tt, LL, tt); q(x1 - tt, y1 - LL, tt, LL - tt);
+		glEnd();
+	}
+	glEnable(GL_TEXTURE_2D);
+}
+
+int pad_button(int button) {
+	if (!g_open && !g_quit_confirm) return 0;
+	if (g_quit_confirm) {
+		/* The quit dialog: A quits, B cancels. */
+		if (button == SDL_CONTROLLER_BUTTON_A) { do_quit_now(); return 1; }
+		if (button == SDL_CONTROLLER_BUTTON_B) { dismiss_quit_confirm(); return 1; }
+		return 0;
+	}
+	if (g_in_transition) return 1;
+	if (!pad_screen_is_list(g_screen)) return 0; /* key capture / text entry: leave them to the cursor */
+	if (g_pad_screen != g_screen) {
+		g_pad_screen = g_screen;
+		g_pad_focus = 0;
+	}
+	const int n = pad_row_count();
+	switch (button) {
+		case SDL_CONTROLLER_BUTTON_DPAD_UP:
+		case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+			if (n > 0) {
+				if (g_pad_active) {
+					g_pad_focus += button == SDL_CONTROLLER_BUTTON_DPAD_DOWN ? 1 : -1;
+					if (g_pad_focus < 0) g_pad_focus = n - 1;
+					if (g_pad_focus >= n) g_pad_focus = 0;
+				}
+				g_pad_active = true;
+				pad_scroll_to_focus();
+				play_sound(g_snd_next);
+			}
+			return 1;
+		case SDL_CONTROLLER_BUTTON_A:
+			/* Until the D-pad is used, A keeps clicking wherever the stick put the cursor. */
+			if (!g_pad_active) return 0;
+			if (g_pad_focus >= 0 && g_pad_focus < n) {
+				pad_scroll_to_focus();
+				float x, y, w, h;
+				pad_row_rect(g_pad_focus, x, y, w, h);
+				pad_click_at(x + w * 0.5f, y + h * 0.5f);
+			}
+			return 1;
+		case SDL_CONTROLLER_BUTTON_B:
+			pad_press_back();
+			return 1;
+		default:
+			return 0;
+	}
 }
 
 } // anonymous namespace
@@ -3970,7 +4334,9 @@ void config_screen_draw(SDL_Window *window) {
 	/* Hide settings while the achievements overlay is up; g_open stays true so
 	 * closing achievements restores this screen as it was. */
 	if (achievements_screen_is_open()) return;
-	if ((!g_open && !g_open_requested && !g_open_cloud_requested && !g_quit_confirm) || !window) return;
+	if ((!g_open && !g_open_requested && !g_open_cloud_requested && !g_quit_confirm && g_toasts.empty()) ||
+		!window)
+		return;
 	draw(window);
 }
 
@@ -3981,6 +4347,10 @@ void config_screen_play_exit_sound(void) {
 void config_screen_play_achievement_unlock_sound(void) {
 	refresh_ui_sfx_from_prefs();
 	play_sound(g_snd_achieve_unlock);
+}
+
+int config_screen_pad_button(int sdl_controller_button) {
+	return pad_button(sdl_controller_button);
 }
 
 } // extern "C"

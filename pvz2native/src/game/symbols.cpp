@@ -250,6 +250,11 @@ const GameSymbols kVersions[] = {
             .zomboss_stage_change_call = 0xa57444,
             .company_link_allowed_fn   = 0x3e9390,
             .company_button_skip_branch = 0x451c80,
+            .dynamic_difficulty_fn     = 0x8888d8,
+            .wave_spawn_fn             = 0,
+            .show_lawn_mowers_fn       = 0x403424,
+            .rton_open_memory_fn       = 0xb9edd8,
+            .wwise_id_from_string_fn   = 0xec6408,
         },
         /* probe: the frame-gate field offsets are 9.6.1's; reading a 4.5.2 driver
          * at them printed plausible garbage, which is worse than printing
@@ -327,6 +332,11 @@ const GameSymbols kVersions[] = {
             .zomboss_setup_stage    = 0xa57c50,
             .zomboss_stage_init_call = 0xa566dc,
             .zomboss_stage_change_call = 0xa5681c,
+            .dynamic_difficulty_fn  = 0xaa9c20,
+            .wave_spawn_fn          = 0,
+            .show_lawn_mowers_fn    = 0x6e84cc,
+            .rton_open_memory_fn    = 0xc67038,
+            .wwise_id_from_string_fn = 0xed5100,
         },
         .fingerprint_draw_frame    = 0xE79F0000E59F0004ull, /* LDR R0,[PC,#4]; LDR R0,[PC,R0]     */
         .fingerprint_game_app_init = 0xE28DB01CE92D4FF0ull, /* PUSH {R4-R11,LR}; ADD R11,SP,#0x1C */
