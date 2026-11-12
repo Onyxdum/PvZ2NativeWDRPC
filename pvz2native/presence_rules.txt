@@ -82,66 +82,6 @@ regex:state:Board Level=challenge_levels[/\\]premiumquest_[^/\\]+_(\d+)$ | Misi�
 regex:state:Board Level=challenge_levels[/\\].*$ | Tronco de Viaje | Jugando una misión
 regex:state:Board Level=lod_.*$ | Fiesta de Piñatas | En partida
 
-; === 2. RESPALDO POR ARCHIVO DE GUARDADO (Solo al cargar partida) ===
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_egypt(\d+)/save_UIWidgets\.rton$ | Rompejarrones | Antiguo Egipto - Nivel $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_pirate(\d+)/save_UIWidgets\.rton$ | Rompejarrones | Mares Piratas - Nivel $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_cowboy(\d+)/save_UIWidgets\.rton$ | Rompejarrones | Salvaje Oeste - Nivel $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_future(\d+)/save_UIWidgets\.rton$ | Rompejarrones | Futuro Lejano - Nivel $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_dark(\d+)/save_UIWidgets\.rton$ | Rompejarrones | Edad Oscura - Nivel $1
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_endless/save_UIWidgets\.rton$ | Rompejarrones | Modo Infinito
-regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_([^/]+)/save_UIWidgets\.rton$ | Rompejarrones | Nivel $1
-
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Pirámide de la Perdición (Egipto)
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Botín del Muerto (Piratas)
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Páramo del Gran Mal (Oeste)
-regex:asset:.*/save/[^/]*?_\d{9,}_future_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Terror del Mañana (Futuro)
-regex:asset:.*/save/[^/]*?_\d{9,}_dark_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Reto de Arturo (Edad Oscura)
-regex:asset:.*/save/[^/]*?_\d{9,}_beach_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Tikitorcha (Playa)
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Campo de Batalla Helado (Cuevas)
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Templo Marchito (Ciudad Perdida)
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Grandes Éxitos (Neón)
-regex:asset:.*/save/[^/]*?_\d{9,}_dino_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Pozos de Cerebrea (Jurásico)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_dangerroom/save_UIWidgets\.rton$ | Zona de Infinito | Autopista a la Sala del Peligro (Tiempos Modernos)
-
-; Respaldo de niveles de jefe
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt25/save_UIWidgets\.rton$ | Antiguo Egipto | Zombot Esfinge Letal
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate25/save_UIWidgets\.rton$ | Mares Piratas | Zombot Corsario
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy25/save_UIWidgets\.rton$ | Salvaje Oeste | Zombot Carro Blindado
-regex:asset:.*/save/[^/]*?_\d{9,}_future25/save_UIWidgets\.rton$ | Futuro Lejano | Zombot Mañanatrón
-regex:asset:.*/save/[^/]*?_\d{9,}_dark20/save_UIWidgets\.rton$ | Edad Oscura | Zombot Dragón Oscuro
-regex:asset:.*/save/[^/]*?_\d{9,}_beach32/save_UIWidgets\.rton$ | Playa de la Gran Ola | Zombot Subtiburotrónico
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage30/save_UIWidgets\.rton$ | Cuevas Congeladas | Zombot Maestro del Colmillo 10.000 a.C.
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage32/save_UIWidgets\.rton$ | Cuevas Congeladas | Zombot Maestro del Colmillo 10.000 a.C.
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity32/save_UIWidgets\.rton$ | Ciudad Perdida | Zombot Góndola Aerostática
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties32/save_UIWidgets\.rton$ | Vueltacasete de Neón | Zombot Machacante Multiescenario
-regex:asset:.*/save/[^/]*?_\d{9,}_dino32/save_UIWidgets\.rton$ | Pantano del Jurásico | Zombot Dinotrónico Mechasaurio
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_01_egypt/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Esfinge Letal
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_02_pirate/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Corsario
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_03_cowboy/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Carro Blindado
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_04_future/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Mañanatrón
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_05_dark/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Dragón Oscuro
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_06_beach/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Subtiburotrónico
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_07_iceage/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Maestro del Colmillo 10.000 a.C.
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_08_lostcity/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Góndola Aerostática
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_09_eighties/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Machacante Multiescenario
-regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_10_dino/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot Dinotrónico Mechasaurio
-regex:asset:.*/save/[^/]*?_\d{9,}_modern32/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot del Dr. Zomboss (Parte 1)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern33/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot del Dr. Zomboss (Parte 2)
-regex:asset:.*/save/[^/]*?_\d{9,}_modern34/save_UIWidgets\.rton$ | Tiempos Modernos | Zombot del Dr. Zomboss (Batalla Final)
-
-regex:asset:.*/save/[^/]*?_\d{9,}_egypt(\d+)/save_UIWidgets\.rton$ | Antiguo Egipto | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_pirate(\d+)/save_UIWidgets\.rton$ | Mares Piratas | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_cowboy(\d+)/save_UIWidgets\.rton$ | Salvaje Oeste | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_future(\d+)/save_UIWidgets\.rton$ | Futuro Lejano | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_dark(\d+)/save_UIWidgets\.rton$ | Edad Oscura | Noche $1
-regex:asset:.*/save/[^/]*?_\d{9,}_beach(\d+)/save_UIWidgets\.rton$ | Playa de la Gran Ola | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_iceage(\d+)/save_UIWidgets\.rton$ | Cuevas Congeladas | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_lostcity(\d+)/save_UIWidgets\.rton$ | Ciudad Perdida | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_eighties(\d+)/save_UIWidgets\.rton$ | Vueltacasete de Neón | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_dino(\d+)/save_UIWidgets\.rton$ | Pantano del Jurásico | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_modern(\d+)/save_UIWidgets\.rton$ | Tiempos Modernos | Día $1
-regex:asset:.*/save/[^/]*?_\d{9,}_lod_[^/]+/save_UIWidgets\.rton$ | Fiesta de Piñatas | En partida
-
 ; === 3. FIN DE NIVEL (Recogiendo premio) ===
 Play_WinMusic | Nivel completado | Recogiendo recompensa
 
@@ -154,9 +94,7 @@ state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | En el menú prin
 
 rsb:ZenGardenGroup_ | Jardín Zen | Cuidando las plantas
 rsb:DelayLoad_Background_Zen | Jardín Zen | Cuidando las plantas
-temp:rsb:UI_Quests_ | Tronco de Viaje | Viendo misiones
-temp:rsb:RoadSign_ | Tronco de Viaje | Viendo misiones
-temp:rsb:UI_Almanac_ | En el Almanaque | Consultando plantas y zombis
+rsb:UI_Quests_ | Tronco de Viaje | Viendo misiones
 rsb:UI_VaseBreakerMenu_ | Rompejarrones | Eligiendo nivel
 
 ; === 5. MAPAS DE MUNDOS ===
@@ -184,8 +122,8 @@ rsb:WorldMap_Lostcity_ | En el mapa | Ciudad Perdida
 rsb:WorldMap_Eighties_ | En el mapa | Vueltacasete de Neón
 rsb:WorldMap_Dino_ | En el mapa | Pantano del Jurásico
 rsb:WorldMap_Modern_ | En el mapa | Tiempos Modernos
-rsb:UI_World_Preview_ | En el mapa | Explorando mundos
-rsb:UI_Universe_ | En el mapa | Eligiendo mundo
+; rsb:UI_World_Preview_ | En el mapa | Explorando mundos
+; rsb:UI_Universe_ | En el mapa | Eligiendo mundo
 rsb:UI_MainMenu_ | Plants vs. Zombies 2 | En el menú principal
 
 default | Plants vs. Zombies 2 | En el menú principal

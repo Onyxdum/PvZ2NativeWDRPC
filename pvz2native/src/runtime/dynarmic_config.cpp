@@ -558,12 +558,44 @@ void Pvz2Env::ExceptionRaised(std::uint32_t pc, Dynarmic::A32::Exception excepti
             if (seen.insert(((std::uint64_t)pc << 32) | regs[14]).second) {
                 pvz2_log("[NULL CALL] the guest branched to 0x%08x -- a null/uninitialised "
                             "function pointer, called from lr=0x%08x (offset 0x%x). r0=0x%08x "
-                            "r1=0x%08x r2=0x%08x r3=0x%08x -- halting (this call site is "
+                            "r1=0x%08x r2=0x%08x r3=0x%08x (this call site is "
                             "reported once)",
                             pc, regs[14],
                             regs[14] >= img->so_base ? regs[14] - img->so_base : regs[14],
                             regs[0], regs[1], regs[2], regs[3]);
+                const std::uint32_t sp = regs[13];
+                int frame = 0;
+                for (std::uint32_t off = 0; off < 256 && frame < 8; off += 4) {
+                    if (sp + off + 4 <= img->mem_size) {
+                        std::uint32_t val = 0;
+                        std::memcpy(&val, &img->mem[sp + off], 4);
+                        if (val >= img->so_base && val < img->so_base + img->so_span) {
+                            pvz2_log("  backtrace [#%d] sp+0x%x -> 0x%08x (offset 0x%x)",
+                                     frame++, off, val, val - img->so_base);
+                        }
+                    }
+                }
             }
+
+            static std::uint64_t last_null_site = 0;
+            static int repeat_count = 0;
+            const std::uint64_t site = ((std::uint64_t)pc << 32) | regs[14];
+            if (site == last_null_site) {
+                if (++repeat_count > 50) {
+                    pvz2_log("[NULL CALL] site 0x%08x repeated 50 times in a row -- halting", regs[14]);
+                    should_halt = true;
+                    jit->HaltExecution();
+                    return;
+                }
+            } else {
+                last_null_site = site;
+                repeat_count = 0;
+            }
+
+            /* Safe recovery: return 0 to caller rather than bricking the whole game loop */
+            regs[0] = 0;
+            return_to_caller();
+            return;
         } else {
             pvz2_log("[jit] exception %d raised at pc=0x%08x lr=0x%08x r0=0x%08x r1=0x%08x "
                         "r2=0x%08x r3=0x%08x -- halting",
