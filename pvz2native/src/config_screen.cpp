@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <deque>
 #include <vector>
 #include <algorithm>
 
@@ -1888,6 +1889,115 @@ static void save_cloud_text_edit(void) {
 	SDL_StopTextInput();
 }
 
+/* -------------------------------------------------------------------------
+ * Notifications: one line of text that slides in at the top of the window for a few seconds. Used for
+ * what the cloud-save actions report (upload done, import failed, ...) and for the local Discord
+ * connecting, which used to sit in the cloud menu as rows. Queued, so two in a row both show.
+ * ---------------------------------------------------------------------- */
+struct Toast {
+	std::string text;
+	Uint32 start_ms = 0; /* 0 = not shown yet */
+};
+static std::deque<Toast> g_toasts;
+static const Uint32 kToastSlideMs = 220;
+static const Uint32 kToastShowMs = 3500;
+static std::string g_toast_discord_seen; /* last Discord connection already announced */
+
+static void toast_push(const char *text) {
+	if (!text || !text[0]) return;
+	if (!g_toasts.empty() && g_toasts.back().text == text) return; /* same message twice in a row */
+	g_toasts.push_back({text, 0});
+}
+
+/* The cloud functions report into g_cloud_status; hand that over as a notification. */
+static void toast_take_cloud_status(void) {
+	toast_push(g_cloud_status);
+	g_cloud_status[0] = '\0';
+}
+
+/* Whether the local Discord desktop app is connected; `line` (optional) gets the status text either way.
+ * A connection not announced yet is announced here, so this is the one place that sees it change. */
+static bool local_discord_connected(char *line, size_t cap) {
+	char buf[256] = {};
+	const bool ok = pvz2_cloud_sync_local_discord(false, buf, sizeof(buf), g_edit.locale);
+	if (ok && g_toast_discord_seen != buf) {
+		g_toast_discord_seen = buf;
+		toast_push(buf);
+	}
+	if (line && cap > 0) SDL_strlcpy(line, buf, cap);
+	return ok;
+}
+
+/* Filled rounded rectangle, untextured (GL_TEXTURE_2D must be off). */
+static void draw_round_rect(float x, float y, float w, float h, float r,
+							float cr, float cg, float cb, float ca) {
+	r = std::min(r, std::min(w, h) * 0.5f);
+	const int kSeg = 10; /* per corner */
+	const float cx[4] = {x + w - r, x + w - r, x + r, x + r};
+	const float cy[4] = {y + r, y + h - r, y + h - r, y + r};
+	const float a0[4] = {-0.5f, 0.0f, 0.5f, 1.0f}; /* start angle of each corner, in units of pi */
+	glColor4f(cr, cg, cb, ca);
+	glBegin(GL_TRIANGLE_FAN);
+	glVertex2f(x + w * 0.5f, y + h * 0.5f);
+	for (int c = 0; c < 4; ++c)
+		for (int i = 0; i <= kSeg; ++i) {
+			const float a = (a0[c] + 0.5f * (float)i / kSeg) * 3.14159265f;
+			glVertex2f(cx[c] + r * std::cos(a), cy[c] + r * std::sin(a));
+		}
+	glVertex2f(cx[0] + r * std::cos(-0.5f * 3.14159265f), cy[0] + r * std::sin(-0.5f * 3.14159265f));
+	glEnd();
+}
+
+static void draw_toast(float win_w, float win_h) {
+	while (!g_toasts.empty()) {
+		Toast &t = g_toasts.front();
+		const Uint32 now = SDL_GetTicks();
+		if (t.start_ms == 0) t.start_ms = now ? now : 1;
+		if (now - t.start_ms < kToastShowMs) break;
+		g_toasts.pop_front();
+	}
+	if (g_toasts.empty() || !g_font.ok || !g_tex_list_item.id) return;
+	const Toast &t = g_toasts.front();
+	const float s = ui_scale(win_w, win_h);
+	const float elapsed = (float)(SDL_GetTicks() - t.start_ms);
+
+	/* Slide down from above the window, hold, slide back up. */
+	float shown = 1.0f;
+	if (elapsed < kToastSlideMs) shown = elapsed / kToastSlideMs;
+	else if (elapsed > kToastShowMs - kToastSlideMs) shown = (kToastShowMs - elapsed) / kToastSlideMs;
+	shown = clampf(shown, 0.0f, 1.0f);
+	shown = 1.0f - (1.0f - shown) * (1.0f - shown); /* ease out */
+
+	const float w = sc((float)g_tex_list_item.w, s);
+	const float pad = sc(kItemTextOffX, s);
+	std::vector<std::string> lines = wrap_item_label(g_font, t.text.c_str(), w - 2.0f * pad, win_w, win_h);
+	if (lines.empty()) return;
+	const float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+	const float line_h = cap_h * 1.35f;
+	const float block_h = cap_h + (float)(lines.size() - 1) * line_h;
+	const float h = std::max(sc((float)g_tex_list_item.h, s), block_h + sc(40.0f, s));
+	const float x = (win_w - w) * 0.5f;
+	const float margin = sc(24.0f, s);
+	const float y = -h + (h + margin) * shown;
+
+	/* Rounded card: a blue border with the menu rows' cream inside. */
+	const float rim = sc(5.0f, s);
+	const float radius = sc(22.0f, s);
+	glDisable(GL_TEXTURE_2D);
+	draw_round_rect(x - rim, y - rim, w + 2.0f * rim, h + 2.0f * rim, radius + rim,
+					0x1f / 255.f, 0x5f / 255.f, 0xc4 / 255.f, 0.97f);
+	draw_round_rect(x, y, w, h, radius, 0xf3 / 255.f, 0xeb / 255.f, 0xc8 / 255.f, 1.0f);
+	glEnable(GL_TEXTURE_2D);
+
+	float baseline = y + (h - block_h) * 0.5f + cap_h;
+	for (const std::string &l : lines) {
+		const float lw = measure_string(g_font, l.c_str(), false, win_w, win_h);
+		draw_string(g_font, l.c_str(), false, x + (w - lw) * 0.5f, baseline,
+					0x48 / 255.f, 0x3e / 255.f, 0x00 / 255.f, win_w, win_h);
+		baseline += line_h;
+	}
+}
+
 static std::vector<Item> build_items(Screen screen, const Strings *str) {
     std::vector<Item> items;
     if (screen == Screen::Main) {
@@ -1943,7 +2053,6 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->iap, false, false, g_edit.emulate_iap != 0, ""});
         items.push_back({str->lock_cursor, false, false, g_edit.lock_cursor != 0, ""});
         items.push_back({str->cloud_save, true, false, false, ""});
-        items.push_back({str->view_credits, true, false, false, ""});
         items.push_back({str->exit_program, true, false, false, ""});
 
     } else if (screen == Screen::Resolution) {
@@ -2124,6 +2233,10 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
 
         items.push_back({str->cloud_upload, true, false, false, ""});
         items.push_back({str->cloud_download, true, false, false, ""});
+        /* After a download/import the game must restart to load it: offered right below Download. */
+        if (pvz2_cloud_writes_locked()) {
+            items.push_back({str->cloud_restart_now, true, false, false, ""});
+        }
         items.push_back({str->cloud_autosync, false, false, cc->auto_sync != 0, ""});
         const pvz2_config_t *cfg = pvz2_config();
         const bool rpc_on = cfg && cfg->discord_enabled != 0;
@@ -2132,17 +2245,13 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->cloud_import_local, true, false, false, ""});
         items.push_back({str->steam_add, true, false, false, ""});
 
-        if (pvz2_cloud_writes_locked()) {
-            items.push_back({str->cloud_restart_now, true, false, false, ""});
-        }
-        if (g_cloud_status[0] != '\0') {
-            items.push_back({g_cloud_status, true, false, false, ""});
-        }
-
-        /* Bottom row: Local Discord desktop status (stays at the bottom) */
+        /* What the actions above report, and the local Discord connection, are notifications (see
+         * toast_push), not rows. The Discord row stays only while Discord is not connected, as the
+         * button that connects it. */
         char local_disc_line[256] = {};
-        pvz2_cloud_sync_local_discord(false, local_disc_line, sizeof(local_disc_line), g_edit.locale);
-        items.push_back({local_disc_line, true, false, false, ""});
+        if (!local_discord_connected(local_disc_line, sizeof(local_disc_line))) {
+            items.push_back({local_disc_line, true, false, false, ""});
+        }
     } else if (screen == Screen::CloudProviderPick) {
         Pvz2CloudConfig *cc = pvz2_cloud_config();
         for (int p = 0; p < PVZ2_CLOUD_PROVIDER_COUNT; ++p) {
@@ -2998,7 +3107,7 @@ static void draw_panel_content(Screen screen, float dx,
                 icon_margin = sc(kSliderFromRight, s);
             } else if (items[i].is_arrow) {
                 icon_w = sc((float)g_tex_arrow_up.w, s);
-                if (screen == Screen::Main && (int)i == 15 && g_tex_exit_up.id)
+                if (screen == Screen::Main && (int)i == 14 && g_tex_exit_up.id)
                     icon_w = sc((float)g_tex_exit_up.w, s);
             } else if (items[i].is_edit) {
                 icon_w = sc((float)g_tex_edit_up.w, s);
@@ -3032,7 +3141,7 @@ static void draw_panel_content(Screen screen, float dx,
         if (items[i].is_slider) {
             draw_item_slider(item_x, iy, item_w, item_h, s, items[i].slider_t);
         } else if (items[i].is_arrow) {
-            bool is_exit_row = (screen == Screen::Main && (int)i == 15 && g_tex_exit_up.id && g_tex_exit_down.id);
+            bool is_exit_row = (screen == Screen::Main && (int)i == 14 && g_tex_exit_up.id && g_tex_exit_down.id);
             Tex &at = is_exit_row
                 ? (((int)i == g_arrow_pressed_idx) ? g_tex_exit_down : g_tex_exit_up)
                 : (((int)i == g_arrow_pressed_idx) ? g_tex_arrow_down : g_tex_arrow_up);
@@ -3107,7 +3216,7 @@ static void draw(SDL_Window *window) {
 			pvz2_cloud_sync_local_discord(false, nullptr, 0, g_edit.locale);
 		}
 	}
-	if (!g_open && !g_quit_confirm) return;
+	if (!g_open && !g_quit_confirm && g_toasts.empty()) return;
 
 	/* Quit-confirm alone still needs resources + window pointer. */
 	if (g_quit_confirm && !g_loaded) {
@@ -3150,7 +3259,8 @@ static void draw(SDL_Window *window) {
 	glMatrixMode(GL_TEXTURE);
 	glPushMatrix(); glLoadIdentity();
 
-	/* --- dim overlay (once, whether settings and/or quit confirm) --- */
+	/* --- dim overlay (once, whether settings and/or quit confirm; not for a notification alone) --- */
+	if (g_open || g_quit_confirm) {
 	glDisable(GL_TEXTURE_2D);
 	glColor4f(0, 0, 0, 0.5f);
 	glBegin(GL_QUADS);
@@ -3158,6 +3268,7 @@ static void draw(SDL_Window *window) {
 	glVertex2f(win_w, win_h); glVertex2f(0, win_h);
 	glEnd();
 	glEnable(GL_TEXTURE_2D);
+	}
 
 	if (g_open) {
 		/* --- panel background --- */
@@ -3215,6 +3326,9 @@ static void draw(SDL_Window *window) {
 	/* Quit confirm draws above the settings panel when both are active. */
 	if (g_quit_confirm)
 		draw_quit_confirm(win_w, win_h);
+
+	/* Notifications sit above everything, menu open or not. */
+	draw_toast(win_w, win_h);
 
 	/* Restore GL state */
 	glMatrixMode(GL_TEXTURE);  glPopMatrix();
@@ -3277,7 +3391,7 @@ static void handle_event(const SDL_Event *e) {
 	std::vector<RItem> ritems;
 	if (g_screen == Screen::Main) {
 		/* 0=display 1=res 2=fps 3=lang 4=currency 5=difficulty 6=input 7=gamepad
-		 * 8=events 9=achievements 10=achievement_notify 11=iap 12=lock_cursor 13=cloud 14=credits 15=exit */
+		 * 8=events 9=achievements 10=achievement_notify 11=iap 12=lock_cursor 13=cloud 14=exit (Credits is reached from the game's own settings) */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 0 display */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 1 res */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 2 fps */
@@ -3292,8 +3406,7 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 11 */
 		ritems.push_back({false,false,false,g_edit.lock_cursor!=0,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 12 */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 13 cloud save */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 14 credits */
-		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 15 exit */
+		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* 14 exit */
 	} else if (g_screen == Screen::Difficulty) {
 		static const char *s_diff_modes[] = {
 			"auto", "off", "1", "2", "3", "4", "5", "6", "7", "8",
@@ -3357,6 +3470,10 @@ static void handle_event(const SDL_Event *e) {
 		/* 5=Upload, 6=Download, 7=Auto-sync, 11=Export JSON, 12=Import JSON */
 		ritems.push_back({true, false,false,false, 5,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 6,0,0,0,0,nullptr,nullptr,nullptr});
+		/* 8=Restart to load the downloaded save (right below Download, as in build_items) */
+		if (pvz2_cloud_writes_locked()) {
+			ritems.push_back({true, false,false,false, 8,0,0,0,0,nullptr,nullptr,nullptr});
+		}
 		ritems.push_back({false,false,false,cc->auto_sync!=0, 7,0,0,0,0,nullptr,nullptr,nullptr});
 		const pvz2_config_t *cfg = pvz2_config();
 		const bool rpc_on = cfg && cfg->discord_enabled != 0;
@@ -3364,14 +3481,10 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({true, false,false,false, 11,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 12,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false, 13,0,0,0,0,nullptr,nullptr,nullptr});
-		if (pvz2_cloud_writes_locked()) {
-			ritems.push_back({true, false,false,false, 8,0,0,0,0,nullptr,nullptr,nullptr});
+		/* 10=Connect the local Discord -- only while it is not connected, as in build_items */
+		if (!local_discord_connected(nullptr, 0)) {
+			ritems.push_back({true, false,false,false, 10,0,0,0,0,nullptr,nullptr,nullptr});
 		}
-		if (g_cloud_status[0] != '\0') {
-			ritems.push_back({true, false,false,false, 9,0,0,0,0,nullptr,nullptr,nullptr});
-		}
-		/* 10=Bottom Local Discord IPC status */
-		ritems.push_back({true, false,false,false, 10,0,0,0,0,nullptr,nullptr,nullptr});
 	} else if (g_screen == Screen::CloudProviderPick) {
 		for (int p = 0; p < PVZ2_CLOUD_PROVIDER_COUNT; ++p)
 			ritems.push_back({false,false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr});
@@ -3721,16 +3834,12 @@ static void handle_event(const SDL_Event *e) {
 
 			if (ritems[i].is_arrow) {
 				if (g_screen == Screen::Main) {
-					if (i == 15) {
+					if (i == 14) {
 						/* Exit: no menu click SFX — dialog open plays exit_click. */
 						show_quit_confirm();
 					} else if (i == 9) {
 						/* View Achievements — open SFX is exit_click (same as quit). */
 						achievements_screen_request_open();
-					} else if (i == 14) {
-						/* View Credits */
-						play_sound(g_snd_confirm);
-						credits_screen_request_open();
 					} else {
 						play_sound(g_snd_next);
 						Screen to = Screen::Main;
@@ -3757,30 +3866,37 @@ static void handle_event(const SDL_Event *e) {
 					if (act == 1) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_start_provider_auth(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 2) {
 						play_sound(g_snd_next);
 						begin_transition(Screen::CloudProviderPick, true);
 					} else if (act == 5) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_upload(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 6) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_download(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 11) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_export_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 12) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_import_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 13) {
 						play_sound(g_snd_confirm);
 						pvz2_add_to_steam(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						toast_take_cloud_status();
 					} else if (act == 8) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_restart_game();
 					} else if (act == 10) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_sync_local_discord(true, nullptr, 0, g_edit.locale);
+						local_discord_connected(nullptr, 0); /* notifies when it connected */
 					} else {
 						play_sound(g_snd_check);
 					}
@@ -4050,7 +4166,9 @@ void config_screen_draw(SDL_Window *window) {
 	/* Hide settings while the achievements overlay is up; g_open stays true so
 	 * closing achievements restores this screen as it was. */
 	if (achievements_screen_is_open()) return;
-	if ((!g_open && !g_open_requested && !g_open_cloud_requested && !g_quit_confirm) || !window) return;
+	if ((!g_open && !g_open_requested && !g_open_cloud_requested && !g_quit_confirm && g_toasts.empty()) ||
+		!window)
+		return;
 	draw(window);
 }
 
