@@ -1,6 +1,7 @@
 #include <pvz2native/runtime/rsb_index.h>
 #include <pvz2native/log.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -37,6 +38,8 @@ std::string RsbIndex::normalize(const std::string &guest_path) {
 
 bool RsbIndex::load(const std::string &obb_path) {
     entries_.clear();
+    groups_.clear();
+    by_offset_.clear();
     loaded_ = false;
     obb_path_ = obb_path;
 
@@ -88,6 +91,15 @@ bool RsbIndex::load(const std::string &obb_path) {
         const size_t rec = (size_t)i * rsg_info_each;
         const uint32_t rsg_off = rd32(info, rec + 0x80);
         if (rsg_off == 0) continue;
+
+        /* The group's own name sits at the start of its record (NUL-terminated,
+         * inside the first 0x80 bytes); its size is at +0x84. */
+        {
+            std::string gname;
+            for (size_t k = 0; k < 0x80 && rec + k < info.size() && info[rec + k] != 0; ++k)
+                gname.push_back((char)info[rec + k]);
+            groups_.push_back({rsg_off, rd32(info, rec + 0x84), gname});
+        }
 
         /* Only the header and the name list are needed, never the payload --
          * but the list sits at an arbitrary offset, so read up to its end. */
@@ -154,6 +166,7 @@ bool RsbIndex::load(const std::string &obb_path) {
                     e.size = size;
                     e.compressed = (flag == 1);
                     entries_.emplace(name, e);
+                    by_offset_.emplace(e.offset, name);
                 }
                 pos += 16 + (flag == 1 ? 20 : 0); /* textures carry image info */
                 if (stack.empty()) {
@@ -173,6 +186,9 @@ bool RsbIndex::load(const std::string &obb_path) {
     }
     std::fclose(f);
 
+    std::sort(groups_.begin(), groups_.end(),
+              [](const Group &a, const Group &b) { return a.offset < b.offset; });
+
     loaded_ = !entries_.empty();
     pvz2_log("[rsb-index] %zu files indexed from %u RSGs (%u skipped) in '%s'",
                 entries_.size(), rsg_number, skipped, obb_path.c_str());
@@ -189,6 +205,19 @@ bool RsbIndex::load(const std::string &obb_path) {
                     "engine will fail somewhere far from this message");
     }
     return loaded_;
+}
+
+const std::string *RsbIndex::group_at(uint64_t pos) const {
+    auto it = std::upper_bound(groups_.begin(), groups_.end(), pos,
+                               [](uint64_t p, const Group &g) { return p < g.offset; });
+    if (it == groups_.begin()) return nullptr;
+    --it;
+    return pos < it->offset + it->size ? &it->name : nullptr;
+}
+
+const std::string *RsbIndex::file_starting_at(uint64_t pos) const {
+    auto it = by_offset_.find(pos);
+    return it == by_offset_.end() ? nullptr : &it->second;
 }
 
 const RsbIndex::Entry *RsbIndex::find(const std::string &guest_path) const {

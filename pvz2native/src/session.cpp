@@ -140,6 +140,7 @@ extern "C" pvz2_session_t *pvz2_session_start(const char *so_path) {
     /* Lets make_guest_callback() and call_guest_between_frames() reach this
      * session -- the OpenSL layer mints trampolines through both. */
     rt_::set_session_image(&s->img, &s->rt);
+    pvz2native::game_apply_late_patches(&s->img);
 
     /* Needs the session image (make_guest_callback). Before any guest code so
      * the SVC at sub_3487AC is visible to the first JIT translation. */

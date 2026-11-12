@@ -93,6 +93,7 @@ mkdir -p "${APPDIR}/usr/bin"
 
 cp -a "${EXE_DIR}/pvz2" "${APPDIR}/usr/bin/pvz2"
 cp -a "${EXE_DIR}/assets" "${APPDIR}/usr/bin/assets"
+cp -a "${PROJECT_ROOT}"/pvz2native/presence_rules*.txt "${APPDIR}/usr/bin/" 2>/dev/null || true
 
 # AppRun: exec the binary; AppImage runtime sets APPIMAGE/APPDIR for our path helpers.
 cat > "${APPDIR}/AppRun" <<'EOF'

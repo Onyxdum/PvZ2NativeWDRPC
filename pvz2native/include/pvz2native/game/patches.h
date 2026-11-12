@@ -74,6 +74,9 @@ void game_install_quest_shuffle_seed(pvz2_elf_image_t *img);
  * value the original produced, so the daily events and the quest picks turn over at the player's local
  * midnight (see the comment in patches.cpp). Same preconditions as game_install_lod_apply_probe. */
 void game_install_engine_clock(pvz2_elf_image_t *img);
+/* Hooks and redirects late game routines through guest trampolines once the
+ * runtime session and trampoline cache are initialized. */
+void game_apply_late_patches(pvz2_elf_image_t *img);
 
 }  // namespace pvz2native
 

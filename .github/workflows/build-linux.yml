@@ -1,0 +1,51 @@
+name: Linux Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkg-config \
+            libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxinerama-dev libxxf86vm-dev libxss-dev \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+            libwayland-dev libxkbcommon-dev \
+            file wget curl zip unzip python3
+
+      - name: Build Linux binary and AppImage
+        run: |
+          chmod +x compile.sh compile-appimage.sh
+          ./compile-appimage.sh --no-assets --jobs "$(nproc)" --verbose
+
+      - name: Package Linux Release Archives
+        run: |
+          mkdir -p "dist-linux/Plants vs. Zombies 2 - It's About Time"
+          cp -a build/pvz2native/pvz2 "dist-linux/Plants vs. Zombies 2 - It's About Time/"
+          cp -a build/pvz2native/assets "dist-linux/Plants vs. Zombies 2 - It's About Time/"
+          cp -a pvz2native/presence_rules*.txt "dist-linux/Plants vs. Zombies 2 - It's About Time/"
+          (cd dist-linux && zip -r ../PvZ2Native-v4.5.2-Linux.zip "Plants vs. Zombies 2 - It's About Time")
+
+          mkdir -p "dist-appimage/Plants vs. Zombies 2 - It's About Time"
+          cp -a build/pvz2native/pvz2.AppImage "dist-appimage/Plants vs. Zombies 2 - It's About Time/"
+          cp -a pvz2native/presence_rules*.txt "dist-appimage/Plants vs. Zombies 2 - It's About Time/"
+          (cd dist-appimage && zip -r ../PvZ2Native-v4.5.2-Linux-AppImage.zip "Plants vs. Zombies 2 - It's About Time")
+
+      - name: Upload to Release v1.0.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v1.0.0 PvZ2Native-v4.5.2-Linux.zip PvZ2Native-v4.5.2-Linux-AppImage.zip --clobber

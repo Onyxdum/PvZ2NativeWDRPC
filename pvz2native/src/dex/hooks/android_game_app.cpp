@@ -13,6 +13,7 @@
 #include <pvz2native/dex/dex.h>
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/input/input_queue.h>
+#include <pvz2native/presence.h>
 
 #include <SDL.h>
 
@@ -23,7 +24,9 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <vector>
 
 namespace pvz2native {
@@ -95,6 +98,28 @@ void log_records(DexCall &d, const std::vector<std::uint8_t> &r) {
     }
 }
 
+/* Reads whether the Board is currently paused by inspecting m_pauseSources (+1084). */
+bool is_board_paused(DexCall &d) {
+    if (!pvz2_presence_enabled()) return false;
+    if (!d.c.img || d.c.img->so_base == 0) return false;
+    const std::uint32_t got_slot = d.c.img->so_base + 0x110c734u;
+    if (!d.c.in_bounds(got_slot, 4)) return false;
+    const std::uint32_t app_ptr_addr = d.c.read32(got_slot);
+    if (app_ptr_addr == 0 || !d.c.in_bounds(app_ptr_addr, 4)) return false;
+    const std::uint32_t lawn_app = d.c.read32(app_ptr_addr);
+    if (lawn_app == 0 || !d.c.in_bounds(lawn_app + 1668u, 4)) return false;
+    const std::uint32_t board = d.c.read32(lawn_app + 1668u);
+    if (board == 0 || !d.c.in_bounds(board + 1084u, 4)) return false;
+    if (!d.c.in_bounds(board + 156u, 4)) return false;
+    const std::uint32_t bstate = d.c.read32(board + 156u);
+    if (bstate == 0 || bstate == 9) return false; // Initial or EndLevel
+    const std::uint32_t pause_set = d.c.read32(board + 1084u);
+    if (pause_set == 0 || !d.c.in_bounds(pause_set + 12u, 4)) return false;
+    const std::uint32_t root = d.c.read32(pause_set + 8u);
+    const std::uint32_t count = d.c.read32(pause_set + 12u);
+    return root != 0 && count > 0;
+}
+
 /* Same walk as log_records, but only to learn whether a touch started or ended
  * in this batch -- that feeds the [state] input counters in diagnostics/verbose. */
 void scan_touches(const std::vector<std::uint8_t> &r, bool &had_down, bool &had_up) {
@@ -141,6 +166,15 @@ void scan_touches(const std::vector<std::uint8_t> &r, bool &had_down, bool &had_
  * 1024 bytes, so 1008 remain for records; input_queue::drain leaves anything
  * that does not fit queued for the next frame. */
 void ui_process_events(DexCall &d) {
+    if (pvz2_presence_enabled()) {
+        static bool s_last_paused = false;
+        const bool paused = is_board_paused(d);
+        if (paused != s_last_paused) {
+            s_last_paused = paused;
+            pvz2_presence_note("state", paused ? "Board Paused=true" : "Board Paused=false");
+        }
+    }
+
     std::uint32_t buf = d.arg(0);
     if (buf == 0 || !d.c.in_bounds(buf, kEventBufferSize)) {
         if (buf != 0 && d.c.in_bounds(buf, 4)) d.c.write32(buf, 0);
@@ -215,6 +249,273 @@ void hide_keyboard(DexCall &d) {
 
 void is_keyboard_showing(DexCall &d) { d.ret_bool(pvz2_input_keyboard_wanted() != 0); }
 
+/* Static challenge objective counts per level */
+static const std::unordered_map<std::string_view, std::int32_t> kLevelChallengeGoals = {
+    {"beach12", 1},
+    {"beach13", 2},
+    {"beach15", 1},
+    {"beach16", 1},
+    {"beach23", 1},
+    {"beach25", 2},
+    {"beach28", 1},
+    {"beach29", 1},
+    {"beach30", 1},
+    {"beach9", 2},
+    {"challenge_levels/egypt/cl_egypt13_test_nochanges", 2},
+    {"challenge_levels/premiumquest_firepeashooter_03", 1},
+    {"challenge_levels/premiumquest_homingthistle_02", 1},
+    {"challenge_levels/premiumquest_homingthistle_03", 1},
+    {"challenge_levels/premiumquest_jalapeno_01", 1},
+    {"challenge_levels/premiumquest_jalapeno_01_eq", 1},
+    {"challenge_levels/premiumquest_peanut_02", 3},
+    {"challenge_levels/premiumquest_snowpea_03", 1},
+    {"cowboy11", 1},
+    {"cowboy12", 1},
+    {"cowboy15", 1},
+    {"cowboy16", 1},
+    {"cowboy17", 1},
+    {"cowboy18", 1},
+    {"cowboy19", 2},
+    {"cowboy20", 1},
+    {"cowboy21", 2},
+    {"cowboy23", 2},
+    {"cowboy24", 1},
+    {"cowboy4", 1},
+    {"cowboy6", 1},
+    {"cowboy8", 1},
+    {"dark10", 1},
+    {"dark12", 1},
+    {"dark14", 1},
+    {"dark15", 1},
+    {"dark17", 1},
+    {"dark19", 1},
+    {"dark6", 1},
+    {"dark9", 1},
+    {"dino12", 1},
+    {"dino15", 1},
+    {"dino16", 1},
+    {"dino19", 1},
+    {"dino20", 1},
+    {"dino22", 1},
+    {"dino26", 2},
+    {"dino27", 1},
+    {"dino7", 1},
+    {"egypt13", 2},
+    {"egypt15", 1},
+    {"egypt16", 1},
+    {"egypt17", 1},
+    {"egypt18", 1},
+    {"egypt19", 1},
+    {"egypt20", 1},
+    {"egypt22", 1},
+    {"egypt23", 1},
+    {"egypt24", 1},
+    {"egypt7", 1},
+    {"eighties13", 1},
+    {"eighties15", 1},
+    {"eighties16", 1},
+    {"eighties21", 1},
+    {"eighties24", 1},
+    {"eighties26", 1},
+    {"eighties30", 1},
+    {"eighties5", 1},
+    {"eighties9", 1},
+    {"future11", 1},
+    {"future14", 1},
+    {"future15", 1},
+    {"future18", 1},
+    {"future19", 1},
+    {"future20", 1},
+    {"future21", 2},
+    {"future22", 1},
+    {"future23", 2},
+    {"future24", 1},
+    {"future4", 1},
+    {"future8", 1},
+    {"future9", 1},
+    {"goldbloom3", 1},
+    {"goldbloom4", 1},
+    {"goldbloom6", 1},
+    {"iceage12", 1},
+    {"iceage13", 1},
+    {"iceage15", 1},
+    {"iceage16", 1},
+    {"iceage23", 1},
+    {"iceage24", 1},
+    {"iceage27", 1},
+    {"iceage28", 1},
+    {"lod_001", 1},
+    {"lod_003", 3},
+    {"lod_006", 1},
+    {"lod_008", 1},
+    {"lod_011", 3},
+    {"lod_022", 3},
+    {"lod_033", 2},
+    {"lod_034", 1},
+    {"lod_035", 1},
+    {"lod_038", 1},
+    {"lod_043", 1},
+    {"lod_044", 3},
+    {"lod_049", 3},
+    {"lod_055", 1},
+    {"lod_056", 1},
+    {"lod_074", 3},
+    {"lod_076", 3},
+    {"lod_077", 1},
+    {"lod_082", 2},
+    {"lod_084", 1},
+    {"lod_085", 1},
+    {"lod_094", 2},
+    {"lod_095", 1},
+    {"lod_097", 2},
+    {"lod_099", 1},
+    {"lod_101", 2},
+    {"lod_102", 2},
+    {"lod_103", 3},
+    {"lod_107", 3},
+    {"lod_108", 1},
+    {"lod_109", 1},
+    {"lod_116", 1},
+    {"lod_117", 3},
+    {"lod_122", 1},
+    {"lod_125", 1},
+    {"lod_131", 1},
+    {"lod_135", 1},
+    {"lod_141", 1},
+    {"lod_143", 3},
+    {"lod_144", 1},
+    {"lod_156", 1},
+    {"lod_160", 1},
+    {"lod_165", 1},
+    {"lod_167", 1},
+    {"lod_169", 2},
+    {"lod_171", 1},
+    {"lod_173", 1},
+    {"lod_175", 1},
+    {"lod_184", 1},
+    {"lod_185", 3},
+    {"lod_188", 1},
+    {"lod_189", 1},
+    {"lod_192", 1},
+    {"lod_203", 1},
+    {"lod_206", 1},
+    {"lod_207", 1},
+    {"lod_210", 3},
+    {"lod_211", 3},
+    {"lod_212", 3},
+    {"lod_213", 3},
+    {"lod_stpats_084", 1},
+    {"lod_stpats_171", 1},
+    {"lod_template", 3},
+    {"lostcity12", 1},
+    {"lostcity15", 1},
+    {"lostcity16", 1},
+    {"lostcity24", 1},
+    {"lostcity30", 2},
+    {"lostcity8", 1},
+    {"modern12", 1},
+    {"modern15", 1},
+    {"modern16", 1},
+    {"modern28", 1},
+    {"modern30", 1},
+    {"modern6", 1},
+    {"pirate11", 1},
+    {"pirate13", 1},
+    {"pirate14", 1},
+    {"pirate15", 1},
+    {"pirate16", 1},
+    {"pirate17", 1},
+    {"pirate19", 2},
+    {"pirate20", 1},
+    {"pirate21", 2},
+    {"pirate22", 1},
+    {"pirate23", 2},
+    {"pirate24", 1},
+    {"pirate3", 1},
+    {"pirate8", 1},
+    {"preview_plant_hurrikale", 3},
+};
+
+/* Counts active challenge objectives for a level ID. */
+std::int32_t count_level_challenges(const std::string &level_id) {
+    if (level_id.empty()) return 0;
+
+    std::string clean = level_id;
+    const auto colon = clean.find(':');
+    if (colon != std::string::npos) {
+        clean = clean.substr(0, colon);
+    }
+    for (char &c : clean) {
+        if (c == '\\') c = '/';
+        else c = (char)std::tolower((unsigned char)c);
+    }
+
+    auto it = kLevelChallengeGoals.find(clean);
+    if (it != kLevelChallengeGoals.end()) {
+        return it->second;
+    }
+
+    namespace fs = std::filesystem;
+    const std::string suffix = "_" + clean;
+    const fs::path save_dir = "userdata/save";
+    std::error_code ec;
+    if (fs::exists(save_dir, ec)) {
+        for (const auto &entry : fs::directory_iterator(save_dir, ec)) {
+            if (!entry.is_directory()) continue;
+            const std::string name = entry.path().filename().string();
+            if (name.size() >= suffix.size() &&
+                name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                const fs::path rton_path = entry.path() / "save_LevelModuleInstances.rton";
+                FILE *f = std::fopen(rton_path.string().c_str(), "rb");
+                if (!f) continue;
+                std::fseek(f, 0, SEEK_END);
+                const long sz = std::ftell(f);
+                std::fseek(f, 0, SEEK_SET);
+                if (sz > 0 && sz < 100000) {
+                    std::string data;
+                    data.resize((std::size_t)sz);
+                    std::fread(&data[0], 1, (std::size_t)sz, f);
+                    std::fclose(f);
+
+                    static const char *kChallengeModules[] = {
+                        "ProtectThePlantChallengeModule",
+                        "StarChallengeKillZombiesInTime",
+                        "StarChallengePlantBeforeLine",
+                        "StarChallengePlantsLost",
+                        "StarChallengeSaveMowers",
+                        "StarChallengeSimultaneousPlants",
+                        "StarChallengeSpendSunHoldout",
+                        "StarChallengeSunProduced",
+                        "StarChallengeSunUsed",
+                        "StarChallengeZombieDistance",
+                    };
+                    int count = 0;
+                    for (const char *mod : kChallengeModules) {
+                        if (data.find(mod) != std::string::npos) {
+                            ++count;
+                        }
+                    }
+                    if (count > 0) return count;
+                } else {
+                    std::fclose(f);
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+std::mutex g_crashlytics_mu;
+std::string g_last_board_level;
+std::string g_last_world;
+std::int32_t g_last_level_num = 0;
+std::int32_t g_last_goals_count = 0;
+bool g_has_seed_chooser = false;
+bool g_in_seed_chooser = false;
+bool g_has_protect_plant = false;
+
+
 /* String Resources_GetAssetFileInfo(String InFilename, long[] outFileInfo)
  *
  * On a device this opens the name as an APK asset and answers with
@@ -231,6 +532,7 @@ void is_keyboard_showing(DexCall &d) { d.ret_bool(pvz2_input_keyboard_wanted() !
 void get_asset_file_info(DexCall &d) {
     std::string name = d.string_arg(0);
     std::uint32_t out_array = d.arg(1);
+    pvz2_presence_note("asset", name.c_str()); /* Discord Rich Presence tap */
 
     const RsbIndex::Entry *found = find_asset(d, name);
     if (found == nullptr || found->compressed || out_array == 0) {
@@ -591,6 +893,194 @@ void hardware_model(DexCall &d) { d.ret_string(pvz2_config()->hardware_model); }
  * vfs::translate() then resolves. */
 void data_folder(DexCall &d) { d.ret_string("."); }
 
+/* --- Crashlytics state taps (Discord Rich Presence) ------------------------
+ *
+ * The engine reports every level start ("Board Level"), world map change
+ * ("WorldMap Current World"), and screen transition ("GameStateMgr State")
+ * through com.crashlytics.android.Crashlytics via EZJNI. Tapping those calls
+ * gives Discord Rich Presence the exact level number even for brand-new levels
+ * loaded from the in-memory Packages RSG, and restores the previous screen
+ * immediately when closing full-screen submenus like the Almanac or Store. */
+constexpr const char *kCrashlyticsClass = "com/crashlytics/android/Crashlytics";
+
+/* Reads Board::m_levelNumber (+184) from the guest LawnApp instance (+1668).
+ * For Endless Zones (DangerRoom) and VaseBreaker Endless, m_levelNumber holds the
+ * current stage/streak/level number (1, 2, 3...). */
+std::int32_t read_board_level_number(DexCall &d) {
+    if (!d.c.img || d.c.img->so_base == 0) return 0;
+    const std::uint32_t got_slot = d.c.img->so_base + 0x110c734u;
+    if (!d.c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t app_ptr_addr = d.c.read32(got_slot);
+    if (app_ptr_addr == 0 || !d.c.in_bounds(app_ptr_addr, 4)) return 0;
+    const std::uint32_t lawn_app = d.c.read32(app_ptr_addr);
+    if (lawn_app == 0 || !d.c.in_bounds(lawn_app + 1668u, 4)) return 0;
+    const std::uint32_t board = d.c.read32(lawn_app + 1668u);
+    if (board == 0 || !d.c.in_bounds(board + 184u, 4)) return 0;
+    const std::int32_t lvl = (std::int32_t)d.c.read32(board + 184u);
+    return (lvl > 0 && lvl < 100000) ? lvl : 0;
+}
+
+void crashlytics_set_string(DexCall &d) {
+    const std::string key = d.string_arg(0);
+    const std::string val = d.string_arg(1);
+    if (pvz2_presence_enabled() && !key.empty()) {
+        /* Filter out high-frequency resource tracking strings from trace/queue */
+        if (key != "Last Serialized Object Class" &&
+            key != "Resgroup Preload Refcounts" &&
+            key != "Resgroup Refcounts" &&
+            key != "Last Force LoadGroups" &&
+            key != "Last DeleteGroups") {
+            const std::string kv = key + "=" + val;
+            pvz2_presence_note("state", kv.c_str());
+        }
+
+        std::lock_guard<std::mutex> lk(g_crashlytics_mu);
+        if (key == "Last PrepareLoadGroups") {
+            if (val.find("UI_SeedChooser") != std::string::npos) {
+                g_has_seed_chooser = true;
+            }
+            if (val.find("ProtectThePlantChallengeModule") != std::string::npos) {
+                g_has_protect_plant = true;
+                if (g_last_goals_count < 1) {
+                    g_last_goals_count = 1;
+                    pvz2_presence_note("state", "Board Goals=1");
+                }
+            }
+        } else if (key == "Board Level" && !val.empty()) {
+            g_last_board_level = val;
+            const std::int32_t num = read_board_level_number(d);
+            if (num > 0) {
+                g_last_level_num = num;
+                const std::string lvl_with_num = "Board Level=" + val + ":" + std::to_string(num);
+                pvz2_presence_note("state", lvl_with_num.c_str());
+            } else {
+                g_last_level_num = 0;
+            }
+            int goals = count_level_challenges(val);
+            if (goals == 0 && g_has_protect_plant) goals = 1;
+            g_last_goals_count = goals;
+            pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+        } else if (key == "WorldMap Current World" && !val.empty()) {
+            g_last_world = val;
+            g_has_seed_chooser = false;
+            g_in_seed_chooser = false;
+            g_has_protect_plant = false;
+            g_last_goals_count = 0;
+            pvz2_presence_note("state", "Board Chooser=false");
+            pvz2_presence_note("state", "Board Paused=false");
+            pvz2_presence_note("state", "Board Goals=0");
+        } else if (key == "Board State") {
+            if (val == "LoadingLevel") {
+                g_has_seed_chooser = false;
+                g_in_seed_chooser = false;
+                g_has_protect_plant = false;
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+                const int goals = count_level_challenges(g_last_board_level);
+                g_last_goals_count = goals;
+                pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+            } else if (val == "LevelIntro") {
+                if (g_has_seed_chooser) {
+                    g_in_seed_chooser = true;
+                    pvz2_presence_note("state", "Board Chooser=true");
+                }
+            } else if (val == "PlayingLevel") {
+                if (g_in_seed_chooser) {
+                    g_in_seed_chooser = false;
+                    pvz2_presence_note("state", "Board Chooser=false");
+                }
+            } else if (val == "PlayerWonOutro" || val == "PlayerLostOutro" || val == "EndLevel" || val == "Initial") {
+                g_has_seed_chooser = false;
+                g_in_seed_chooser = false;
+                g_has_protect_plant = false;
+                g_last_goals_count = 0;
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+                pvz2_presence_note("state", "Board Goals=0");
+            }
+
+            if (!g_last_board_level.empty()) {
+                int goals = count_level_challenges(g_last_board_level);
+                if (goals == 0 && g_has_protect_plant) goals = 1;
+                g_last_goals_count = goals;
+                pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+
+                const std::int32_t num = read_board_level_number(d);
+                if (num > 0) {
+                    g_last_level_num = num;
+                    const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(num);
+                    pvz2_presence_note("state", lvl_with_num.c_str());
+                } else if (g_last_level_num > 0) {
+                    const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(g_last_level_num);
+                    pvz2_presence_note("state", lvl_with_num.c_str());
+                } else {
+                    const std::string lvl = "Board Level=" + g_last_board_level;
+                    pvz2_presence_note("state", lvl.c_str());
+                }
+            }
+        } else if (key == "GameStateMgr State") {
+            if (val == "GAME_Game" && !g_last_board_level.empty()) {
+                int goals = count_level_challenges(g_last_board_level);
+                if (goals == 0 && g_has_protect_plant) goals = 1;
+                g_last_goals_count = goals;
+                pvz2_presence_note("state", ("Board Goals=" + std::to_string(goals)).c_str());
+
+                const std::int32_t num = read_board_level_number(d);
+                if (num > 0) {
+                    g_last_level_num = num;
+                    const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(num);
+                    pvz2_presence_note("state", lvl_with_num.c_str());
+                } else if (g_last_level_num > 0) {
+                    const std::string lvl_with_num = "Board Level=" + g_last_board_level + ":" + std::to_string(g_last_level_num);
+                    pvz2_presence_note("state", lvl_with_num.c_str());
+                } else {
+                    const std::string lvl = "Board Level=" + g_last_board_level;
+                    pvz2_presence_note("state", lvl.c_str());
+                }
+            } else if (val == "GAME_WorldMap") {
+                g_has_seed_chooser = false;
+                g_in_seed_chooser = false;
+                g_has_protect_plant = false;
+                g_last_goals_count = 0;
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+                pvz2_presence_note("state", "Board Goals=0");
+                if (!g_last_world.empty()) {
+                    const std::string w = "WorldMap Current World=" + g_last_world;
+                    pvz2_presence_note("state", w.c_str());
+                }
+            } else {
+                g_has_seed_chooser = false;
+                g_in_seed_chooser = false;
+                g_has_protect_plant = false;
+                g_last_goals_count = 0;
+                pvz2_presence_note("state", "Board Chooser=false");
+                pvz2_presence_note("state", "Board Paused=false");
+                pvz2_presence_note("state", "Board Goals=0");
+            }
+        }
+    }
+    d.ret(0);
+}
+
+void crashlytics_set_bool(DexCall &d) {
+    const std::string key = d.string_arg(0);
+    const std::uint32_t val = d.arg(1);
+    if (pvz2_presence_enabled() && !key.empty()) {
+        const std::string kv = key + "=" + (val ? "true" : "false");
+        pvz2_presence_note("state", kv.c_str());
+    }
+    d.ret(0);
+}
+
+void crashlytics_log(DexCall &d) {
+    const std::string msg = d.string_arg(0);
+    if (pvz2_presence_enabled() && !msg.empty()) {
+        pvz2_presence_note("log", msg.c_str());
+    }
+    d.ret(0);
+}
+
 }  // namespace
 
 void config_store_set_string(const std::string &key, const std::string &value) {
@@ -680,6 +1170,10 @@ void register_android_game_app(HookTable &t) {
     t.add(kClass, "Resources_GetCacheDataFolder", data_folder);
     t.add(kClass, "Resources_GetAppSupportDataFolder", data_folder);
     t.add(kClass, "Resources_GetExternalStorageDirectory", data_folder);
+
+    t.add(kCrashlyticsClass, "setString", crashlytics_set_string);
+    t.add(kCrashlyticsClass, "setBool", crashlytics_set_bool);
+    t.add(kCrashlyticsClass, "log", crashlytics_log);
 
     /* Deliberately NOT hooked, because the unhooked default (0/false/null) is
      * already the correct answer for this port:

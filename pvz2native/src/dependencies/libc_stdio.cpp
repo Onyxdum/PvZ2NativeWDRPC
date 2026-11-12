@@ -17,6 +17,7 @@
 #include <pvz2native/dependencies/libc_internal.h>
 
 #include <pvz2native/dependencies/vfs.h>
+#include <pvz2native/presence.h>
 #include <pvz2native/diagnostics/quest_trace.h>
 
 #include <algorithm>
@@ -25,6 +26,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -385,11 +387,38 @@ using libc::VaSource;
 
 /* --------------------------------------------------------- file streams */
 
+/* Discord Rich Presence tap: which part of the .obb is the engine reading?
+ *
+ * After boot the engine pulls its resource groups straight out of the .obb with
+ * fseek/fread, so the group (and sometimes the file) under the read position is
+ * the best available hint at what it is about to show -- a world's background,
+ * a level's data. Only streams opened on the .obb are watched, and nothing runs
+ * unless presence is on. */
+std::mutex g_obb_mu;
+std::set<std::FILE *> g_obb_streams;
+
+#ifdef _WIN32
+long long host_tell(std::FILE *f) { return (long long)_ftelli64(f); }
+#else
+long long host_tell(std::FILE *f) { return (long long)ftello(f); }
+#endif
+
+void presence_tap_obb_read(GuestCall &c, std::FILE *f, long long pos) {
+    {
+        std::lock_guard<std::mutex> lk(g_obb_mu);
+        if (g_obb_streams.count(f) == 0) return;
+    }
+    vfs::note_obb_read(c.rt, pos);
+}
+
 void c_fopen(GuestCall &c) {
     std::string gpath = c.cstr(c.arg(0), 1024);
     std::string mode = c.cstr(c.arg(1), 16);
     std::string hpath = vfs::translate(c.rt, gpath);
     if (mode.find('b') == std::string::npos) mode.push_back('b'); /* force binary on Windows */
+
+    /* Discord Rich Presence: level save folders are named after the level. */
+    if (pvz2_presence_enabled()) pvz2_presence_note("file", gpath.c_str());
 
     std::FILE *f = std::fopen(hpath.c_str(), mode.c_str());
     std::uint32_t token = 0;
@@ -397,6 +426,10 @@ void c_fopen(GuestCall &c) {
         std::lock_guard<std::mutex> lk(c.rt->files_lock);
         token = c.rt->next_file_token++;
         c.rt->host_files[token] = f;
+        if (vfs::is_obb_path(hpath)) {
+            std::lock_guard<std::mutex> ok(g_obb_mu);
+            g_obb_streams.insert(f);
+        }
     } else {
         c.set_errno(2 /* ENOENT */);
     }
@@ -409,6 +442,10 @@ void c_fopen(GuestCall &c) {
 void c_fclose(GuestCall &c) {
     std::FILE *f = c.file(c.arg(0));
     if (f != nullptr) {
+        {
+            std::lock_guard<std::mutex> ok(g_obb_mu);
+            g_obb_streams.erase(f);
+        }
         std::fclose(f);
         std::lock_guard<std::mutex> lk(c.rt->files_lock);
         c.rt->host_files.erase(c.arg(0));
@@ -422,6 +459,7 @@ void c_fread(GuestCall &c) {
     std::uint64_t total = (std::uint64_t)size * nmemb;
     std::uint32_t items = 0;
     if (f != nullptr && size != 0 && total != 0 && c.in_bounds(dst, (std::uint32_t)total)) {
+        if (pvz2_presence_enabled()) presence_tap_obb_read(c, f, host_tell(f));
         /* Straight into guest memory: it is one flat host buffer. */
         std::size_t got = std::fread(&c.img->mem[dst], 1, (std::size_t)total, f);
         items = (std::uint32_t)(got / size);

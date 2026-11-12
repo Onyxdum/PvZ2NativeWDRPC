@@ -4,10 +4,27 @@
 
 **Ejecuta la librería nativa real de *Plants vs. Zombies 2* para Android (`libPVZ2.so`, ARM32) en PC.** Lo único que se emula es el **procesador**: PvZ2 solo existe compilado para ARM (no hay build x86/x64), así que un JIT traduce sus instrucciones ARM a x86_64. Todo lo demás —Android, JNI, libc, OpenGL ES, sistema de archivos— **no se emula, se reimplementa de forma nativa**, igual que hace **Wine** con Windows.
 
-Este repositorio es una rama personalizada de [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native) con mejoras orientadas a PC (ajustes en el juego, atajos de teclado, mando, confirmación al salir, etc.). Código original: https://github.com/OptiJuegos/PvZ2Native
+Este repositorio es un fork de [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (basado originalmente en [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)) con Discord Rich Presence y mejoras orientadas a PC (ajustes en el juego, atajos de teclado, mando, confirmación al salir, etc.).
 
 > [!WARNING]
 > Proyecto experimental. **No incluye el juego**: debes aportar tu propio `libPVZ2.so` y tu propio `.obb`, obtenidos legalmente desde la versión de Android.
+
+---
+
+## Discord Rich Presence
+
+Este fork añade soporte para Discord Rich Presence. Cambia automáticamente entre español e inglés según el idioma que tengas configurado en `presence_rules_es.txt` o `presence_rules_en.txt`.
+
+Muestra en qué menú estás (Almanaque, Tienda, Jardín Zen, Tronco de Viaje) y cuando entras a jugar, el mundo y el día o noche actual, además de modos como Rompejarrones, Fiesta de Piñata, Misiones Épicas y las Zonas de Infinito con sus nombres traducidos. Si el nivel tiene objetivos o plantas en peligro añade una estrella (`⭐`) dependiendo de la cantidad de objetivos, en los niveles de jefe muestra el nombre del Zombot junto con la fase en la que vas, y también detecta cuando estás eligiendo plantas, en pausa o recogiendo la recompensa del nivel.
+
+Ya viene activado por defecto en `config.ini`, así que solo necesitas tener Discord abierto:
+
+```ini
+[discord]
+enabled = 1
+client_id = 1560077802550853694
+image = pvz2
+```
 
 ---
 
@@ -260,6 +277,7 @@ Fuente única de verdad para rutas y depuración (las antiguas variables `PVZ2_*
 | `[runtime]` | `allow_repeat_quests` | `1` (por defecto): las quests repetibles que ya cobraste vuelven a contar muertes en vez de completarse solas cuando vuelven a salir (la lista de completadas del guardado se limpia al arrancar); `0` = no tocar el guardado. |
 | `[shortcuts]` | `bind_*` | Tecla → toque en pantalla (también en la UI). |
 | `[board]` / `[gamepad]` / `[gamepad_binds]` | … | Rejilla y binds del mando (también en la UI). |
+| `[discord]` | `enabled`, `client_id`, `image`, `rules` | Discord Rich Presence (activado por defecto). |
 
 ---
 
@@ -294,6 +312,7 @@ La ventana no se puede redimensionar con el ratón (deformaría la imagen); elig
 | Entrada (ratón / teclado / mando) | 🟢 |
 | Ajustes in-game / confirmación al salir | 🟢 |
 | Logros locales (lista + toast) | 🟢 |
+| Discord Rich Presence (ES/EN, estrellas, fases de jefe, pausa) | 🟢 |
 | Servicios online | 🔴 No implementado (deliberadamente offline) |
 
 ---

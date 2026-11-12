@@ -8,7 +8,7 @@
  */
 
 #include <pvz2native/dependencies/dependency.h>
-
+#include <pvz2native/presence.h>
 #include <cctype>
 #include <cstring>
 #include <string>

@@ -268,6 +268,14 @@ struct GameSymbols {
          * "Unable to contact store" dialog, which is that branch being honest. */
         std::uint32_t purchase_local_receipt;
         std::uint32_t purchase_receipt_verdict;
+
+        /* Zomboss stage transitions.
+         * setup_stage is ZombieZombossMech::SetupStage.
+         * stage_init_call is the BL call site inside the constructor.
+         * stage_change_call is the BL call site inside ChangeStage. */
+        std::uint32_t zomboss_setup_stage;
+        std::uint32_t zomboss_stage_init_call;
+        std::uint32_t zomboss_stage_change_call;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.

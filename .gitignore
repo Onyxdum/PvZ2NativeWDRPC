@@ -14,6 +14,9 @@
 .vscode/
 
 # Editor temporary files
+build/
+game/
+userdata/
 *.swp
 *.swo
 *~
@@ -37,3 +40,9 @@ Desktop.ini
 .DS_Store
 .AppleDouble
 .LSOverride
+*.log
+presence_trace.txt
+*.exe
+*.obb
+*.so
+prefs.dat
