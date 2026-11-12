@@ -1,23 +1,46 @@
-# PvZ2Native
+# PvZ2Native WDRPC
 
 📖 [Español](README_SPANISH.md) · **English**
 
-**Runs the real native library of *Plants vs. Zombies 2* for Android (`libPVZ2.so`, ARM32) on PC.** The only thing that is emulated is the **CPU**: PvZ2 exists only compiled for ARM (there is no x86/x64 build), so a JIT translates its ARM instructions to x86_64. Everything else — Android, JNI, libc, OpenGL ES, the filesystem — **is not emulated, it is reimplemented natively**, the same way **Wine** does with Windows.
-
-This repository is a fork of [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (originally based on [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)) with Discord Rich Presence and PC-focused improvements (in-game settings, keyboard shortcuts, controller support, quit confirm, and more).
+**Plants vs. Zombies 2 on PC, made to feel like a PC game.** This is a fork of [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (originally based on [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)), which runs the real Android `libPVZ2.so` natively on Windows and Linux. On top of that, this fork adds the things you would expect from a desktop release: **Discord Rich Presence**, **cloud saves**, a **console-style controller mode with rumble**, **extra difficulty modes**, **Steam library integration** and an **auto-updater** — for both **v4.5.2** and **v6.6.1** with a single executable.
 
 > [!WARNING]
 > Experimental project. **The game is not included**: you must supply your own `libPVZ2.so` and your own `.obb`, obtained legally from the Android release.
 
 ---
 
-## Discord Rich Presence
+## 🌟 What this fork adds
 
-This fork adds support for Discord Rich Presence. It automatically switches between Spanish and English depending on the language you have configured in `presence_rules_es.txt` or `presence_rules_en.txt`.
+### 🎮 Console-style controller mode
+Plays like the Xbox 360 version of the original game:
 
-It shows which menu you are in (Almanac, Shop, Zen Garden, Travel Log) and when you start playing, the current world and day or night, along with modes like Vasebreaker, Piñata Party, Epic Quests, and Endless Zones. If the level has objectives or endangered plants it adds a star (`⭐`) depending on the number of objectives, in boss levels it shows the Zombot name along with the current phase, and it also detects when you are choosing seeds, paused, or collecting the level reward.
+| In a level | |
+| --- | --- |
+| D-pad / left stick | Move the tile selector over the lawn |
+| `LB` / `RB` / right stick | Pick a seed packet |
+| `A` | Plant on the selected tile |
+| `X` / `Y` | Shovel / Plant Food |
+| `B` | Clear the seed selection |
+| `RT` | Plants you aim (Banana Launcher...): pick, then fire |
+| `LT` | 2x speed |
+| `Start` | Pause |
+| `R3` | Switch to the free cursor (power-ups) |
 
-It comes enabled by default in `config.ini`, so you only need to have Discord open:
+- Sun and coins are collected just by moving the selector over them.
+- Works in **conveyor belt** levels (the selector slides along the belt) and in the **seed chooser** (`A` picks a plant, `X` re-selects your last plants, `Y` starts the level).
+- On-screen button prompts next to the things they control.
+- **Rumble**: when planting, on huge waves, explosions, Zomboss hits, lawn mowers, "Ready, Set, Plant!" and when you win or lose.
+- Touch the mouse or keyboard and it steps aside; pick the controller up again and it comes back.
+
+### 💬 Discord Rich Presence
+Shows what you are doing, in your language (Spanish, English, French, German, Italian and Portuguese):
+
+- The menu you are in (Almanac, Shop, Zen Garden, Travel Log) and, while playing, the world, the day or night and its own world icon.
+- Modes like Vasebreaker, Piñata Party, Epic Quests and Endless Zones with their localized names.
+- A star (`⭐`) per level objective, the Zombot name and current phase in boss fights, and whether you are choosing seeds, paused or collecting the reward.
+- A button on your profile that links to this repository.
+
+It is enabled by default; you only need Discord open:
 
 ```ini
 [discord]
@@ -28,11 +51,30 @@ button_url = https://github.com/Onyxdum/PvZ2NativeWDRPC
 button_label = GitHub
 ```
 
+### ☁️ Cloud saves
+- Cloud button on the main menu (or from settings): **Cloud**, private server, **Google Drive** or **GitHub Gist**.
+- Sign in with Discord for the default cloud; optional sync when you quit.
+- Export / import your save as a `.json` file.
+- Results show up as a small notification at the top of the screen.
+
+### 💀 Extra difficulty modes
+Settings → **Difficulty**: pick any of the game's eight dynamic difficulty levels, or one of the custom modes:
+
+- **Hard+**: the highest dynamic difficulty, always.
+- **Hard++**: no lawn mowers, and every wave brings three times the zombies, spread across all rows.
+- **Point Zero**: everything in Hard++, four times the zombies, and the Dark Ages potions on every lawn — zombies drink them as they walk by.
+
+### 🚀 Desktop integration
+- **Steam**: on first launch it offers to add the game to your Steam library, with its artwork.
+- **Auto-updater**: checks for new releases at startup and updates itself; your `config.ini` and presence rules are merged, never overwritten.
+- **First-boot wizard**: point it at the APK and OBB (4.5.2 or 6.6.1) and it sets everything up.
+- **Ending credits**: claiming the last reward of the game rolls the credits.
+
 ---
 
-## ✨ What's included in this build
+## ✨ Also included (PC build)
 
-Aimed at *Plants vs. Zombies 2: It's About Time* **v4.5.2** and **v6.6.1** (in testing) on Windows and Linux, with a smoother mouse / keyboard / controller experience and universal single-executable support.
+Aimed at *Plants vs. Zombies 2: It's About Time* **v4.5.2** and **v6.6.1** (in testing) on Windows and Linux.
 
 ### Visual and desktop integration
 - Custom executable icon and custom cursor (scales with window/screen size).
@@ -41,7 +83,7 @@ Aimed at *Plants vs. Zombies 2: It's About Time* **v4.5.2** and **v6.6.1** (in t
 
 ### In-game settings
 - Open with `Esc` or from the main menu via the **Google Play** button (bottom-right).
-- Change language, currency, fullscreen, monitor/display, FPS limit, free purchases, events, keyboard shortcuts, and controller options without editing files by hand.
+- Change language, currency, fullscreen, monitor/display, FPS limit, difficulty, free purchases, events, keyboard shortcuts, and controller options without editing files by hand.
 - Most changes apply immediately (including moving the window to another monitor). Changing language, free purchases or the Events options relaunches the process so the engine reloads them.
 - Older or incomplete `config.ini` files are healed on launch: missing keys get safe defaults; invalid values are corrected.
 
@@ -70,11 +112,9 @@ Aimed at *Plants vs. Zombies 2: It's About Time* **v4.5.2** and **v6.6.1** (in t
 - Mouse-wheel list scrolling (touch-drag simulation), right-click = Back, middle-click = Menu where supported.
 - Fullscreen / resize click mapping fixes and defensive input recovery.
 
-### Controller
-- Left stick moves the cursor; **A** confirms/clicks.
-- D-pad jumps between on-screen controls and lawn cells; shoulders switch menu areas.
-- Right stick drag (swipe-like); remappable actions (pause, powers, Plant Food, shovel, …).
-- Stick speed and deadzone sliders; pick which pad to use or disable pads.
+### Controller (menus)
+- Outside levels the left stick moves the cursor and **A** clicks; the D-pad jumps between on-screen controls.
+- Remappable actions, stick speed and deadzone sliders; pick which pad to use or disable pads.
 - Mouse, keyboard, and controller work together.
 
 ### Other
@@ -84,6 +124,10 @@ Aimed at *Plants vs. Zombies 2: It's About Time* **v4.5.2** and **v6.6.1** (in t
 - Persistent per-installation player ID.
 
 ---
+
+## 🧠 How it works
+
+**Runs the real native library of *Plants vs. Zombies 2* for Android (`libPVZ2.so`, ARM32) on PC.** The only thing that is emulated is the **CPU**: PvZ2 exists only compiled for ARM (there is no x86/x64 build), so a JIT translates its ARM instructions to x86_64. Everything else — Android, JNI, libc, OpenGL ES, the filesystem — **is not emulated, it is reimplemented natively**, the same way **Wine** does with Windows.
 
 ## 📖 What it is (and what it is NOT)
 
@@ -300,6 +344,7 @@ Primary configuration file for paths, display, input, and game options:
 | Settings | Google Play button on the main menu |
 | Achievements list | From settings (**View achievements**) |
 | Shortcuts / pad | Configurable in settings |
+| Controller in levels | See [Console-style controller mode](#-console-style-controller-mode) |
 
 ---
 
