@@ -24,13 +24,15 @@ It comes enabled by default in `config.ini`, so you only need to have Discord op
 enabled = 1
 client_id = 1560077802550853694
 image = pvz2
+button_url = https://github.com/Onyxdum/PvZ2NativeWDRPC
+button_label = GitHub
 ```
 
 ---
 
 ## ✨ What's included in this build
 
-Aimed at *Plants vs. Zombies 2: It's About Time* **v4.5.2** on Windows and Linux, with a smoother mouse / keyboard / controller experience.
+Aimed at *Plants vs. Zombies 2: It's About Time* **v4.5.2** and **v6.6.1** (in testing) on Windows and Linux, with a smoother mouse / keyboard / controller experience and universal single-executable support.
 
 ### Visual and desktop integration
 - Custom executable icon and custom cursor (scales with window/screen size).
@@ -117,8 +119,6 @@ This is exactly **Wine's** approach — *"Wine Is Not an Emulator"* — taken on
 └──────────────────────────────────────────────┘
 ```
 
-When the game asks the operating system for something (open a file, allocate memory, draw, play a sound, call into Java), that call leaves the emulated code as a trap and is serviced by a *handler* in this layer, backed by the equivalent PC API.
-
 ---
 
 ## 🧩 Architecture
@@ -151,9 +151,10 @@ The version is detected by a **byte fingerprint** at two known native functions;
 | Version | Typical OBB | Status |
 | --- | --- | --- |
 | **1.6.10** (2013) | `main.7.com.ea.game.pvz2_na.obb` | 🟢 Playable |
-| **4.5.2** (2016) | `main.147.com.ea.game.pvz2_row.obb` (often shipped / renamed as `data.obb`) | 🟢 Playable (primary target of this build) |
+| **4.5.2** (2016) | `main.147.com.ea.game.pvz2_row.obb` (often shipped / renamed as `data.obb`) | 🟢 Playable |
+| **6.6.1** (2018) | `main.434.com.ea.game.pvz2_row.obb` (or `data.obb` alongside `libNimble.so`) | 🟡 In testing (Adventure and levels playable; Battlez / Arena not yet working) |
 
-Adding a new version = one entry in `kVersions` in [symbols.cpp](pvz2native/src/game/symbols.cpp). Nothing in `runtime/` or `engine/` changes between versions.
+PvZ2Native uses a **unified single executable**: both 4.5.2 and 6.6.1 are detected automatically at boot via ELF function fingerprints in [symbols.cpp](pvz2native/src/game/symbols.cpp), applying the correct patches, symbol offsets, companion libraries (`libNimble.so`), and Discord Rich Presence rules on the fly with 100% backward compatibility. *Note: 6.6.1 support is currently in active testing; features like Battlez (Batallaz) are not yet working.*
 
 ---
 
@@ -190,9 +191,6 @@ If `gcc`, `g++`, and `make` are on your `PATH`:
 ```bat
 compile.bat
 ```
-
-> [!NOTE]
-> `compile-hardcoded.bat` is a machine-specific MinGW helper (absolute toolchain paths). Prefer `compile.bat` or `compile-ninja.bat`.
 
 Output:
 
@@ -256,7 +254,7 @@ obb = main.147.com.ea.game.pvz2_row.obb
 
 Relative paths are resolved against the folder that contains the executable. Absolute paths are also accepted.
 
-**First-Boot Setup Wizard:** If `libPVZ2.so` or `data.obb` are not found on launch, PvZ2Native automatically starts an interactive setup wizard that asks for your 4.5.2 APK (or XAPK) and OBB file. It automatically extracts `libPVZ2.so`, copies the OBB, detects your package variant (`pvz2_row` or `pvz2_na`), configures `config.ini`, and launches immediately. If the files are already present, the game starts with zero prompts.
+**First-Boot Setup Wizard:** If `libPVZ2.so` or `data.obb` are not found on launch, PvZ2Native automatically starts an interactive setup wizard supporting both **v4.5.2** and **v6.6.1** APKs (or XAPK / ZIP archives) and OBB files. It automatically extracts `libPVZ2.so` and required companion libraries (`libNimble.so` for 6.6.1), copies the OBB, detects your package variant (`pvz2_row` or `pvz2_na`) and game version, configures `config.ini`, and launches immediately. If the files are already present, the game starts with zero prompts.
 
 On first launch the host writes a documented `config.ini`. Everyday options are meant to be changed from the in-game settings screen; advanced keys stay in the file / CLI.
 
@@ -270,14 +268,14 @@ Native macOS binaries are not provided due to Apple deprecating OpenGL and enfor
 
 ## 🔧 Configuration (`config.ini`)
 
-Single source of truth for paths and debugging (legacy `PVZ2_*` environment variables are not read). Excerpt:
+Primary configuration file for paths, display, input, and game options:
 
 | Section | Key | What it does |
 | --- | --- | --- |
-| `[paths]` | `so`, `obb` | Paths to the `.so` and `.obb` (relative to the executable, or absolute). |
-| `[paths]` | `save` | Optional save folder; unset stores `prefs.dat` next to the exe. |
-| `[log]` | `console` | Show console/log output (default `0`). |
-| `[log]` | `verbose` / `trace` / `input` | `verbose`: boot + frame-stamped timeline (`[engine]`, `[java]`, `[screen]`, `[census]`, `[state]`, `[quest]`, `[quest-save]`, `[quest-io]`) for hunting a dead UI (implies `input`; needs `console=1` or a `logfile`); `trace`: imports; `input`: events. |
+| `[paths]` | `so`, `obb` | Paths to `libPVZ2.so` and `data.obb` (relative to executable or absolute). |
+| `[paths]` | `save` | Optional save folder; unset stores `prefs.dat` next to the executable. |
+| `[log]` | `console` | Show console/log output (`1` to show, `0` to hide). |
+| `[log]` | `verbose`, `trace`, `input` | Detailed debug logs for engine lifecycle, imports, and input events (requires `console=1` or `logfile`). |
 | `[video]` | `fullscreen`, `display`, `width`, `height`, `fps_limit`, `lock_cursor` | Display / monitor index (also in settings UI). |
 | `[game]` | `user_locale`, `currency_*`, `emulate_iap` | Locale, store cosmetics, free IAP (also in settings UI). |
 | `[game]` | `achievement_notifications` | Unlock toast + SFX (`1` default; `0` silences UI only). |
@@ -302,55 +300,6 @@ Single source of truth for paths and debugging (legacy `PVZ2_*` environment vari
 | Settings | Google Play button on the main menu |
 | Achievements list | From settings (**View achievements**) |
 | Shortcuts / pad | Configurable in settings |
-
-The window cannot be resized with the mouse (that would stretch the picture); pick the size in settings or `config.ini`, or use `F11` for fullscreen.
-
----
-
-## 📊 Project status
-
-| Area | Status |
-| --- | --- |
-| `.so` loading and engine boot | 🟢 |
-| Lifecycle (init / surface / frames) | 🟢 |
-| Resource loading (RSB/RSG from `.obb`) | 🟢 |
-| Native imports (libc/libm/GLES/…) | 🟢 |
-| Rendering | 🟢 |
-| Audio (OpenSL ES → SDL) | 🟢 |
-| Input (mouse / keyboard / controller) | 🟢 |
-| In-game settings / quit confirm | 🟢 |
-| Local achievements (list + toast) | 🟢 |
-| Discord Rich Presence (EN/ES, goal stars, boss phases, pause) | 🟢 |
-| Online services | 🔴 Not implemented (deliberately offline) |
-
----
-
-## 📁 Project structure
-
-```text
-PvZ2Native/
-├── pvz2native/            ← host / compatibility layer
-│   ├── src/
-│   │   ├── runtime/       ← JIT (dynarmic), GuestHeap, threads, sync, RSB
-│   │   ├── dependencies/  ← one module per Android .so + VFS
-│   │   ├── dex/           ← fake JNIEnv/JavaVM + per-class hooks
-│   │   ├── engine/        ← boot / lifecycle / frame
-│   │   ├── game/          ← symbols.cpp: addresses per binary version
-│   │   ├── diagnostics/
-│   │   ├── gfx/, audio/, input/, patch/, elf32/
-│   │   ├── config.cpp / config_screen.cpp / achievements.cpp
-│   │   └── main.c
-│   ├── windows_resources.rc
-│   └── include/pvz2native/
-├── assets/                ← splash, settings UI, cursor, achievements (embedded on Windows; copied on Linux)
-├── dynarmic/  SDL/  glad/  zlib/  stb/  third_party/
-├── compile-ninja.bat      ← Windows VS + Ninja
-├── compile.bat            ← Windows MinGW (PATH)
-├── compile.sh             ← Linux
-├── compile-appimage.sh    ← Linux AppImage (`pvz2.AppImage`)
-├── CMakeLists.txt
-└── README.md
-```
 
 ---
 

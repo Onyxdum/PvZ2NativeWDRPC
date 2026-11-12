@@ -540,6 +540,8 @@ std::string g_rules_path;
 bool g_trace = false;
 bool g_world_icons = true;
 std::string g_world_icon_url = "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/v2/";
+std::string g_button_url = "https://github.com/Onyxdum/PvZ2NativeWDRPC";
+std::string g_button_label = "GitHub";
 
 std::mutex g_user_mu;
 std::string g_user_id;
@@ -603,6 +605,10 @@ std::string activity_json(const Activity *a, std::int64_t start, unsigned nonce)
         } else if (!g_image.empty()) {
             j += ",\"assets\":{\"large_image\":\"" + json_escape(g_image) +
                  "\",\"large_text\":\"PvZ2Native\"}";
+        }
+        if (!g_button_url.empty() && g_button_url != "0" && g_button_url != "none") {
+            const std::string lbl = !g_button_label.empty() ? g_button_label : "GitHub";
+            j += ",\"buttons\":[{\"label\":\"" + json_escape(clip(lbl, 32)) + "\",\"url\":\"" + json_escape(g_button_url) + "\"}]";
         }
         j += "}";
     }
@@ -852,6 +858,7 @@ void worker() {
     std::string boss_name_detected;
     std::string current_level;
     std::string current_world;
+    std::string current_game_state;
     Activity sent;
     bool have_sent = false;
     unsigned nonce = 1;
@@ -941,6 +948,32 @@ void worker() {
                 }
             }
 
+            static std::string last_known_world;
+            const PresStrings *ps_ev = pres_str();
+
+            auto restore_world_activity = [&]() {
+                const std::string tgt_world = lower(!current_world.empty() ? current_world : last_known_world);
+                if (!tgt_world.empty()) {
+                    const std::string syn_ev = "state:worldmap current world=" + tgt_world;
+                    for (const Rule &r : rules) {
+                        if (!r.is_temp && !r.is_regex && !r.needle.empty() && syn_ev.find(r.needle) != std::string::npos) {
+                            persistent = Activity{r.details, r.state};
+                            desired = persistent;
+                            return;
+                        }
+                    }
+                }
+                for (const Rule &r : rules) {
+                    if (!r.is_temp && !r.is_regex && !r.needle.empty() && r.needle.find("universemap shown=true") != std::string::npos) {
+                        persistent = Activity{r.details, r.state};
+                        desired = persistent;
+                        return;
+                    }
+                }
+                persistent = def;
+                desired = def;
+            };
+
             if (ev.rfind("state:Board Level=", 0) == 0) {
                 travel_log_open = false;
                 vasebreaker_menu_open = false;
@@ -1003,6 +1036,17 @@ void worker() {
             } else if (ev == "state:Board Chooser=false") {
                 is_chooser = false;
                 continue;
+            } else if (ev.find("UI_SeedChooser") != std::string::npos ||
+                       ev.find("SeedChooser_Arrive") != std::string::npos) {
+                if (!current_level.empty()) {
+                    is_chooser = true;
+                }
+            } else if (ev.find("SeedChooser_Away") != std::string::npos) {
+                is_chooser = false;
+            } else if (ev == "state:DialogClose=PinataReward") {
+                in_temp = false;
+                restore_world_activity();
+                continue;
             } else if (ev == "state:Board State=LoadingLevel") {
                 level_won = false;
                 travel_log_open = false;
@@ -1032,32 +1076,6 @@ void worker() {
                 level_won = false;
             }
 
-            static std::string last_known_world;
-            const PresStrings *ps_ev = pres_str();
-
-            auto restore_world_activity = [&]() {
-                const std::string tgt_world = !current_world.empty() ? current_world : last_known_world;
-                if (!tgt_world.empty()) {
-                    const std::string syn_ev = "state:worldmap current world=" + tgt_world;
-                    for (const Rule &r : rules) {
-                        if (!r.is_temp && syn_ev.find(r.needle) != std::string::npos) {
-                            persistent = Activity{r.details, r.state};
-                            desired = persistent;
-                            return;
-                        }
-                    }
-                }
-                for (const Rule &r : rules) {
-                    if (!r.is_temp && r.needle.find("universemap shown=true") != std::string::npos) {
-                        persistent = Activity{r.details, r.state};
-                        desired = persistent;
-                        return;
-                    }
-                }
-                persistent = def;
-                desired = def;
-            };
-
             if (ev == "state:TravelLog Shown=true") {
                 if (current_level.empty() && !level_won) {
                     travel_log_open = true;
@@ -1067,12 +1085,10 @@ void worker() {
                 }
                 continue;
             } else if (ev == "state:TravelLog Shown=false") {
-                if (travel_log_open) {
-                    travel_log_open = false;
-                    in_temp = false;
-                    if (current_level.empty() && !level_won && !credits_open) {
-                        restore_world_activity();
-                    }
+                travel_log_open = false;
+                in_temp = false;
+                if (current_level.empty() && !level_won && !credits_open) {
+                    restore_world_activity();
                 }
                 continue;
             } else if (ev == "state:Credits Shown=true") {
@@ -1090,7 +1106,7 @@ void worker() {
                 continue;
             }
 
-            auto delete_groups_has_exact_dialog = [](const std::string &s) -> bool {
+            auto delete_groups_has_exact_dialog = [&](const std::string &s) -> bool {
                 constexpr const char *kPrefix = "state:Last DeleteGroups=";
                 constexpr std::size_t kPrefixLen = 24;
                 if (s.rfind(kPrefix, 0) != 0) return false;
@@ -1099,7 +1115,15 @@ void worker() {
                     std::size_t comma = s.find(',', pos);
                     if (comma == std::string::npos) comma = s.size();
                     const std::string tok = trim(s.substr(pos, comma - pos));
-                    if (tok == "UI_VaseBreakerMenu" || tok == "UI_Almanac" || tok == "UI_Store") {
+                    if (tok == "UI_Almanac") {
+                        if (current_game_state == "GAME_Almanac") return false;
+                        return true;
+                    }
+                    if (tok == "UI_Store") {
+                        if (current_game_state == "GAME_Store") return false;
+                        return true;
+                    }
+                    if (tok == "UI_VaseBreakerMenu" || tok == "UI_Quests") {
                         return true;
                     }
                     pos = comma + 1;
@@ -1107,34 +1131,49 @@ void worker() {
                 return false;
             };
 
-            const bool is_dialog_close = (!travel_log_open &&
-                                          (ev.find("Play_UI_Button_X_Close_") != std::string::npos ||
-                                           ev.find("Play_UI_Menu_Cancel_") != std::string::npos ||
-                                           ev.find("Play_UI_Menu_Leave_") != std::string::npos ||
-                                           ev.find("Play_UI_Menu_Store_Close") != std::string::npos ||
-                                           ev.find("Play_UI_Menu_Almanac_Close_") != std::string::npos ||
-                                           delete_groups_has_exact_dialog(ev)));
+            const bool is_dialog_close = (ev.find("Play_UI_Button_X_Close_") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Cancel_") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Leave_") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Store_Close") != std::string::npos ||
+                                          ev.find("Play_UI_Menu_Almanac_Close_") != std::string::npos ||
+                                          delete_groups_has_exact_dialog(ev));
             if (is_dialog_close) {
-                const std::string cur_det = lower(persistent.details);
-                const std::string des_det = lower(desired.details);
-                if (cur_det.find("rompejarrones") != std::string::npos ||
-                    cur_det.find("vasebreaker") != std::string::npos ||
-                    cur_det.find("almanaque") != std::string::npos ||
-                    cur_det.find("almanac") != std::string::npos ||
-                    cur_det.find("tienda") != std::string::npos ||
-                    cur_det.find("store") != std::string::npos ||
-                    des_det.find("rompejarrones") != std::string::npos ||
-                    des_det.find("vasebreaker") != std::string::npos ||
-                    des_det.find("almanaque") != std::string::npos ||
-                    des_det.find("almanac") != std::string::npos ||
-                    des_det.find("tienda") != std::string::npos ||
-                    des_det.find("store") != std::string::npos ||
-                    vasebreaker_menu_open ||
-                    in_temp) {
-                    vasebreaker_menu_open = false;
+                if (travel_log_open) {
+                    travel_log_open = false;
                     in_temp = false;
-                    restore_world_activity();
+                    if (current_level.empty() && !level_won && !credits_open) {
+                        restore_world_activity();
+                    }
                 }
+                if (ev.find("Play_UI_Menu_Store_Close") != std::string::npos) {
+                    if (current_game_state == "GAME_Store") current_game_state.clear();
+                    restore_world_activity();
+                } else if (current_game_state != "GAME_Store" && current_game_state != "GAME_Almanac") {
+                    const std::string cur_det = lower(persistent.details);
+                    const std::string des_det = lower(desired.details);
+                    if (cur_det.find("rompejarrones") != std::string::npos ||
+                        cur_det.find("vasebreaker") != std::string::npos ||
+                        cur_det.find("almanaque") != std::string::npos ||
+                        cur_det.find("almanac") != std::string::npos ||
+                        cur_det.find("tienda") != std::string::npos ||
+                        cur_det.find("store") != std::string::npos ||
+                        des_det.find("rompejarrones") != std::string::npos ||
+                        des_det.find("vasebreaker") != std::string::npos ||
+                        des_det.find("almanaque") != std::string::npos ||
+                        des_det.find("almanac") != std::string::npos ||
+                        des_det.find("tienda") != std::string::npos ||
+                        des_det.find("store") != std::string::npos ||
+                        vasebreaker_menu_open ||
+                        in_temp) {
+                        vasebreaker_menu_open = false;
+                        in_temp = false;
+                        restore_world_activity();
+                    }
+                }
+            }
+
+            if (ev.rfind("state:GameStateMgr State=", 0) == 0) {
+                current_game_state = ev.substr(25);
             }
 
             if (ev.rfind("state:WorldMap Current World=", 0) == 0) {
@@ -1161,26 +1200,37 @@ void worker() {
                 boss_phase = 0;
                 level_won = false;
                 is_eighties_boss = false;
+                travel_log_open = false;
                 vasebreaker_menu_open = false;
                 boss_name_detected.clear();
                 current_level.clear();
                 in_temp = false;
-                if (!travel_log_open && !credits_open) {
+                if (!credits_open) {
                     restore_world_activity();
                 }
             } else if (ev.rfind("state:UniverseMap Shown=false", 0) == 0) {
                 if (current_world.empty() && !last_known_world.empty()) {
                     current_world = last_known_world;
                 }
+                travel_log_open = false;
                 in_temp = false;
+                if (!vasebreaker_menu_open && !credits_open) {
+                    restore_world_activity();
+                }
                 if (!travel_log_open && !vasebreaker_menu_open && !credits_open) {
                     restore_world_activity();
                 }
-            } else if (ev.rfind("state:GameStateMgr State=GAME_ArcadeMenu", 0) == 0) {
+            } else if (ev.rfind("state:GameStateMgr State=GAME_ArcadeMenu", 0) == 0 ||
+                       ev.rfind("state:ArcadeMenu Shown=true", 0) == 0) {
                 vasebreaker_menu_open = true;
                 travel_log_open = false;
                 credits_open = false;
+                current_level.clear();
                 in_temp = false;
+            } else if (ev.rfind("state:ArcadeMenu Shown=false", 0) == 0) {
+                vasebreaker_menu_open = false;
+                in_temp = false;
+                restore_world_activity();
             } else if (ev.rfind("state:GameStateMgr State=GAME_Almanac", 0) == 0 ||
                        ev.rfind("state:GameStateMgr State=GAME_Store", 0) == 0 ||
                        ev.rfind("state:GameStateMgr State=GAME_ZenGarden", 0) == 0) {
@@ -1188,7 +1238,8 @@ void worker() {
                 vasebreaker_menu_open = false;
                 credits_open = false;
                 in_temp = false;
-            } else if (ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0) {
+            } else if (ev.rfind("state:GameStateMgr State=GAME_MainMenu", 0) == 0 ||
+                       ev.rfind("state:GameStateMgr State=GAME_JoustOrAdventureSelector", 0) == 0) {
                 is_paused = false;
                 is_chooser = false;
                 goals_count = 0;
@@ -1197,9 +1248,23 @@ void worker() {
                 is_eighties_boss = false;
                 travel_log_open = false;
                 vasebreaker_menu_open = false;
+                credits_open = false;
                 boss_name_detected.clear();
                 current_level.clear();
                 current_world.clear();
+                in_temp = false;
+            } else if (ev.rfind("state:GameStateMgr State=GAME_JoustLoadDashboard", 0) == 0) {
+                is_paused = false;
+                is_chooser = false;
+                goals_count = 0;
+                boss_phase = 0;
+                level_won = false;
+                is_eighties_boss = false;
+                travel_log_open = false;
+                vasebreaker_menu_open = false;
+                credits_open = false;
+                boss_name_detected.clear();
+                current_level.clear();
                 in_temp = false;
             } else if (ev.rfind("state:UniverseMap Shown=true", 0) == 0) {
                 is_paused = false;
@@ -1216,7 +1281,7 @@ void worker() {
                 current_world.clear();
                 in_temp = false;
                 for (const Rule &r : rules) {
-                    if (!r.is_temp && r.needle.find("universemap shown=true") != std::string::npos) {
+                    if (!r.is_temp && !r.is_regex && !r.needle.empty() && r.needle.find("universemap shown=true") != std::string::npos) {
                         persistent = Activity{r.details, r.state};
                         desired = persistent;
                         break;
@@ -1231,7 +1296,8 @@ void worker() {
             if ((travel_log_open || vasebreaker_menu_open || credits_open) &&
                 (ev_lower.rfind("rsb:worldmap_", 0) == 0 ||
                  ev_lower.rfind("state:worldmap current world=", 0) == 0 ||
-                 ev_lower.rfind("rsb:ui_mainmenu_", 0) == 0)) {
+                 ev_lower.rfind("rsb:ui_mainmenu_", 0) == 0 ||
+                 (vasebreaker_menu_open && ev_lower.find("almanac") != std::string::npos))) {
                 continue;
             }
             if (credits_open && ev_lower.rfind("state:gamestatemgr state=game_mainmenu", 0) == 0) {
@@ -1433,6 +1499,17 @@ void pvz2_presence_start(void) {
             u = "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/v2/";
         }
         g_world_icon_url = u;
+    }
+
+    if (cfg->discord_button_url[0] != '\0') {
+        g_button_url = cfg->discord_button_url;
+    } else {
+        g_button_url = "https://github.com/Onyxdum/PvZ2NativeWDRPC";
+    }
+    if (cfg->discord_button_label[0] != '\0') {
+        g_button_label = cfg->discord_button_label;
+    } else {
+        g_button_label = "GitHub";
     }
 
     if (cfg->discord_rules[0] != '\0' &&

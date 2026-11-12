@@ -348,6 +348,14 @@ const Setting kSettings[] = {
      sizeof(g_config.discord_world_icon_url),
      "Base URL or 'asset' for world icon images in Discord Rich Presence.",
      "https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/assets/discord/v2/", nullptr},
+    {"discord", "button_url", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_button_url),
+     sizeof(g_config.discord_button_url),
+     "URL for the Rich Presence button linking to the repository (set empty to disable).",
+     "https://github.com/Onyxdum/PvZ2NativeWDRPC", nullptr},
+    {"discord", "button_label", nullptr, Kind::kString, offsetof(pvz2_config_t, discord_button_label),
+     sizeof(g_config.discord_button_label),
+     "Label for the Rich Presence button.",
+     "GitHub", nullptr},
 };
 
 /* --- small helpers --------------------------------------------------------- */
@@ -2204,7 +2212,7 @@ extern "C" void pvz2_config_set_lock_cursor(int lock_cursor) {
     g_config.lock_cursor = lock_cursor ? 1 : 0;
 }
 
-extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name) {
+extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name, const char *version_str) {
     if (so_path && so_path[0]) {
         std::snprintf(g_config.so_path, sizeof(g_config.so_path), "%s", so_path);
     }
@@ -2213,6 +2221,9 @@ extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const cha
     }
     if (package_name && package_name[0]) {
         std::snprintf(g_config.package_name, sizeof(g_config.package_name), "%s", package_name);
+    }
+    if (version_str && version_str[0]) {
+        std::snprintf(g_config.product_version_string, sizeof(g_config.product_version_string), "%s", version_str);
     }
 
     char *base = pvz2_host_data_path();
@@ -2234,6 +2245,7 @@ extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const cha
     if (so_path && so_path[0]) patch_ini_section_key(lines, "paths", "so", so_path);
     if (obb_path && obb_path[0]) patch_ini_section_key(lines, "paths", "obb", obb_path);
     if (package_name && package_name[0]) patch_ini_section_key(lines, "game", "package_name", package_name);
+    if (version_str && version_str[0]) patch_ini_section_key(lines, "game", "product_version_string", version_str);
 
     FILE *f = std::fopen(ini_path, "wb");
     if (f) {

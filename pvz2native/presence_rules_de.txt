@@ -1,4 +1,9 @@
 ; === 1. LEVEL (Neue Level und Speicherstände via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(?::\d+)?$ | Vasenbrecher | Altes Ägypten
+regex:state:Board Level=vasebreaker_pirate(?::\d+)?$ | Vasenbrecher | Piratensee
+regex:state:Board Level=vasebreaker_cowboy(?::\d+)?$ | Vasenbrecher | Wilder Westen
+regex:state:Board Level=vasebreaker_future(?::\d+)?$ | Vasenbrecher | Ferne Zukunft
+regex:state:Board Level=vasebreaker_dark(?::\d+)?$ | Vasenbrecher | Mittelalter
 regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Vasenbrecher | Altes Ägypten - Level $1
 regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Vasenbrecher | Piratensee - Level $1
 regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Vasenbrecher | Wilder Westen - Level $1
@@ -95,12 +100,20 @@ state:GameStateMgr State=GAME_Almanac | Im Lexikon | Pflanzen und Zombies ansehe
 state:GameStateMgr State=GAME_Store | Im Laden | Upgrades und Pflanzen
 state:GameStateMgr State=GAME_ZenGarden | Zen-Garten | Pflanzen pflegen
 state:GameStateMgr State=GAME_ArcadeMenu | Vasenbrecher | Level auswählen
+state:ArcadeMenu Shown=true | Vasenbrecher | Level wählen
 state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | Im Hauptmenü
+state:GameStateMgr State=GAME_JoustOrAdventureSelector | Hauptmenü | Spielmodus wählen
+state:GameStateMgr State=GAME_JoustLoadDashboard | Battlez | In der Arena
 
 rsb:ZenGardenGroup_ | Zen-Garten | Pflanzen pflegen
 rsb:DelayLoad_Background_Zen | Zen-Garten | Pflanzen pflegen
 rsb:UI_Quests_ | Reiseklotz | Quests ansehen
-temp:rsb:UI_Almanac_ | Im Lexikon | Pflanzen und Zombies ansehen
+temp:rsb:UI_Almanac_Almanac_ | Im Lexikon | Pflanzen und Zombies ansehen
+temp:state:Dialog=PinataReward | Belohnungen | Piñata öffnen
+temp:state:Dialog=PVZ2UIPinataRewardDialog | Belohnungen | Piñata öffnen
+temp:rsb:SpinePinatas_ | Belohnungen | Piñata öffnen
+temp:rsb:PinataRewards_ | Belohnungen | Piñata öffnen
+temp:rsb:PrizePinata_ | Belohnungen | Piñata öffnen
 rsb:UI_VaseBreakerMenu_ | Vasenbrecher | Level auswählen
 
 ; === 5. WELTKARTEN ===

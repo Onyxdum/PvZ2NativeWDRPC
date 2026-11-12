@@ -146,7 +146,31 @@ BINARY_F(m_nextafterf, std::nextafter(x, y))
  * so they differ in whether the result needs r1 as well. */
 void m_lrint(GuestCall &c) { c.set_result((std::uint32_t)(long)std::lrint(c.argd(0))); }
 void m_llrint(GuestCall &c) { c.set_result64((std::uint64_t)std::llrint(c.argd(0))); }
-void m_lroundf(GuestCall &c) { c.set_result((std::uint32_t)(long)std::lroundf(c.argf(0))); }
+void m_lroundf(GuestCall &c) { c.set_result((std::uint32_t)(long)std::lround(c.argf(0))); }
+
+/* double frexp(double value, int *exp) */
+void m_frexp(GuestCall &c) {
+    double value = c.argd(0);
+    std::uint32_t exp_ptr = c.arg(2);
+    int exp = 0;
+    double frac = std::frexp(value, &exp);
+    if (exp_ptr != 0 && c.in_bounds(exp_ptr, 4)) {
+        c.write32(exp_ptr, (std::uint32_t)exp);
+    }
+    c.set_resultd(frac);
+}
+
+/* float frexpf(float value, int *exp) */
+void m_frexpf(GuestCall &c) {
+    float value = c.argf(0);
+    std::uint32_t exp_ptr = c.arg(1);
+    int exp = 0;
+    float frac = std::frexp(value, &exp);
+    if (exp_ptr != 0 && c.in_bounds(exp_ptr, 4)) {
+        c.write32(exp_ptr, (std::uint32_t)exp);
+    }
+    c.set_resultf(frac);
+}
 
 /* float modff(float value, float *iptr) -- the float variant of m_modf above,
  * so the out-pointer is the very next register rather than the one after a
@@ -284,6 +308,8 @@ void register_libm(ImportTable &t) {
     t.add("roundf", m_roundf);
     t.add("truncf", m_truncf);
     t.add("modff", m_modff);
+    t.add("frexp", m_frexp);
+    t.add("frexpf", m_frexpf);
     t.add("nextafterf", m_nextafterf);
 
     t.add("lrint", m_lrint);

@@ -1,4 +1,9 @@
 ; === 1. LEVELS (New from scratch and save states via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(?::\d+)?$ | Vasebreaker | Ancient Egypt
+regex:state:Board Level=vasebreaker_pirate(?::\d+)?$ | Vasebreaker | Pirate Seas
+regex:state:Board Level=vasebreaker_cowboy(?::\d+)?$ | Vasebreaker | Wild West
+regex:state:Board Level=vasebreaker_future(?::\d+)?$ | Vasebreaker | Far Future
+regex:state:Board Level=vasebreaker_dark(?::\d+)?$ | Vasebreaker | Dark Ages
 regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Vasebreaker | Ancient Egypt - Level $1
 regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Vasebreaker | Pirate Seas - Level $1
 regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Vasebreaker | Wild West - Level $1
@@ -96,12 +101,20 @@ state:GameStateMgr State=GAME_Almanac | In Almanac | Suburban Almanac
 state:GameStateMgr State=GAME_Store | In Shop | Upgrades and Plants
 state:GameStateMgr State=GAME_ZenGarden | Zen Garden | Tending plants
 state:GameStateMgr State=GAME_ArcadeMenu | Vasebreaker | Choosing level
+state:ArcadeMenu Shown=true | Vasebreaker | Choosing level
 state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | In Main Menu
+state:GameStateMgr State=GAME_JoustOrAdventureSelector | Main Menu | Choosing Game Mode
+state:GameStateMgr State=GAME_JoustLoadDashboard | Battlez | In the Arena
 
 rsb:ZenGardenGroup_ | Zen Garden | Tending plants
 rsb:DelayLoad_Background_Zen | Zen Garden | Tending plants
 rsb:UI_Quests_ | Travel Log | Checking quests
-temp:rsb:UI_Almanac_ | In Almanac | Suburban Almanac
+temp:rsb:UI_Almanac_Almanac_ | In Almanac | Suburban Almanac
+temp:state:Dialog=PinataReward | Rewards | Opening Piñata
+temp:state:Dialog=PVZ2UIPinataRewardDialog | Rewards | Opening Piñata
+temp:rsb:SpinePinatas_ | Rewards | Opening Piñata
+temp:rsb:PinataRewards_ | Rewards | Opening Piñata
+temp:rsb:PrizePinata_ | Rewards | Opening Piñata
 rsb:UI_VaseBreakerMenu_ | Vasebreaker | Choosing level
 
 ; === 5. WORLD MAPS ===

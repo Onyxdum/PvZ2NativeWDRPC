@@ -398,20 +398,18 @@ static void feed_input_event(const SDL_Event *e) {
             break;
         case SDL_MOUSEBUTTONUP:
             if (e->button.button == SDL_BUTTON_LEFT) {
-                int tx = 0, ty = 0;
-                if (map_window_to_touch(e->button.x, e->button.y, &tx, &ty)) {
-                    pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
-                    g_mouse_touch_x = tx;
-                    g_mouse_touch_y = ty;
+                if (g_mouse_touch_active) {
+                    int tx = 0, ty = 0;
+                    if (map_window_to_touch(e->button.x, e->button.y, &tx, &ty)) {
+                        pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
+                        g_mouse_touch_x = tx;
+                        g_mouse_touch_y = ty;
+                    } else {
+                        pvz2_input_push_touch(PVZ2_TOUCH_UP, g_mouse_touch_x, g_mouse_touch_y);
+                    }
                     mark_touch_activity();
-                } else if (g_mouse_touch_active) {
-                    pvz2_input_push_touch(PVZ2_TOUCH_UP, g_mouse_touch_x, g_mouse_touch_y);
-                    mark_touch_activity();
-                } else {
-                    hard_reset_touch_state();
-                    mark_touch_activity();
+                    g_mouse_touch_active = 0;
                 }
-                g_mouse_touch_active = 0;
             } else if (e->button.button == SDL_BUTTON_RIGHT) {
                 pvz2_input_push_key(PVZ2_KEY_BACK, 0);
                 mark_touch_activity();
@@ -1533,12 +1531,24 @@ static float clamp01(float v) {
     return v;
 }
 
+static int is_plant_slot_shortcut(const char *name) {
+    if (!name) return 0;
+    if (strncmp(name, "plant_", 6) == 0 && strcmp(name, "plant_food") != 0) {
+        return 1;
+    }
+    return 0;
+}
+
 static int trigger_shortcut_for_scancode(SDL_Scancode scancode) {
     if (scancode == SDL_SCANCODE_UNKNOWN) return 0;
 
     for (int i = 0; i < g_shortcut_count; ++i) {
         const runtime_shortcut_t *s = &g_shortcuts[i];
         if (s->scancode != scancode) continue;
+
+        if (is_plant_slot_shortcut(s->name)) {
+            if (!pvz2_game_can_select_plants()) return 0;
+        }
 
         const float tw = (float)pvz2_touch_space_width();
         const float th = (float)pvz2_touch_space_height();
@@ -1549,12 +1559,70 @@ static int trigger_shortcut_for_scancode(SDL_Scancode scancode) {
         const int tx = (int)(nx * (tw - 1.0f) + 0.5f);
         const int ty = (int)(ny * (th - 1.0f) + 0.5f);
 
+        release_active_mouse_touch();
+
         pvz2_input_push_touch(PVZ2_TOUCH_DOWN, tx, ty);
         pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
         mark_touch_activity();
         return 1;
     }
     return 0;
+}
+
+static int trigger_named_shortcut(const char *name) {
+    if (!name) return 0;
+    for (int i = 0; i < g_shortcut_count; ++i) {
+        const runtime_shortcut_t *s = &g_shortcuts[i];
+        if (strcmp(s->name, name) != 0) continue;
+
+        if (is_plant_slot_shortcut(s->name)) {
+            if (!pvz2_game_can_select_plants()) return 0;
+        }
+
+        const float tw = (float)pvz2_touch_space_width();
+        const float th = (float)pvz2_touch_space_height();
+        if (tw <= 0.0f || th <= 0.0f) return 0;
+
+        const float nx = clamp01(s->x);
+        const float ny = clamp01(s->y);
+        const int tx = (int)(nx * (tw - 1.0f) + 0.5f);
+        const int ty = (int)(ny * (th - 1.0f) + 0.5f);
+
+        release_active_mouse_touch();
+
+        pvz2_input_push_touch(PVZ2_TOUCH_DOWN, tx, ty);
+        pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
+        mark_touch_activity();
+        return 1;
+    }
+    return 0;
+}
+
+static void trigger_pause_shortcut(void) {
+    if (pvz2_game_is_paused()) {
+        hard_reset_touch_state();
+        pvz2_input_push_key(PVZ2_KEY_BACK, 1);
+        pvz2_input_push_key(PVZ2_KEY_BACK, 0);
+        mark_touch_activity();
+        return;
+    }
+
+    if (trigger_named_shortcut("pause")) return;
+
+    const float tw = (float)pvz2_touch_space_width();
+    const float th = (float)pvz2_touch_space_height();
+    if (tw <= 0.0f || th <= 0.0f) return;
+
+    const float nx = g_bind_use_43 ? 0.97f : 0.96f;
+    const float ny = g_bind_use_43 ? 0.07f : 0.06f;
+    const int tx = (int)(nx * (tw - 1.0f) + 0.5f);
+    const int ty = (int)(ny * (th - 1.0f) + 0.5f);
+
+    release_active_mouse_touch();
+
+    pvz2_input_push_touch(PVZ2_TOUCH_DOWN, tx, ty);
+    pvz2_input_push_touch(PVZ2_TOUCH_UP, tx, ty);
+    mark_touch_activity();
 }
 
 /* The single place an SDL event turns into an action. Both drain sites -- the
@@ -1648,6 +1716,12 @@ static void host_pump(void) {
         }
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE &&
             event.key.repeat == 0) {
+            if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
+                if (pvz2_game_is_in_level()) {
+                    trigger_pause_shortcut();
+                    continue;
+                }
+            }
             config_screen_request_escape();
             continue;
         }
@@ -2057,6 +2131,12 @@ int main(int argc, char **argv) {
                 }
                 if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE &&
                     event.key.repeat == 0) {
+                    if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
+                        if (pvz2_game_is_in_level()) {
+                            trigger_pause_shortcut();
+                            continue;
+                        }
+                    }
                     config_screen_request_escape();
                     continue;
                 }

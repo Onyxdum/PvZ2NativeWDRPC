@@ -188,6 +188,8 @@ typedef struct pvz2_config {
     char discord_trace_file[512];
     int discord_world_icons;
     char discord_world_icon_url[256];
+    char discord_button_url[256];
+    char discord_button_label[64];
 
     /* [paths] -- keys `so`, `obb` and `save`. Always concrete after load: a value
      * left unset in the .ini is filled with <exe_dir>/<default filename>
@@ -319,8 +321,8 @@ void pvz2_host_update_cursor_lock(void);
 /* Update lock_cursor setting in runtime memory. Defined in config.cpp. */
 void pvz2_config_set_lock_cursor(int lock_cursor);
 
-/* Updates [paths] so/obb and [game] package_name in memory and persists to config.ini. */
-void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name);
+/* Updates [paths] so/obb, [game] package_name, and [game] product_version_string in memory and persists to config.ini. */
+void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name, const char *version_str);
 
 #ifdef __cplusplus
 }  /* extern "C" */

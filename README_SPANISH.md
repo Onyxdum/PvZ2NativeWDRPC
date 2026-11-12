@@ -24,13 +24,15 @@ Ya viene activado por defecto en `config.ini`, así que solo necesitas tener Dis
 enabled = 1
 client_id = 1560077802550853694
 image = pvz2
+button_url = https://github.com/Onyxdum/PvZ2NativeWDRPC
+button_label = GitHub
 ```
 
 ---
 
 ## ✨ Qué incluye este build
 
-Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** en Windows y Linux, con una experiencia más cómoda con ratón, teclado o mando.
+Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en pruebas) en Windows y Linux, con ejecutable único universal y una experiencia más cómoda con ratón, teclado o mando.
 
 ### Integración visual y de escritorio
 - Icono propio del ejecutable y cursor personalizado (escala con el tamaño de ventana/pantalla).
@@ -117,8 +119,6 @@ Es exactamente el enfoque de **Wine** — *"Wine Is Not an Emulator"* — llevad
 └──────────────────────────────────────────────┘
 ```
 
-Cuando el juego pide algo del sistema operativo (abrir un archivo, reservar memoria, dibujar, reproducir sonido, llamar a Java), esa llamada sale del código emulado como una interrupción y la atiende un *handler* de esta capa, respaldado por la API equivalente de PC.
-
 ---
 
 ## 🧩 Arquitectura
@@ -151,9 +151,10 @@ Se detecta la versión por **huella de bytes** en dos funciones nativas conocida
 | Versión | OBB típico | Estado |
 | --- | --- | --- |
 | **1.6.10** (2013) | `main.7.com.ea.game.pvz2_na.obb` | 🟢 Jugable |
-| **4.5.2** (2016) | `main.147.com.ea.game.pvz2_row.obb` (a menudo se distribuye / renombra como `data.obb`) | 🟢 Jugable (objetivo principal de este build) |
+| **4.5.2** (2016) | `main.147.com.ea.game.pvz2_row.obb` (a menudo se distribuye / renombra como `data.obb`) | 🟢 Jugable |
+| **6.6.1** (2018) | `main.434.com.ea.game.pvz2_row.obb` (o `data.obb` junto a `libNimble.so`) | 🟡 En pruebas (Aventura y niveles jugables; Batallaz / Arena aún no funciona) |
 
-Añadir una versión nueva = una entrada en `kVersions` de [symbols.cpp](pvz2native/src/game/symbols.cpp). Nada de `runtime/` ni `engine/` cambia entre versiones.
+PvZ2Native utiliza un **único ejecutable universal**: tanto la versión 4.5.2 como la 6.6.1 se detectan automáticamente al arrancar mediante huellas de funciones ELF en [symbols.cpp](pvz2native/src/game/symbols.cpp), aplicando dinámicamente los parches correspondientes, los offsets de símbolos, librerías asociadas (`libNimble.so`) y las reglas de Discord Rich Presence con total retrocompatibilidad. *Nota: La versión 6.6.1 sigue actualmente en pruebas; características como Batallaz (Battlez) aún no están funcionando.*
 
 ---
 
@@ -190,9 +191,6 @@ Si `gcc`, `g++` y `make` están en el `PATH`:
 ```bat
 compile.bat
 ```
-
-> [!NOTE]
-> `compile-hardcoded.bat` es un helper MinGW con rutas absolutas de una máquina concreta. Preferí `compile.bat` o `compile-ninja.bat`.
 
 Salida:
 
@@ -256,7 +254,7 @@ obb = main.147.com.ea.game.pvz2_row.obb
 
 Las rutas relativas se resuelven respecto a la carpeta del ejecutable. También se aceptan rutas absolutas.
 
-**Asistente de primer inicio:** Si `libPVZ2.so` o `data.obb` no se encuentran al iniciar, PvZ2Native abre automáticamente un asistente interactivo que te permite seleccionar tu APK (o XAPK) y OBB de la versión 4.5.2. Extrae automáticamente `libPVZ2.so`, copia el OBB, detecta tu variante de paquete (`pvz2_row` o `pvz2_na`), configura `config.ini` y arranca de inmediato sin configuraciones manuales. Si los archivos ya están presentes, el juego inicia directamente sin ninguna ventana ni espera.
+**Asistente de primer inicio:** Si `libPVZ2.so` o `data.obb` no se encuentran al iniciar, PvZ2Native abre automáticamente un asistente interactivo compatible con paquetes APK (o XAPK / ZIP) y archivos OBB de las versiones **4.5.2** y **6.6.1**. Extrae automáticamente `libPVZ2.so` y sus librerías asociadas (`libNimble.so` en 6.6.1), copia el OBB, detecta tu variante de paquete (`pvz2_row` o `pvz2_na`) y la versión de juego, configura `config.ini` y arranca de inmediato sin configuraciones manuales. Si los archivos ya están presentes, el juego inicia directamente sin ninguna ventana ni espera.
 
 En el primer arranque el host escribe un `config.ini` documentado. Lo cotidiano se cambia desde la pantalla de ajustes; lo avanzado queda en el archivo / CLI.
 
@@ -270,14 +268,14 @@ No se ofrecen binarios nativos para macOS debido a la eliminación de OpenGL por
 
 ## 🔧 Configuración (`config.ini`)
 
-Fuente única de verdad para rutas y depuración (las antiguas variables `PVZ2_*` ya no se leen). Extracto:
+Archivo principal de configuración para rutas, pantalla, controles y opciones del juego:
 
 | Sección | Clave | Para qué sirve |
 | --- | --- | --- |
-| `[paths]` | `so`, `obb` | Rutas al `.so` y al `.obb` (relativas al ejecutable o absolutas). |
-| `[paths]` | `save` | Carpeta de guardado opcional; sin valor, `prefs.dat` junto al exe. |
-| `[log]` | `console` | Mostrar consola/log (por defecto `0`). |
-| `[log]` | `verbose` / `trace` / `input` | `verbose`: boot + línea de tiempo con número de frame (`[engine]`, `[java]`, `[screen]`, `[census]`, `[state]`, `[quest]`, `[quest-save]`, `[quest-io]`) para cazar una UI muerta (implica `input`; necesita `console=1` o un `logfile`); `trace`: imports; `input`: eventos. |
+| `[paths]` | `so`, `obb` | Rutas a `libPVZ2.so` y `data.obb` (relativas al ejecutable o absolutas). |
+| `[paths]` | `save` | Carpeta de guardado opcional; sin valor guarda `prefs.dat` junto al ejecutable. |
+| `[log]` | `console` | Mostrar consola/log (`1` para mostrar, `0` para ocultar). |
+| `[log]` | `verbose`, `trace`, `input` | Registros detallados de depuración para ciclo de vida del motor, imports y eventos (requiere `console=1` o `logfile`). |
 | `[video]` | `fullscreen`, `display`, `width`, `height`, `fps_limit`, `lock_cursor` | Pantalla / índice de monitor (también en la UI de ajustes). |
 | `[game]` | `user_locale`, `currency_*`, `emulate_iap` | Idioma, monedas, IAP gratis (también en la UI). |
 | `[game]` | `achievement_notifications` | Toast + SFX al desbloquear (`1` por defecto; `0` solo silencia la UI). |
@@ -302,55 +300,6 @@ Fuente única de verdad para rutas y depuración (las antiguas variables `PVZ2_*
 | Ajustes | Botón Google Play del menú principal |
 | Lista de logros | Desde ajustes (**Ver logros**) |
 | Atajos / mando | Configurables en ajustes |
-
-La ventana no se puede redimensionar con el ratón (deformaría la imagen); elige el tamaño en ajustes o en `config.ini`, o usa `F11` para pantalla completa.
-
----
-
-## 📊 Estado del proyecto
-
-| Área | Estado |
-| --- | --- |
-| Carga del `.so` y arranque del motor | 🟢 |
-| Ciclo de vida (init / surface / frames) | 🟢 |
-| Carga de recursos (RSB/RSG desde `.obb`) | 🟢 |
-| Imports nativos (libc/libm/GLES/…) | 🟢 |
-| Renderizado | 🟢 |
-| Audio (OpenSL ES → SDL) | 🟢 |
-| Entrada (ratón / teclado / mando) | 🟢 |
-| Ajustes in-game / confirmación al salir | 🟢 |
-| Logros locales (lista + toast) | 🟢 |
-| Discord Rich Presence (ES/EN, estrellas, fases de jefe, pausa) | 🟢 |
-| Servicios online | 🔴 No implementado (deliberadamente offline) |
-
----
-
-## 📁 Estructura del proyecto
-
-```text
-PvZ2Native/
-├── pvz2native/            ← host / capa de compatibilidad
-│   ├── src/
-│   │   ├── runtime/       ← JIT (dynarmic), GuestHeap, hilos, sync, RSB
-│   │   ├── dependencies/  ← un módulo por .so de Android + VFS
-│   │   ├── dex/           ← JNIEnv/JavaVM falso + hooks por clase
-│   │   ├── engine/        ← boot / lifecycle / frame
-│   │   ├── game/          ← symbols.cpp: direcciones por versión
-│   │   ├── diagnostics/
-│   │   ├── gfx/, audio/, input/, patch/, elf32/
-│   │   ├── config.cpp / config_screen.cpp / achievements.cpp
-│   │   └── main.c
-│   ├── windows_resources.rc
-│   └── include/pvz2native/
-├── assets/                ← splash, UI de ajustes, cursor, logros (embebido en Windows; copiado en Linux)
-├── dynarmic/  SDL/  glad/  zlib/  stb/  third_party/
-├── compile-ninja.bat      ← Windows VS + Ninja
-├── compile.bat            ← Windows MinGW (PATH)
-├── compile.sh             ← Linux
-├── compile-appimage.sh    ← AppImage Linux (`pvz2.AppImage`)
-├── CMakeLists.txt
-└── README.md
-```
 
 ---
 

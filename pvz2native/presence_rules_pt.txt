@@ -1,4 +1,9 @@
 ; === 1. NÍVEIS (Novos e jogos salvos via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(?::\d+)?$ | Quebravaso | Egito Antigo
+regex:state:Board Level=vasebreaker_pirate(?::\d+)?$ | Quebravaso | Mar dos Piratas
+regex:state:Board Level=vasebreaker_cowboy(?::\d+)?$ | Quebravaso | Velho Oeste
+regex:state:Board Level=vasebreaker_future(?::\d+)?$ | Quebravaso | Futuro Distante
+regex:state:Board Level=vasebreaker_dark(?::\d+)?$ | Quebravaso | Idade das Trevas
 regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Quebravaso | Egito Antigo - Nível $1
 regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Quebravaso | Mar dos Piratas - Nível $1
 regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Quebravaso | Velho Oeste - Nível $1
@@ -95,12 +100,20 @@ state:GameStateMgr State=GAME_Almanac | No Almanaque | Consultando plantas e zum
 state:GameStateMgr State=GAME_Store | Na Loja | Vendo melhorias e plantas
 state:GameStateMgr State=GAME_ZenGarden | Jardim Zen | Cuidando das plantas
 state:GameStateMgr State=GAME_ArcadeMenu | Quebravaso | Escolhendo nível
+state:ArcadeMenu Shown=true | Quebravaso | Escolhendo nível
 state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | No menu principal
+state:GameStateMgr State=GAME_JoustOrAdventureSelector | Menu Principal | Escolhendo modo de jogo
+state:GameStateMgr State=GAME_JoustLoadDashboard | Batalhaz | Na arena
 
 rsb:ZenGardenGroup_ | Jardim Zen | Cuidando das plantas
 rsb:DelayLoad_Background_Zen | Jardim Zen | Cuidando das plantas
 rsb:UI_Quests_ | Diário de Viagem | Vendo missões
-temp:rsb:UI_Almanac_ | No Almanaque | Consultando plantas e zumbis
+temp:rsb:UI_Almanac_Almanac_ | No Almanaque | Consultando plantas e zumbis
+temp:state:Dialog=PinataReward | Recompensas | Abrindo pinhata
+temp:state:Dialog=PVZ2UIPinataRewardDialog | Recompensas | Abrindo pinhata
+temp:rsb:SpinePinatas_ | Recompensas | Abrindo pinhata
+temp:rsb:PinataRewards_ | Recompensas | Abrindo pinhata
+temp:rsb:PrizePinata_ | Recompensas | Abrindo pinhata
 rsb:UI_VaseBreakerMenu_ | Quebravaso | Escolhendo nível
 
 ; === 5. MAPAS DOS MUNDOS ===
