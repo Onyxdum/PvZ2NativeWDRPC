@@ -234,6 +234,11 @@ const Setting kSettings[] = {
      "the screen is whichever is lower, this or the monitor's refresh rate.\n"
      "  0 = no limit at all (vsync off too: tearing, one core saturated).",
      "60", nullptr},
+    {"video", "lock_cursor", nullptr, Kind::kBool, offsetof(pvz2_config_t, lock_cursor), 0,
+     "Confine the mouse cursor inside the game window during play (useful for\n"
+     "multi-monitor setups). Released when menus/settings are open or when alt-tabbed.\n"
+     "  0 = off (default), 1 = on.",
+     nullptr, "0"},
 
     {"game", "user_locale", nullptr, Kind::kString, offsetof(pvz2_config_t, user_locale),
      sizeof(g_config.user_locale),
@@ -247,6 +252,10 @@ const Setting kSettings[] = {
      "the game requests completes for free; off = store reports not supported.\n"
      "Default off: gem-priced store items do not need Play Billing.",
      nullptr, "0"},
+    {"game", "check_updates", nullptr, Kind::kBool,
+     offsetof(pvz2_config_t, check_updates), 0,
+     "Check for game updates on startup from GitHub releases. Default on.",
+     nullptr, "1"},
     {"game", "achievement_notifications", nullptr, Kind::kBool,
      offsetof(pvz2_config_t, achievement_notifications), 0,
      "Show the achievement unlock popup and sound. Achievements are still saved\n"
@@ -1634,6 +1643,7 @@ extern "C" void pvz2_config_load(const char *ini_path, const char *base_dir) {
     g_base_dir = base_with_sep(base_dir);
     g_config = pvz2_config_t{}; /* reset to all-zero before (re)reading */
     g_config.emulate_iap = 0;
+    g_config.check_updates = 1;
     g_config.use_cdn = 1;
     g_config.allow_repeat_quests = 1;
     g_config.achievement_notifications = 1;
@@ -2188,4 +2198,46 @@ extern "C" int pvz2_config_apply_overlay_settings(int fullscreen, int width, int
      * fixed for the session once the guest has asked. CDN: the engine reads its
      * event files once at boot. All need a relaunch. */
     return (locale_changed || iap_changed || cdn_changed) ? 1 : 0;
+}
+
+extern "C" void pvz2_config_set_lock_cursor(int lock_cursor) {
+    g_config.lock_cursor = lock_cursor ? 1 : 0;
+}
+
+extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name) {
+    if (so_path && so_path[0]) {
+        std::snprintf(g_config.so_path, sizeof(g_config.so_path), "%s", so_path);
+    }
+    if (obb_path && obb_path[0]) {
+        std::snprintf(g_config.obb_path, sizeof(g_config.obb_path), "%s", obb_path);
+    }
+    if (package_name && package_name[0]) {
+        std::snprintf(g_config.package_name, sizeof(g_config.package_name), "%s", package_name);
+    }
+
+    char *base = pvz2_host_data_path();
+    if (!base) return;
+    char ini_path[1024];
+    SDL_snprintf(ini_path, sizeof(ini_path), "%sconfig.ini", base);
+    SDL_free(base);
+
+    std::vector<std::string> lines;
+    {
+        FILE *f = std::fopen(ini_path, "rb");
+        if (f) {
+            char buf[512];
+            while (std::fgets(buf, sizeof(buf), f)) lines.push_back(buf);
+            std::fclose(f);
+        }
+    }
+
+    if (so_path && so_path[0]) patch_ini_section_key(lines, "paths", "so", so_path);
+    if (obb_path && obb_path[0]) patch_ini_section_key(lines, "paths", "obb", obb_path);
+    if (package_name && package_name[0]) patch_ini_section_key(lines, "game", "package_name", package_name);
+
+    FILE *f = std::fopen(ini_path, "wb");
+    if (f) {
+        for (const auto &l : lines) std::fputs(l.c_str(), f);
+        std::fclose(f);
+    }
 }

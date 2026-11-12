@@ -222,6 +222,7 @@ struct Strings {
 	const char *steam_add;
 	const char *cloud_discord_rpc;
 	const char *view_credits;
+	const char *lock_cursor;
 };
 
 static const Strings kStringsEN = {
@@ -255,7 +256,8 @@ static const Strings kStringsEN = {
 	"Export save to JSON", "Import save from JSON",
 	"Add game to Steam",
 	"Discord Rich Presence",
-	"Credits"
+	"Credits",
+	"Lock Mouse to Window"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -288,7 +290,8 @@ static const Strings kStringsES = {
 	"Exportar partida a JSON", "Importar partida desde JSON",
 	"Añadir juego a Steam",
 	"Discord Rich Presence",
-	"Créditos"
+	"Créditos",
+	"Bloquear ratón en ventana"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -321,7 +324,8 @@ static const Strings kStringsFR = {
 	"Exporter la sauvegarde en JSON", "Importer la sauvegarde depuis JSON",
 	"Ajouter le jeu à Steam",
 	"Discord Rich Presence",
-	"Crédits"
+	"Crédits",
+	"Bloquer la souris dans la fenêtre"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -354,7 +358,8 @@ static const Strings kStringsDE = {
 	"Spielstand als JSON exportieren", "Spielstand aus JSON importieren",
 	"Spiel zu Steam hinzufügen",
 	"Discord Rich Presence",
-	"Credits"
+	"Credits",
+	"Maus im Fenster sperren"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -387,7 +392,8 @@ static const Strings kStringsPT = {
 	"Exportar jogo salvo para JSON", "Importar jogo salvo de JSON",
 	"Adicionar jogo à Steam",
 	"Discord Rich Presence",
-	"Créditos"
+	"Créditos",
+	"Bloquear mouse na janela"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -420,7 +426,8 @@ static const Strings kStringsIT = {
 	"Esporta salvataggio in JSON", "Importa salvataggio da JSON",
 	"Aggiungi gioco a Steam",
 	"Discord Rich Presence",
-	"Riconoscimenti"
+	"Riconoscimenti",
+	"Blocca mouse nella finestra"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -1385,6 +1392,7 @@ struct EditConfig {
 	int  achievement_notifications = 1;
 	int  use_cdn      = 1;
 	int  rewrite_cdn  = 0;
+	int  lock_cursor  = 0;
 
 	void load_from_live() {
 		const pvz2_config_t *c = pvz2_config();
@@ -1400,6 +1408,7 @@ struct EditConfig {
 		achievement_notifications = c->achievement_notifications;
 		use_cdn      = c->use_cdn;
 		rewrite_cdn  = c->rewrite_cdn;
+		lock_cursor  = c->lock_cursor;
 	}
 
 	bool differs_from_live() const {
@@ -1415,7 +1424,8 @@ struct EditConfig {
 			   emulate_iap != c->emulate_iap ||
 			   achievement_notifications != c->achievement_notifications ||
 			   use_cdn != c->use_cdn ||
-			   rewrite_cdn != c->rewrite_cdn;
+			   rewrite_cdn != c->rewrite_cdn ||
+			   lock_cursor != c->lock_cursor;
 	}
 };
 
@@ -1892,6 +1902,7 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         items.push_back({str->achievement_notify, false, false,
                          g_edit.achievement_notifications != 0, ""});
         items.push_back({str->iap, false, false, g_edit.emulate_iap != 0, ""});
+        items.push_back({str->lock_cursor, false, false, g_edit.lock_cursor != 0, ""});
         items.push_back({str->cloud_save, true, false, false, ""});
         items.push_back({str->view_credits, true, false, false, ""});
         items.push_back({str->exit_program, true, false, false, ""});
@@ -2231,6 +2242,8 @@ static void write_overlay_settings_to_ini(void) {
 	set_key("runtime", "use_cdn", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.rewrite_cdn);
 	set_key("runtime", "rewrite_cdn", tmp);
+	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.lock_cursor);
+	set_key("video", "lock_cursor", tmp);
 
 	FILE *f = fopen(ini_path, "wb");
 	if (f) {
@@ -2307,6 +2320,8 @@ static void apply_settings_and_close(void) {
 									   g_edit.video_height);
 
 	g_open = false;
+	pvz2_config_set_lock_cursor(g_edit.lock_cursor);
+	pvz2_host_update_cursor_lock();
 }
 
 /* -------------------------------------------------------------------------
@@ -2922,7 +2937,7 @@ static void draw_panel_content(Screen screen, float dx,
                 icon_margin = sc(kSliderFromRight, s);
             } else if (items[i].is_arrow) {
                 icon_w = sc((float)g_tex_arrow_up.w, s);
-                if (screen == Screen::Main && (int)i == 13 && g_tex_exit_up.id)
+                if (screen == Screen::Main && (int)i == 14 && g_tex_exit_up.id)
                     icon_w = sc((float)g_tex_exit_up.w, s);
             } else if (items[i].is_edit) {
                 icon_w = sc((float)g_tex_edit_up.w, s);
@@ -2956,7 +2971,7 @@ static void draw_panel_content(Screen screen, float dx,
         if (items[i].is_slider) {
             draw_item_slider(item_x, iy, item_w, item_h, s, items[i].slider_t);
         } else if (items[i].is_arrow) {
-            bool is_exit_row = (screen == Screen::Main && (int)i == 13 && g_tex_exit_up.id && g_tex_exit_down.id);
+            bool is_exit_row = (screen == Screen::Main && (int)i == 14 && g_tex_exit_up.id && g_tex_exit_down.id);
             Tex &at = is_exit_row
                 ? (((int)i == g_arrow_pressed_idx) ? g_tex_exit_down : g_tex_exit_up)
                 : (((int)i == g_arrow_pressed_idx) ? g_tex_arrow_down : g_tex_arrow_up);
@@ -3213,6 +3228,7 @@ static void handle_event(const SDL_Event *e) {
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* achievements */
 		ritems.push_back({false,false,false,g_edit.achievement_notifications!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({false,false,false,g_edit.emulate_iap!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({false,false,false,g_edit.lock_cursor!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* cloud save */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* credits */
 		ritems.push_back({true, false,false,false,-1,0,0,0,0,nullptr,nullptr,nullptr}); /* exit */
@@ -3557,6 +3573,7 @@ static void handle_event(const SDL_Event *e) {
 				apply_settings_and_close();
 			} else {
 				g_open = false;
+				pvz2_host_update_cursor_lock();
 			}
 			return;
 		}
@@ -3635,13 +3652,13 @@ static void handle_event(const SDL_Event *e) {
 
 			if (ritems[i].is_arrow) {
 				if (g_screen == Screen::Main) {
-					if (i == 13) {
+					if (i == 14) {
 						/* Exit: no menu click SFX — dialog open plays exit_click. */
 						show_quit_confirm();
 					} else if (i == 8) {
 						/* View Achievements — open SFX is exit_click (same as quit). */
 						achievements_screen_request_open();
-					} else if (i == 12) {
+					} else if (i == 13) {
 						/* View Credits */
 						play_sound(g_snd_confirm);
 						credits_screen_request_open();
@@ -3656,7 +3673,7 @@ static void handle_event(const SDL_Event *e) {
 						else if (i == 5) to = Screen::Bindings;
 						else if (i == 6) to = Screen::GamepadBinds;
 						else if (i == 7) to = Screen::Events;
-						else if (i == 11) {
+						else if (i == 12) {
 							g_opened_directly_to_cloud = false;
 							pvz2_cloud_init();
 							g_cloud_status[0] = '\0';
@@ -3750,6 +3767,11 @@ static void handle_event(const SDL_Event *e) {
 					} else if (i == 10) {
 						g_edit.emulate_iap = !g_edit.emulate_iap;
 						write_overlay_settings_to_ini();
+					} else if (i == 11) {
+						g_edit.lock_cursor = !g_edit.lock_cursor;
+						write_overlay_settings_to_ini();
+						pvz2_config_set_lock_cursor(g_edit.lock_cursor);
+						pvz2_host_update_cursor_lock();
 					}
 				} else if (g_screen == Screen::Events) {
 					if (i == 0) g_edit.use_cdn = !g_edit.use_cdn;

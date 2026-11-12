@@ -810,6 +810,21 @@ void worker() {
     std::vector<Rule> rules = load_rules(g_rules_path, def);
     std::printf("[discord] %zu rule(s) from %s\n", rules.size(), g_rules_path.c_str());
 
+    std::string custom_path = resolve("presence_rules_custom.txt");
+    FILE *fc = std::fopen(custom_path.c_str(), "rb");
+    if (fc != nullptr) {
+        std::fclose(fc);
+        Activity custom_def;
+        std::vector<Rule> custom_rules = load_rules(custom_path, custom_def);
+        if (!custom_rules.empty()) {
+            std::printf("[discord] %zu custom rule(s) from %s loaded\n", custom_rules.size(), custom_path.c_str());
+            rules.insert(rules.begin(), custom_rules.begin(), custom_rules.end());
+            if (!custom_def.details.empty() || !custom_def.state.empty()) {
+                def = custom_def;
+            }
+        }
+    }
+
     FILE *trace = nullptr;
     std::set<std::string> seen;
     std::size_t trace_lines = 0;

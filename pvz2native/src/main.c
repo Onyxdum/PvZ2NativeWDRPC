@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include <glad/gl.h>
 #include <pvz2native/config.h>
+#include <pvz2native/first_boot_wizard.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <SDL_syswm.h>
@@ -30,6 +31,7 @@
 #include <pvz2native/log.h>
 #include <pvz2native/save_dates.h>
 #include <pvz2native/steam_shortcut.h>
+#include <pvz2native/updater.h>
 
 /* Set once the window exists, so input mapping can use logical window coords. */
 static SDL_Window *g_window = NULL;
@@ -920,6 +922,7 @@ static void release_host_assets(void) {
 #endif
 
 void pvz2_host_pre_sdl_quit(void) {
+    if (g_window) SDL_SetWindowGrab(g_window, SDL_FALSE);
     pvz2_cloud_on_quit();
     pvz2_presence_stop();
     config_screen_shutdown();
@@ -1434,6 +1437,26 @@ static void toggle_fullscreen(void) {
     if (!g_window) return;
     g_fullscreen = !g_fullscreen;
     SDL_SetWindowFullscreen(g_window, g_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+    if (!g_fullscreen) {
+        const pvz2_config_t *c = pvz2_config();
+        int w = c ? c->video_width : 0;
+        int h = c ? c->video_height : 0;
+        if (w <= 0 || h <= 0) {
+            SDL_DisplayMode dmode;
+            if (SDL_GetCurrentDisplayMode(pvz2_effective_display(), &dmode) == 0 && dmode.w > 0 && dmode.h > 0) {
+                const double aspect = (double)dmode.w / (double)dmode.h;
+                h = (dmode.h >= 1080) ? 720 : PVZ2_AUTO_BASE_HEIGHT;
+                w = (int)((double)h * aspect + 0.5);
+                if (w & 1) w++;
+            } else {
+                w = 1280; h = 720;
+            }
+        }
+        SDL_SetWindowSize(g_window, w, h);
+        const int disp = pvz2_effective_display();
+        SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED_DISPLAY(disp),
+                              SDL_WINDOWPOS_CENTERED_DISPLAY(disp));
+    }
     request_resize_sync();
     apply_pending_resize_sync(1);
 }
@@ -1447,8 +1470,18 @@ void pvz2_host_apply_video_settings(int fullscreen, int width, int height) {
         SDL_SetWindowFullscreen(g_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     } else {
         SDL_SetWindowFullscreen(g_window, 0);
-        if (width > 0 && height > 0)
-            SDL_SetWindowSize(g_window, width, height);
+        if (width <= 0 || height <= 0) {
+            SDL_DisplayMode dmode;
+            if (SDL_GetCurrentDisplayMode(pvz2_effective_display(), &dmode) == 0 && dmode.w > 0 && dmode.h > 0) {
+                const double aspect = (double)dmode.w / (double)dmode.h;
+                height = (dmode.h >= 1080) ? 720 : PVZ2_AUTO_BASE_HEIGHT;
+                width = (int)((double)height * aspect + 0.5);
+                if (width & 1) width++;
+            } else {
+                width = 1280; height = 720;
+            }
+        }
+        SDL_SetWindowSize(g_window, width, height);
         {
             const int d = pvz2_effective_display();
             SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED_DISPLAY(d),
@@ -1473,6 +1506,25 @@ void pvz2_host_apply_display_settings(int display_index) {
     if (was_fullscreen) SDL_SetWindowFullscreen(g_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     request_resize_sync();
     apply_pending_resize_sync(1);
+}
+
+void pvz2_host_update_cursor_lock(void) {
+    if (!g_window) return;
+    int should_lock = 0;
+    const pvz2_config_t *cfg = pvz2_config();
+    if (cfg && cfg->lock_cursor) {
+        Uint32 flags = SDL_GetWindowFlags(g_window);
+        int has_focus = (flags & SDL_WINDOW_INPUT_FOCUS) && !(flags & SDL_WINDOW_MINIMIZED);
+        int overlay_open = config_screen_is_open() || achievements_screen_is_open() || credits_screen_is_open();
+        if (has_focus && !overlay_open) {
+            should_lock = 1;
+        }
+    }
+    SDL_bool current_grab = SDL_GetWindowGrab(g_window);
+    SDL_bool want_grab = should_lock ? SDL_TRUE : SDL_FALSE;
+    if (current_grab != want_grab) {
+        SDL_SetWindowGrab(g_window, want_grab);
+    }
 }
 
 static float clamp01(float v) {
@@ -1520,13 +1572,23 @@ static void handle_sdl_event(const SDL_Event *e) {
             refresh_window_metrics();
             request_resize_sync();
             apply_pending_resize_sync(0);
-        } else if (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+        } else if (e->window.event == SDL_WINDOWEVENT_FOCUS_GAINED ||
+                   e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+                   e->window.event == SDL_WINDOWEVENT_ENTER ||
                    e->window.event == SDL_WINDOWEVENT_LEAVE ||
                    e->window.event == SDL_WINDOWEVENT_HIDDEN ||
-                   e->window.event == SDL_WINDOWEVENT_MINIMIZED) {
-            release_active_mouse_touch();
-            hard_reset_touch_state();
-            g_last_touch_input_ms = SDL_GetTicks();
+                   e->window.event == SDL_WINDOWEVENT_SHOWN ||
+                   e->window.event == SDL_WINDOWEVENT_MINIMIZED ||
+                   e->window.event == SDL_WINDOWEVENT_RESTORED) {
+            if (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+                e->window.event == SDL_WINDOWEVENT_LEAVE ||
+                e->window.event == SDL_WINDOWEVENT_HIDDEN ||
+                e->window.event == SDL_WINDOWEVENT_MINIMIZED) {
+                release_active_mouse_touch();
+                hard_reset_touch_state();
+                g_last_touch_input_ms = SDL_GetTicks();
+            }
+            pvz2_host_update_cursor_lock();
         }
     }
 
@@ -1762,42 +1824,6 @@ static void print_usage(const char *argv0) {
     printf("  --paths.obb=data.obb\n");
 }
 
-/* Returns 1 when `path` can be opened and is not empty. SDL_RWFromFile takes UTF-8 paths
- * on every platform, unlike a bare fopen on Windows. */
-static int required_file_ok(const char *path) {
-    if (!path || !path[0]) return 0;
-    SDL_RWops *f = SDL_RWFromFile(path, "rb");
-    if (!f) return 0;
-    Sint64 size = SDL_RWsize(f);
-    SDL_RWclose(f);
-    return size != 0;
-}
-
-/* Checks libPVZ2.so and the .obb right after the config is loaded. Without them the boot
- * would otherwise sit forever on a black window. Logs the problem, tells the player and
- * returns 0 so main can exit. */
-static int check_required_files(const pvz2_config_t *cfg) {
-    char msg[2200];
-    msg[0] = '\0';
-    int missing = 0;
-    if (!required_file_ok(cfg->so_path)) {
-        pvz2_log("[boot] ERROR: libPVZ2.so not found or empty: %s", cfg->so_path);
-        SDL_snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), "Missing game library (.so):\n%s\n\n", cfg->so_path);
-        missing = 1;
-    }
-    if (!required_file_ok(cfg->obb_path)) {
-        pvz2_log("[boot] ERROR: data .obb not found or empty: %s", cfg->obb_path);
-        SDL_snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), "Missing game data (.obb):\n%s\n\n", cfg->obb_path);
-        missing = 1;
-    }
-    if (missing) {
-        SDL_snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg),
-                     "Put the files at that location or change [paths] in config.ini.");
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PvZ2 - Missing files", msg, NULL);
-    }
-    return !missing;
-}
-
 int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -1865,13 +1891,14 @@ int main(int argc, char **argv) {
     load_runtime_shortcuts(cfg);
     pvz2_log("[path] so=%s", cfg->so_path);
     pvz2_log("[path] obb=%s", cfg->obb_path);
-    if (!check_required_files(cfg)) {
+    if (!pvz2_ensure_required_files(cfg)) {
         pvz2_host_pre_sdl_quit();
         SDL_Quit();
         return 1;
     }
     pvz2_check_steam_shortcut_prompt();
     pvz2_fix_future_save_dates();
+    pvz2_check_updates_async();
 
     /* PvZ2's .so only imports gl* symbols, never egl* -- on real Android the
      * Java-side GLSurfaceView owns EGL context creation and the native side
@@ -1895,11 +1922,16 @@ int main(int argc, char **argv) {
              start_fullscreen ? " (fullscreen)" : "");
     const char *initial_title = g_live_window_title ? "PvZ2" : kGameTitle;
     const int launch_display = pvz2_effective_display();
+    Uint32 win_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN;
+    if (start_fullscreen) {
+        win_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        g_fullscreen = 1;
+    }
     SDL_Window *window = SDL_CreateWindow(initial_title,
                                            SDL_WINDOWPOS_CENTERED_DISPLAY(launch_display),
                                            SDL_WINDOWPOS_CENTERED_DISPLAY(launch_display),
                                            launch_w, launch_h,
-                                           SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+                                           win_flags);
     if (!window) {
         pvz2_log("[sdl] SDL_CreateWindow failed: %s", SDL_GetError());
         pvz2_host_pre_sdl_quit();
@@ -2065,6 +2097,7 @@ int main(int argc, char **argv) {
                 maybe_force_touch_recovery();
                 sync_text_input();
             }
+            pvz2_host_update_cursor_lock();
             apply_pending_resize_sync(0);
             if (!running || g_quit_requested) break;
 

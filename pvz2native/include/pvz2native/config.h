@@ -96,6 +96,7 @@ typedef struct pvz2_config {
      * granted). When off, the store reports "not supported" and nothing is
      * purchasable. Defaults ON -- see pvz2_config_load. */
     int emulate_iap;
+    int check_updates;
 
     /* Host-side achievement unlock toast + sound. Achievements are still
      * recorded when off; only the popup/SFX are suppressed. Default on. */
@@ -157,6 +158,7 @@ typedef struct pvz2_config {
      * Anything negative reads as 0. Default 60 -- stated once, in kSettings in
      * config.cpp, which is also what the generated config.ini is written from. */
     int fps_limit;
+    int lock_cursor; /* Confine cursor to game window (0=off, 1=on) */
 
     /* What AndroidHttpProxy.GetNetworkStatus() reports to the engine:
      *   0 -- no network        1 -- mobile        2 -- Wi-Fi
@@ -310,6 +312,15 @@ void pvz2_host_apply_video_settings(int fullscreen, int width, int height);
  * normally via pvz2_effective_display()) without requiring a restart. Defined
  * in main.c. */
 void pvz2_host_apply_display_settings(int display_index);
+
+/* Confine cursor to game window when enabled. Defined in main.c. */
+void pvz2_host_update_cursor_lock(void);
+
+/* Update lock_cursor setting in runtime memory. Defined in config.cpp. */
+void pvz2_config_set_lock_cursor(int lock_cursor);
+
+/* Updates [paths] so/obb and [game] package_name in memory and persists to config.ini. */
+void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name);
 
 #ifdef __cplusplus
 }  /* extern "C" */
