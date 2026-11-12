@@ -247,6 +247,12 @@ const Setting kSettings[] = {
      "language falls back to English. The country code is taken from the part\n"
      "after '_'.",
      "en_US", nullptr},
+    {"game", "difficulty", nullptr, Kind::kString, offsetof(pvz2_config_t, difficulty),
+     sizeof(g_config.difficulty),
+     "Dynamic difficulty override mode: auto (default), off (no dynamic extras),\n"
+     "1..8 (fixed dynamic tier), hard_plus (tier 8), hard_plus_plus (tier 8 + 70% extra zombies + no lawnmowers),\n"
+     "point_zero (hard_plus_plus + zombies have potion effects).",
+     "auto", "auto"},
     {"game", "emulate_iap", nullptr, Kind::kBool, offsetof(pvz2_config_t, emulate_iap), 0,
      "Emulated in-app purchases: on = the store is available and every purchase\n"
      "the game requests completes for free; off = store reports not supported.\n"
@@ -261,11 +267,6 @@ const Setting kSettings[] = {
      "Show the achievement unlock popup and sound. Achievements are still saved\n"
      "when this is off; only the toast is suppressed. Default on.",
      nullptr, "1"},
-    {"game", "difficulty", nullptr, Kind::kLower,
-     offsetof(pvz2_config_t, difficulty), sizeof(g_config.difficulty),
-     "Game difficulty mode: auto, off, 1..8, hard_plus, hard_plus_plus, point_zero.\n"
-     "Default is auto (original dynamic difficulty).",
-     "auto", nullptr},
 
     {"game", "package_name", nullptr, Kind::kString, offsetof(pvz2_config_t, package_name),
      sizeof(g_config.package_name),
@@ -1335,6 +1336,10 @@ void finish_defaults(const char *base_dir) {
         }
     }
 
+    if (g_config.difficulty[0] == '\0') {
+        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
+    }
+
     if (g_config.device_name[0] == '\0') {
         const std::string device_name = detected_host_device_name();
         std::snprintf(g_config.device_name, sizeof(g_config.device_name), "%s", device_name.c_str());
@@ -1349,10 +1354,6 @@ void finish_defaults(const char *base_dir) {
     if (g_config.player_uuid[0] == '\0') {
         const std::string player_uuid = generated_player_uuid();
         std::snprintf(g_config.player_uuid, sizeof(g_config.player_uuid), "%s", player_uuid.c_str());
-    }
-
-    if (g_config.difficulty[0] == '\0') {
-        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
     }
 
     if (g_config.fps_limit <= 0) {
@@ -2290,12 +2291,15 @@ extern "C" void pvz2_config_set_paths_and_package(const char *so_path, const cha
 
 const char *pvz2_config_get_difficulty(void) {
     if (g_config.difficulty[0] == '\0') {
-        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
+        return "auto";
     }
     return g_config.difficulty;
 }
 
 void pvz2_config_set_difficulty(const char *mode) {
-    if (!mode || mode[0] == '\0') mode = "auto";
-    std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "%s", mode);
+    if (!mode || !mode[0]) {
+        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "auto");
+    } else {
+        std::snprintf(g_config.difficulty, sizeof(g_config.difficulty), "%s", mode);
+    }
 }

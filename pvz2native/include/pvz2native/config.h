@@ -91,6 +91,16 @@ typedef struct pvz2_config {
      * <lang>_<REGION> string is safe. Empty -> "en_US". */
     char user_locale[32];
 
+    /* Dynamic difficulty override mode:
+     *   "auto"           - Vanilla adaptive dynamic difficulty (tiers 0-8 based on performance)
+     *   "off"            - Dynamic difficulty disabled / locked to tier 0 baseline
+     *   "1" .. "8"       - Locked to specific fixed difficulty tier
+     *   "hard_plus"      - Locked to tier 8 dynamic waves
+     *   "hard_plus_plus" - Tier 8 waves + 70% extra zombies + no lawnmowers
+     *   "point_zero"     - Difícil ++ features + zombies have chance of potion effects
+     */
+    char difficulty[32];
+
     /* Emulated in-app purchases. When on, the store reports itself available and
      * every purchase the engine requests completes immediately (the item is
      * granted). When off, the store reports "not supported" and nothing is
@@ -119,9 +129,6 @@ typedef struct pvz2_config {
     char currency_code[8];
     char product_version_string[32];
     char player_uuid[64];
-
-    /* Dynamic Difficulty override: "auto", "off", "1".."8", "hard_plus", "hard_plus_plus", "point_zero" */
-    char difficulty[32];
 
     /* [video] -- how the window and the guest surface are sized.
      *
@@ -324,12 +331,12 @@ void pvz2_host_update_cursor_lock(void);
 /* Update lock_cursor setting in runtime memory. Defined in config.cpp. */
 void pvz2_config_set_lock_cursor(int lock_cursor);
 
-/* Updates [paths] so/obb, [game] package_name, and [game] product_version_string in memory and persists to config.ini. */
-void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name, const char *version_str);
-
-/* Difficulty mode accessors */
+/* Dynamic difficulty configuration accessors. Defined in config.cpp. */
 const char *pvz2_config_get_difficulty(void);
 void pvz2_config_set_difficulty(const char *mode);
+
+/* Updates [paths] so/obb, [game] package_name, and [game] product_version_string in memory and persists to config.ini. */
+void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path, const char *package_name, const char *version_str);
 
 #ifdef __cplusplus
 }  /* extern "C" */
