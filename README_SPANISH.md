@@ -19,18 +19,24 @@ Se juega como la versión de Xbox 360 del juego original:
 | Cruceta / stick izquierdo | Mueve el selector de casillas por el jardín |
 | `LB` / `RB` / stick derecho | Elige semilla |
 | `A` | Planta en la casilla seleccionada |
-| `X` / `Y` | Pala / fertilizante |
-| `B` | Quita la semilla elegida |
-| `RT` | Plantas que se apuntan (Lanzaplátanos...): selecciona y dispara |
+| `X` / `Y` | Pala / fertilizante en la casilla seleccionada |
+| `B` | Quita la semilla o el potenciador elegido |
+| `Select` | Elige un potenciador; luego `A` lo usa en la casilla seleccionada |
+| `RT` | Plantas que se apuntan (Lanzaplátanos y similares): selecciona y dispara |
 | `LT` | Velocidad x2 |
 | `Start` | Pausa |
-| `R3` | Cambia al cursor libre (potenciadores) |
+| `L3` | Empieza la Última batalla cuando tengas lista tu defensa |
+| `R3` | Cambia al cursor libre |
 
+- `B`, `X`, `Y`, `L3` y `R3` siguen lo que configures en **Ajustes → Mando**, así que puedes poner la pala, el fertilizante o un potenciador en el botón que prefieras.
 - Los soles y monedas se recogen solo con pasar el selector por encima.
-- Funciona en los niveles con **cinta transportadora** (el selector se desliza por la cinta) y en la **selección de semillas** (`A` elige planta, `X` vuelve a elegir las últimas, `Y` empieza el nivel).
-- Iconos de los botones junto a lo que controlan.
-- **Vibración**: al plantar, en las oleadas grandes, explosiones, golpes al Zombot, cortacéspedes, "¡Preparados, listos, a plantar!" y al ganar o perder.
-- Si tocas el ratón o el teclado se aparta; vuelve en cuanto coges el mando.
+- También funciona en los niveles con **cinta transportadora**: el selector se desliza por la cinta con el stick derecho.
+- **Selección de semillas**: recorre las cartas y tu barra de semillas con el selector. `A` elige o devuelve una planta, `X` vuelve a elegir las últimas, `RB` mejora, `LT` abre el Jardín Zen, `RT` muestra el jardín e `Y` empieza el nivel.
+- **Mapa del mundo**: `B` volver, `LB` Almanaque, `RB` Jardín Zen, `X` Tronco de viaje, `Y` Tienda, `LT` Rompejarrones y `RT` el evento del momento.
+- **Menú de ajustes**: muévete con la cruceta, `A` para elegir y `B` para volver.
+- Cada botón tiene su icono dibujado junto a lo que hace.
+- **Vibración** al plantar, en las oleadas grandes, explosiones, golpes al Zombot, cortacéspedes, "¡Preparados, listos, a plantar!" y al ganar o perder.
+- Si tocas el ratón o el teclado se aparta. Vuelve en cuanto coges el mando.
 
 ### 💬 Discord Rich Presence
 Muestra lo que estás haciendo en tu idioma (español, inglés, francés, alemán, italiano y portugués):
@@ -93,7 +99,7 @@ Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en 
 ### Logros
 - Logros locales que se desbloquean al jugar; el progreso se guarda en `prefs.dat`.
 - Toast animado al desbloquear (con SFX); lista completa desde ajustes (**Ver logros**).
-- Opcional: silenciar toast/SFX desde ajustes o con `[game] achievement_notifications = 0` — los desbloqueos se siguen guardando.
+- Opcional: silenciar toast/SFX desde ajustes o con `[game] achievement_notifications = 0`. Los desbloqueos se siguen guardando.
 
 ### Confirmación al salir
 - Confirmar o cancelar antes de cerrar (ratón, teclado o mando).
@@ -127,7 +133,7 @@ Enfocado en *Plants vs. Zombies 2: It's About Time* **v4.5.2** y **v6.6.1** (en 
 
 ## 🧠 Cómo funciona
 
-**Ejecuta la librería nativa real de *Plants vs. Zombies 2* para Android (`libPVZ2.so`, ARM32) en PC.** Lo único que se emula es el **procesador**: PvZ2 solo existe compilado para ARM (no hay build x86/x64), así que un JIT traduce sus instrucciones ARM a x86_64. Todo lo demás —Android, JNI, libc, OpenGL ES, sistema de archivos— **no se emula, se reimplementa de forma nativa**, igual que hace **Wine** con Windows.
+**Ejecuta la librería nativa real de *Plants vs. Zombies 2* para Android (`libPVZ2.so`, ARM32) en PC.** Lo único que se emula es el **procesador**: PvZ2 solo existe compilado para ARM (no hay build x86/x64), así que un JIT traduce sus instrucciones ARM a x86_64. Todo lo demás (Android, JNI, libc, OpenGL ES, sistema de archivos) **no se emula, se reimplementa de forma nativa**, igual que hace **Wine** con Windows.
 
 ## 📖 Qué es (y qué NO es)
 
@@ -136,7 +142,7 @@ No es un *port* del código fuente del juego. Es un **híbrido de dos técnicas*
 - **Solo la CPU se emula.** El binario del juego es código máquina ARM y PvZ2 nunca se compiló para x86/x64, así que no hay forma de ejecutarlo directamente en un procesador de PC. Un JIT (dynarmic) lee esas instrucciones ARM y las traduce a x86_64 sobre la marcha. Esta es la única parte "emulada".
 - **Android NO se emula: se reimplementa.** Cuando el juego llama a una función de Android (abrir un archivo, dibujar con OpenGL ES, reservar memoria, invocar Java…), esa llamada la atiende **código nativo de PC** que hace el trabajo real usando la API equivalente del escritorio. No hay un Android virtual corriendo debajo; hay una **reimplementación** de las funciones que el juego necesita.
 
-Es exactamente el enfoque de **Wine** — *"Wine Is Not an Emulator"* — llevado un paso más allá: Wine reimplementa las llamadas de Windows sin emular nada porque los `.exe` ya son x86; aquí, como el juego es ARM, además hay que emular la CPU. El resto de la filosofía es idéntica: **traducir llamadas, no simular una máquina completa.**
+Es exactamente el enfoque de **Wine** (*"Wine Is Not an Emulator"*) llevado un paso más allá: Wine reimplementa las llamadas de Windows sin emular nada porque los `.exe` ya son x86; aquí, como el juego es ARM, además hay que emular la CPU. El resto de la filosofía es idéntica: **traducir llamadas, no simular una máquina completa.**
 
 ```text
 ┌──────────────────────────────────────────────┐
@@ -145,7 +151,7 @@ Es exactamente el enfoque de **Wine** — *"Wine Is Not an Emulator"* — llevad
                         │  instrucciones ARM
                         ▼
 ┌──────────────────────────────────────────────┐
-│  dynarmic  —  JIT ARM32 → x86_64             │   ← ÚNICO componente emulado
+│  dynarmic:  JIT ARM32 → x86_64               │   ← ÚNICO componente emulado
 └───────────────────────┬──────────────────────┘     (solo la CPU)
                         │  llamadas a "Android"
                         ▼
@@ -204,7 +210,7 @@ PvZ2Native utiliza un **único ejecutable universal**: tanto la versión 4.5.2 c
 
 ## ⚙️ Requisitos
 
-- **(64 bits) Windows o Linux** (el ejecutable es x86_64 estático; no hay build de 32 bits — dynarmic solo trae backends para x86_64/arm64/riscv64).
+- **(64 bits) Windows o Linux** (el ejecutable es x86_64 estático; no hay build de 32 bits, porque dynarmic solo trae backends para x86_64/arm64/riscv64).
 - **CMake** (se recomienda 3.5+).
 - **Windows:** MinGW-w64 (GCC con C++20) **o** Visual Studio con C++ / CMake / Ninja (`compile-ninja.bat`).
 - **Linux:** GCC o Clang con soporte C++20.
@@ -216,7 +222,7 @@ PvZ2Native utiliza un **único ejecutable universal**: tanto la versión 4.5.2 c
 
 ## 🔨 Compilación
 
-### Windows — Visual Studio + Ninja (recomendado)
+### Windows: Visual Studio + Ninja (recomendado)
 
 ```bat
 compile-ninja.bat
@@ -228,7 +234,7 @@ Usa `vswhere` para localizar Visual Studio (cualquier edición) y compila Releas
 out\build\x64-Release\pvz2native\pvz2.exe
 ```
 
-### Windows — MinGW
+### Windows: MinGW
 
 Si `gcc`, `g++` y `make` están en el `PATH`:
 
@@ -258,7 +264,7 @@ build/pvz2native/pvz2
 
 `compile.sh` también copia los assets de UI del host a `build/pvz2native/assets/` (splash, ajustes, cursor, logros). En Windows esos archivos van embebidos en el `.exe` vía `windows_resources.rc`; en Linux deben estar junto al binario bajo `assets/`.
 
-### Linux — AppImage
+### Linux: AppImage
 
 ```bash
 ./compile-appimage.sh
@@ -361,5 +367,5 @@ Proyecto independiente, **sin afiliación, respaldo ni patrocinio** de Electroni
 ---
 
 <p align="center">
-  <b>PvZ2Native</b> — Ejecutando la <code>libPVZ2.so</code> de Android en PC mediante emulación ARM
+  <b>PvZ2Native</b>: ejecutando la <code>libPVZ2.so</code> de Android en PC mediante emulación ARM
 </p>
