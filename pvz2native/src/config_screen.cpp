@@ -3201,6 +3201,8 @@ static void draw_panel_content(Screen screen, float dx,
 /* =========================================================================
  * Draw a single frame of the config screen
  * ========================================================================= */
+void draw_pad_focus(void);
+
 static void draw(SDL_Window *window) {
 	/* Handle deferred open request (from hooks that lack the window pointer) */
 	if ((g_open_requested || g_open_cloud_requested) && !g_open) {
@@ -3308,6 +3310,7 @@ static void draw(SDL_Window *window) {
 		} else {
 			draw_panel_content(g_screen, 0.0f, g_scroll_offset,
 							   win_w, win_h, px, py, pw, ph, true);
+			draw_pad_focus();
 		}
 	}
 
@@ -3362,8 +3365,14 @@ static void begin_transition(Screen to, bool forward) {
 /* =========================================================================
  * Input handling
  * ========================================================================= */
+/* Controller navigation state (see pad_button below). */
+int g_pad_focus = 0;
+bool g_pad_active = false;
+Screen g_pad_screen = Screen::Main;
+
 static void handle_event(const SDL_Event *e) {
 	if (!e) return;
+	if (e->type == SDL_MOUSEMOTION && std::abs(e->motion.xrel) + std::abs(e->motion.yrel) >= 3) g_pad_active = false;
 	int win_wi, win_hi;
 	SDL_GL_GetDrawableSize(g_window, &win_wi, &win_hi);
 	float win_w = (float)win_wi, win_h = (float)win_hi;
@@ -4064,6 +4073,165 @@ static void handle_event(const SDL_Event *e) {
 	(void)str;
 }
 
+/* -------------------------------------------------------------------------
+ * Controller navigation: the D-pad moves a highlight from row to row, A clicks the row and B presses
+ * Back / Close. A and B are delivered as left clicks at the row's (or button's) centre through
+ * handle_event, so every row does exactly what it does with the mouse. Moving the mouse hides the
+ * highlight again.
+ * ---------------------------------------------------------------------- */
+bool pad_screen_is_list(Screen s) {
+	return s != Screen::BindEdit && s != Screen::CloudTextEdit;
+}
+
+void pad_click_at(float x, float y) {
+	SDL_Event down{};
+	down.type = SDL_MOUSEBUTTONDOWN;
+	down.button.button = SDL_BUTTON_LEFT;
+	down.button.state = SDL_PRESSED;
+	down.button.x = (Sint32)x;
+	down.button.y = (Sint32)y;
+	SDL_Event up = down;
+	up.type = SDL_MOUSEBUTTONUP;
+	up.button.state = SDL_RELEASED;
+	const bool was_active = g_pad_active;
+	handle_event(&down);
+	handle_event(&up);
+	g_pad_active = was_active;
+}
+
+int pad_row_count(void) {
+	return (int)build_items(g_screen, get_strings(g_edit.locale)).size();
+}
+
+/* Row geometry in window pixels for row `i` of the current screen. */
+void pad_row_rect(int i, float &x, float &y, float &w, float &h) {
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float lx, ly, lw, lh;
+	get_list_rect(win_w, win_h, lx, ly, lw, lh);
+	w = sc((float)g_tex_list_item.w, s);
+	h = sc((float)g_tex_list_item.h, s);
+	x = lx + (lw - w) * 0.5f;
+	y = ly + sc(kItemStartY, s) + (float)i * h - g_scroll_offset;
+}
+
+/* Scrolls the list just enough to show the focused row. */
+void pad_scroll_to_focus(void) {
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float lx, ly, lw, lh;
+	get_list_rect(win_w, win_h, lx, ly, lw, lh);
+	float x, y, w, h;
+	pad_row_rect(g_pad_focus, x, y, w, h);
+	const float top = ly + sc(kListSolidEdge, s), bot = ly + lh - sc(kListSolidEdge, s);
+	if (y < top) g_scroll_offset -= top - y;
+	if (y + h > bot) g_scroll_offset += (y + h) - bot;
+	const float max_scroll = list_max_scroll(pad_row_count(), h, lh, s);
+	if (g_scroll_offset < 0) g_scroll_offset = 0;
+	if (g_scroll_offset > max_scroll) g_scroll_offset = max_scroll;
+}
+
+void pad_press_back(void) {
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float px, py, pw, ph;
+	get_panel_rect(win_w, win_h, px, py, pw, ph);
+	if (screen_uses_close_btn(g_screen)) {
+		const float w = sc((float)g_tex_close_up.w, s), h = sc((float)g_tex_close_up.h, s);
+		pad_click_at(px + pw - sc(kCloseBtnFromRight, s) - w * 0.5f, py + sc(kCloseBtnFromTop, s) + h * 0.5f);
+	} else {
+		const float w = sc((float)g_tex_back_up.w, s), h = sc((float)g_tex_back_up.h, s);
+		pad_click_at(px + sc(kBackBtnFromLeft, s) + w * 0.5f, py + sc(kBackBtnFromTop, s) + h * 0.5f);
+	}
+}
+
+/* Yellow corner brackets around the focused row (same look as the lawn selector). */
+void draw_pad_focus(void) {
+	if (!g_pad_active || g_in_transition || g_quit_confirm || !pad_screen_is_list(g_screen)) return;
+	if (g_pad_screen != g_screen) return;
+	const int n = pad_row_count();
+	if (g_pad_focus < 0 || g_pad_focus >= n) return;
+	int wi, hi;
+	SDL_GL_GetDrawableSize(g_window, &wi, &hi);
+	const float win_w = (float)wi, win_h = (float)hi, s = ui_scale(win_w, win_h);
+	float lx, ly, lw, lh;
+	get_list_rect(win_w, win_h, lx, ly, lw, lh);
+	float x, y, w, h;
+	pad_row_rect(g_pad_focus, x, y, w, h);
+	const float top = ly + sc(kListSolidEdge, s), bot = ly + lh - sc(kListSolidEdge, s);
+	if (y < top - 1.0f || y + h > bot + 1.0f) return;
+	const float t = std::max(3.0f, sc(6.0f, s)), L = h * 0.30f;
+	const float pulse = 0.80f + 0.20f * std::sin((float)SDL_GetTicks() * 0.008f);
+	glDisable(GL_TEXTURE_2D);
+	for (int pass = 0; pass < 2; ++pass) {
+		const float o = pass == 0 ? 1.5f : 0.0f, tt = t + 2 * o, LL = L + o;
+		const float x0 = x + sc(4.0f, s) - o, y0 = y + sc(4.0f, s) - o;
+		const float x1 = x + w - sc(4.0f, s) + o, y1 = y + h - sc(4.0f, s) + o;
+		if (pass == 0) glColor4f(0, 0, 0, 0.55f);
+		else glColor4f(1.0f * pulse, 0.86f * pulse, 0.10f * pulse, 1.0f);
+		auto q = [](float qx, float qy, float qw, float qh) {
+			glVertex2f(qx, qy); glVertex2f(qx + qw, qy); glVertex2f(qx + qw, qy + qh); glVertex2f(qx, qy + qh);
+		};
+		glBegin(GL_QUADS);
+		q(x0, y0, LL, tt);           q(x0, y0 + tt, tt, LL - tt);
+		q(x1 - LL, y0, LL, tt);      q(x1 - tt, y0 + tt, tt, LL - tt);
+		q(x0, y1 - tt, LL, tt);      q(x0, y1 - LL, tt, LL - tt);
+		q(x1 - LL, y1 - tt, LL, tt); q(x1 - tt, y1 - LL, tt, LL - tt);
+		glEnd();
+	}
+	glEnable(GL_TEXTURE_2D);
+}
+
+int pad_button(int button) {
+	if (!g_open && !g_quit_confirm) return 0;
+	if (g_quit_confirm) {
+		/* The quit dialog: A quits, B cancels. */
+		if (button == SDL_CONTROLLER_BUTTON_A) { do_quit_now(); return 1; }
+		if (button == SDL_CONTROLLER_BUTTON_B) { dismiss_quit_confirm(); return 1; }
+		return 0;
+	}
+	if (g_in_transition) return 1;
+	if (!pad_screen_is_list(g_screen)) return 0; /* key capture / text entry: leave them to the cursor */
+	if (g_pad_screen != g_screen) {
+		g_pad_screen = g_screen;
+		g_pad_focus = 0;
+	}
+	const int n = pad_row_count();
+	switch (button) {
+		case SDL_CONTROLLER_BUTTON_DPAD_UP:
+		case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+			if (n > 0) {
+				if (g_pad_active) {
+					g_pad_focus += button == SDL_CONTROLLER_BUTTON_DPAD_DOWN ? 1 : -1;
+					if (g_pad_focus < 0) g_pad_focus = n - 1;
+					if (g_pad_focus >= n) g_pad_focus = 0;
+				}
+				g_pad_active = true;
+				pad_scroll_to_focus();
+				play_sound(g_snd_next);
+			}
+			return 1;
+		case SDL_CONTROLLER_BUTTON_A:
+			/* Until the D-pad is used, A keeps clicking wherever the stick put the cursor. */
+			if (!g_pad_active) return 0;
+			if (g_pad_focus >= 0 && g_pad_focus < n) {
+				pad_scroll_to_focus();
+				float x, y, w, h;
+				pad_row_rect(g_pad_focus, x, y, w, h);
+				pad_click_at(x + w * 0.5f, y + h * 0.5f);
+			}
+			return 1;
+		case SDL_CONTROLLER_BUTTON_B:
+			pad_press_back();
+			return 1;
+		default:
+			return 0;
+	}
+}
+
 } // anonymous namespace
 
 /* =========================================================================
@@ -4179,6 +4347,10 @@ void config_screen_play_exit_sound(void) {
 void config_screen_play_achievement_unlock_sound(void) {
 	refresh_ui_sfx_from_prefs();
 	play_sound(g_snd_achieve_unlock);
+}
+
+int config_screen_pad_button(int sdl_controller_button) {
+	return pad_button(sdl_controller_button);
 }
 
 } // extern "C"

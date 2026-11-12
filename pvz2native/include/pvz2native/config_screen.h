@@ -67,6 +67,10 @@ int config_screen_is_open(void);
  * processing while config_screen_is_open() is non-zero. */
 void config_screen_handle_event(const SDL_Event *e);
 
+/* Controller navigation of the settings screen (D-pad rows, A click, B back; A/B in the quit dialog).
+ * Takes an SDL_GameControllerButton pressed down; returns 1 if it was used. */
+int config_screen_pad_button(int sdl_controller_button);
+
 /* Render the config screen overlay. Must be called each frame while open,
  * after the game has rendered its frame but before SDL_GL_SwapWindow. */
 void config_screen_draw(SDL_Window *window);
