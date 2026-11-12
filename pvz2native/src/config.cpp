@@ -202,6 +202,10 @@ const Setting kSettings[] = {
      "Always decode ETC1 textures on the CPU. By default they go to the GPU as ETC2 (a\n"
      "superset) when the driver supports it, which is faster to load and uses less memory.",
      nullptr, "0"},
+    {"gl", "cloud_icon", nullptr, Kind::kBool, offsetof(pvz2_config_t, cloud_icon), 0,
+     "Show the cloud icon from newer PvZ2 versions on the main menu Cloud Save button\n"
+     "instead of the PopCap \"P\". 0 = keep the original \"P\".",
+     "1", nullptr},
 
     {"video", "mode", nullptr, Kind::kLower, offsetof(pvz2_config_t, video_mode),
      sizeof(g_config.video_mode),
@@ -2060,6 +2064,38 @@ extern "C" int pvz2_config_update_gamepad_device(int enabled, int port) {
     SDL_snprintf(port_buf, sizeof(port_buf), "%d", g_config.gamepad_port);
     patch_ini_section_key(lines, "gamepad", "enabled", g_config.gamepad_enabled ? "1" : "0");
     patch_ini_section_key(lines, "gamepad", "port", port_buf);
+
+    FILE *f = std::fopen(ini_path, "wb");
+    if (f) {
+        for (const auto &l : lines) std::fputs(l.c_str(), f);
+        std::fclose(f);
+    }
+    return 1;
+}
+
+extern "C" int pvz2_config_update_discord_enabled(int enabled) {
+    g_config.discord_enabled = enabled ? 1 : 0;
+
+    char *base = pvz2_host_data_path();
+    if (!base) return 1;
+
+    char ini_path[1024];
+    SDL_snprintf(ini_path, sizeof(ini_path), "%sconfig.ini", base);
+    SDL_free(base);
+
+    std::vector<std::string> lines;
+    {
+        FILE *f = std::fopen(ini_path, "rb");
+        if (f) {
+            char buf[512];
+            while (std::fgets(buf, sizeof(buf), f)) lines.push_back(buf);
+            std::fclose(f);
+        }
+    }
+
+    char buf[16];
+    SDL_snprintf(buf, sizeof(buf), "%d", g_config.discord_enabled);
+    patch_ini_section_key(lines, "discord", "enabled", buf);
 
     FILE *f = std::fopen(ini_path, "wb");
     if (f) {

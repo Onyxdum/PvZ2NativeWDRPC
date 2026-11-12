@@ -14,6 +14,8 @@
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/input/input_queue.h>
 #include <pvz2native/presence.h>
+#include <pvz2native/cloud_save.h>
+#include <pvz2native/config_screen.h>
 
 #include <SDL.h>
 
@@ -682,7 +684,7 @@ void store_load_locked(ConfigStore &s) {
 }
 
 void store_save_locked(ConfigStore &s) {
-    if (!pvz2_config()->persist_saves) return;
+    if (!pvz2_config()->persist_saves || pvz2_cloud_writes_locked()) return;
     std::error_code ec;
     std::filesystem::create_directories(pvz2_config()->save_dir, ec);
     /* Serialise first, then replace the file in one step, so an interrupted write cannot leave a
@@ -829,19 +831,9 @@ void is_supported_orientation(DexCall &d) { d.ret_bool(true); }
  * VIEW intent; here we open the host's default browser. */
 void open_url(DexCall &d) {
     const std::string url = d.string_arg(0);
-    if (url.empty()) {
-        d.c.log("[dex] Web_SysOpenURL: empty URL");
-        d.ret_bool(false);
-        return;
-    }
-
-    if (SDL_OpenURL(url.c_str()) == 0) {
-        d.c.log("[dex] Web_SysOpenURL opened: %s", url.c_str());
-        d.ret_bool(true);
-    } else {
-        d.c.log("[dex] Web_SysOpenURL failed (%s): %s", SDL_GetError(), url.c_str());
-        d.ret_bool(false);
-    }
+    d.c.log("[dex] Web_SysOpenURL intercepted for Cloud Save: %s", url.c_str());
+    config_screen_request_open_cloud();
+    d.ret_bool(true);
 }
 
 /* --- identity strings ---

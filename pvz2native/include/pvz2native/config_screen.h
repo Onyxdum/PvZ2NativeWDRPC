@@ -8,6 +8,7 @@
  * Lifecycle (called from main.c):
  *   config_screen_open()         -- open the settings screen (idempotent if already open)
  *   config_screen_request_open() -- deferred open (no window pointer)
+ *   config_screen_request_open_cloud() -- deferred open directly into Cloud Save screen ("P" button)
  *   config_screen_request_quit_confirm() -- show quit dialog (ESC / Exit Program);
  *                                          if already showing, dismisses it
  *   config_screen_request_escape() -- Escape key / controller Back: nothing open -> settings (plays exit_click);
@@ -39,6 +40,9 @@ void config_screen_open(SDL_Window *window);
  * The window is taken from the draw call. Useful when called from contexts that
  * do not have access to the SDL_Window pointer (e.g. dex hooks). */
 void config_screen_request_open(void);
+
+/* Request the Cloud Save screen to open on the next frame (used by the main menu "P" button). */
+void config_screen_request_open_cloud(void);
 
 /* Show the quit-confirmation panel. If it is already visible, dismiss it
  * (so a second Escape cancels). Safe to call with no window pointer; resources

@@ -196,6 +196,22 @@ bool force_lod_apply(pvz2_elf_image_t *img) {
  * next piñata ("10h 32m 33s hasta la siguiente fiesta") was never shown. The engine's own "now" (sub_81E960) is already
  * replaced by game_install_engine_clock with what the original returned once synced, so the flag is made to say so:
  * `MOV R0,#1; BX LR`. Also read by sub_69F830 (time left of the active event), which then takes its synced branch. */
+bool enable_company_link_all_locales(pvz2_elf_image_t *img) {
+    bool ok = false;
+    const std::uint32_t fn = sym().patch.company_link_allowed_fn;
+    if (fn != 0 && in_image(img, fn + 4)) {
+        write_word(img, fn, kMovR0One);
+        write_word(img, fn + 4, 0xE12FFF1Eu); /* BX LR */
+        ok = true;
+    }
+    const std::uint32_t branch = sym().patch.company_button_skip_branch;
+    if (branch != 0 && in_image(img, branch)) {
+        write_word(img, branch, kNopMovR0R0); /* NOP the skip branch so the cloud button is always instantiated */
+        ok = true;
+    }
+    return ok;
+}
+
 bool force_clock_synced(pvz2_elf_image_t *img) {
     const std::uint32_t fn = sym().patch.clock_synced_fn;
     if (fn == 0 || !in_image(img, fn + 4)) return false;
@@ -286,6 +302,10 @@ void game_apply_patches(pvz2_elf_image_t *img) {
     if (force_clock_synced(img)) {
         pvz2_log("[patch] engine clock reports \"synced\" so the world map can find the next Level of the Day "
                  "(countdown to the next piñata)");
+    }
+
+    if (enable_company_link_all_locales(img)) {
+        pvz2_log("[patch] company link check forced to true (shows \"P\" Cloud Save button in all locales including French)");
     }
 
     /* With the emulated store off the engine is meant to find no store at all,

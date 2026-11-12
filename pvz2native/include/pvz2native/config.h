@@ -80,6 +80,7 @@ typedef struct pvz2_config {
     int gl_flat_fragment;   /* replace every fragment shader body with a constant colour */
     int gl_strict;          /* query GL state on every suspicious call */
     int gl_no_etc2;         /* always decode ETC1 on the CPU, never hand it to the GPU as ETC2 */
+    int cloud_icon;         /* draw the cloud icon instead of the PopCap "P" on the main menu */
 
     /* [game] -- what the engine is told about the "device".
      *
@@ -262,6 +263,9 @@ int pvz2_config_update_gamepad_bind(const char *button, const char *bind_name);
 
 /* Sets [gamepad] enabled + port and persists to config.ini. Returns 1 on success. */
 int pvz2_config_update_gamepad_device(int enabled, int port);
+
+/* Sets [discord] enabled and persists to config.ini. Returns 1 on success. */
+int pvz2_config_update_discord_enabled(int enabled);
 
 /* Sets [video] display and persists to config.ini. `index` is clamped to
  * [0, SDL_GetNumVideoDisplays()) by the caller's own check (see

@@ -126,6 +126,11 @@
 316 RCDATA "../assets/achievements/achievement_present_perfect.bmp"
 317 RCDATA "../assets/config/achievement_unlock.wav"
 
+/* Steam Grid Artwork (350-352) */
+350 RCDATA "../assets/steam/Grid.png"
+351 RCDATA "../assets/steam/Hero.png"
+352 RCDATA "../assets/steam/Logo.png"
+
 1 VERSIONINFO
  FILEVERSION 4,5,2,0
  PRODUCTVERSION 4,5,2,0

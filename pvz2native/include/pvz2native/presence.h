@@ -35,6 +35,9 @@ int pvz2_presence_enabled(void);
 /* Clears the activity, closes the connection and joins the worker. */
 void pvz2_presence_stop(void);
 
+/* Toggles Discord Rich Presence dynamically, updates config and starts or stops worker. */
+void pvz2_presence_set_enabled(int enable);
+
 /* Copies the authenticated Discord user ID and username (from Discord IPC READY)
  * into the caller buffers. Returns 1 if a Discord user is connected, 0 otherwise. */
 int pvz2_presence_get_user(char *id_out, unsigned id_cap, char *name_out, unsigned name_cap);

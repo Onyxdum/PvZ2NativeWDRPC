@@ -14,9 +14,9 @@
 .vscode/
 
 # Editor temporary files
-build/
-game/
-userdata/
+/build/
+/game/
+/userdata/
 *.swp
 *.swo
 *~

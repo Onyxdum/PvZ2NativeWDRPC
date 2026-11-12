@@ -1,0 +1,36 @@
+name: pvz2-cloud-server
+services:
+  pvz2-cloud-server:
+    image: python:3.12-alpine
+    container_name: pvz2-cloud-server
+    restart: unless-stopped
+    working_dir: /app
+    command: python3 /app/server.py
+    ports:
+      - target: 8765
+        published: "8765"
+        protocol: tcp
+    environment:
+      PVZ2_PORT: "8765"
+      PVZ2_DATA_DIR: "/data/saves"
+      TZ: Europe/Madrid
+    volumes:
+      - type: bind
+        source: /DATA/AppData/pvz2-cloud-server/server.py
+        target: /app/server.py
+        read_only: true
+      - type: bind
+        source: /DATA/AppData/pvz2-cloud-server/data
+        target: /data
+x-casaos:
+  author: Onyxdum
+  category: Cloud
+  hostname: ""
+  icon: https://raw.githubusercontent.com/Onyxdum/PvZ2NativeWDRPC/main/pvz2native/icon.png
+  index: /health
+  main: pvz2-cloud-server
+  port_map: "8765"
+  scheme: http
+  title:
+    custom: PvZ2 Cloud Server
+    en_US: PvZ2 Cloud Server

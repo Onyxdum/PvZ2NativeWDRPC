@@ -1,0 +1,190 @@
+; === 1. NÍVEIS (Novos e jogos salvos via Board Level) ===
+regex:state:Board Level=vasebreaker_egypt(\d+)(?::\d+)?$ | Quebravaso | Egito Antigo - Nível $1
+regex:state:Board Level=vasebreaker_pirate(\d+)(?::\d+)?$ | Quebravaso | Mar dos Piratas - Nível $1
+regex:state:Board Level=vasebreaker_cowboy(\d+)(?::\d+)?$ | Quebravaso | Velho Oeste - Nível $1
+regex:state:Board Level=vasebreaker_future(\d+)(?::\d+)?$ | Quebravaso | Futuro Distante - Nível $1
+regex:state:Board Level=vasebreaker_dark(\d+)(?::\d+)?$ | Quebravaso | Idade das Trevas - Nível $1
+regex:state:Board Level=vasebreaker_endless:(\d+)$ | Quebravaso | Modo Infinito - Nível $1
+regex:state:Board Level=vasebreaker_endless$ | Quebravaso | Modo Infinito
+regex:state:Board Level=vasebreaker_tutorial(\d*)(?::\d+)?$ | Quebravaso | Tutorial $1
+regex:state:Board Level=vasebreaker_([^/\\]+)$ | Quebravaso | Nível $1
+
+regex:state:Board Level=egypt_dangerroom:(\d+)$ | Zona do Infinito | Pirâmide da Perdição - Nível $1
+regex:state:Board Level=pirate_dangerroom:(\d+)$ | Zona do Infinito | Butim do Homem Morto - Nível $1
+regex:state:Board Level=cowboy_dangerroom:(\d+)$ | Zona do Infinito | Monte Malvadão - Nível $1
+regex:state:Board Level=future_dangerroom:(\d+)$ | Zona do Infinito | Terror do Amanhã - Nível $1
+regex:state:Board Level=dark_dangerroom:(\d+)$ | Zona do Infinito | Desafio do Artur - Nível $1
+regex:state:Board Level=beach_dangerroom:(\d+)$ | Zona do Infinito | Tocha Tiki - Nível $1
+regex:state:Board Level=iceage_dangerroom:(\d+)$ | Zona do Infinito | Campo de Batalha Congelado - Nível $1
+regex:state:Board Level=lostcity_dangerroom:(\d+)$ | Zona do Infinito | Templo da Podridão - Nível $1
+regex:state:Board Level=eighties_dangerroom:(\d+)$ | Zona do Infinito | Maiores Sucessos - Nível $1
+regex:state:Board Level=dino_dangerroom:(\d+)$ | Zona do Infinito | Poços de Piche Cerébrasa - Nível $1
+regex:state:Board Level=modern_dangerroom:(\d+)$ | Zona do Infinito | Rodovia da Sala de Pânico - Nível $1
+
+state:Board Level=egypt_dangerroom | Zona do Infinito | Pirâmide da Perdição (Egito Antigo)
+state:Board Level=pirate_dangerroom | Zona do Infinito | Butim do Homem Morto (Mar dos Piratas)
+state:Board Level=cowboy_dangerroom | Zona do Infinito | Monte Malvadão (Velho Oeste)
+state:Board Level=future_dangerroom | Zona do Infinito | Terror do Amanhã (Futuro Distante)
+state:Board Level=dark_dangerroom | Zona do Infinito | Desafio do Artur (Idade das Trevas)
+state:Board Level=beach_dangerroom | Zona do Infinito | Tocha Tiki (Praia da Boa Onda)
+state:Board Level=iceage_dangerroom | Zona do Infinito | Campo de Batalha Congelado (Cavernas da Geladura)
+state:Board Level=lostcity_dangerroom | Zona do Infinito | Templo da Podridão (Cidade Perdida)
+state:Board Level=eighties_dangerroom | Zona do Infinito | Maiores Sucessos (Turnê Idade da Juba)
+state:Board Level=dino_dangerroom | Zona do Infinito | Poços de Piche Cerébrasa (Pântano Jurássico)
+state:Board Level=modern_dangerroom | Zona do Infinito | Rodovia da Sala de Pânico (Vida Moderna)
+
+; === 1.1 NÍVEIS DE CHEFE (Dr. Zumbão / Zumbôs) ===
+regex:state:Board Level=egypt25(?::\d+)?$ | Egito Antigo | Esfingenadora Zumbô
+regex:state:Board Level=pirate25(?::\d+)?$ | Mar dos Piratas | Prancha da Perdição Zumbô
+regex:state:Board Level=cowboy25(?::\d+)?$ | Velho Oeste | Carroça de Guerra Zumbô
+regex:state:Board Level=future25(?::\d+)?$ | Futuro Distante | Zumbô Amanhãtron
+regex:state:Board Level=dark20(?::\d+)?$ | Idade das Trevas | Dragão das Trevas Zumbô
+regex:state:Board Level=beach32(?::\d+)?$ | Praia da Boa Onda | Subtubarãotrônico Zumbô
+regex:state:Board Level=iceage30(?::\d+)?$ | Cavernas da Geladura | Zumbô Mastermute 10.000 a.C.
+regex:state:Board Level=iceage32(?::\d+)?$ | Cavernas da Geladura | Zumbô Mastermute 10.000 a.C.
+regex:state:Board Level=lostcity32(?::\d+)?$ | Cidade Perdida | Gôndola Aerostática Zumbô
+regex:state:Board Level=eighties32(?::\d+)?$ | Turnê Idade da Juba | Zumbô Multimistureba
+regex:state:Board Level=dino32(?::\d+)?$ | Pântano Jurássico | Mastodrônico Zumbô
+
+; Vida Moderna (Chefes do Dr. Zumbão)
+regex:state:Board Level=modern_zomboss_01_egypt(?::\d+)?$ | Vida Moderna | Esfingenadora Zumbô
+regex:state:Board Level=modern_zomboss_02_pirate(?::\d+)?$ | Vida Moderna | Prancha da Perdição Zumbô
+regex:state:Board Level=modern_zomboss_03_cowboy(?::\d+)?$ | Vida Moderna | Carroça de Guerra Zumbô
+regex:state:Board Level=modern_zomboss_04_future(?::\d+)?$ | Vida Moderna | Zumbô Amanhãtron
+regex:state:Board Level=modern_zomboss_05_dark(?::\d+)?$ | Vida Moderna | Dragão das Trevas Zumbô
+regex:state:Board Level=modern_zomboss_06_beach(?::\d+)?$ | Vida Moderna | Subtubarãotrônico Zumbô
+regex:state:Board Level=modern_zomboss_07_iceage(?::\d+)?$ | Vida Moderna | Zumbô Mastermute 10.000 a.C.
+regex:state:Board Level=modern_zomboss_08_lostcity(?::\d+)?$ | Vida Moderna | Gôndola Aerostática Zumbô
+regex:state:Board Level=modern_zomboss_09_eighties(?::\d+)?$ | Vida Moderna | Zumbô Multimistureba
+regex:state:Board Level=modern_zomboss_10_dino(?::\d+)?$ | Vida Moderna | Mastodrônico Zumbô
+regex:state:Board Level=modern32(?::\d+)?$ | Vida Moderna | Dr. Zumbão (Parte 1)
+regex:state:Board Level=modern33(?::\d+)?$ | Vida Moderna | Dr. Zumbão (Parte 2)
+regex:state:Board Level=modern34(?::\d+)?$ | Vida Moderna | Dr. Zumbão (Batalha Final)
+
+regex:state:Board Level=egypt(\d+)(?::\d+)?$ | Egito Antigo | Dia $1
+regex:state:Board Level=pirate(\d+)(?::\d+)?$ | Mar dos Piratas | Dia $1
+regex:state:Board Level=cowboy(\d+)(?::\d+)?$ | Velho Oeste | Dia $1
+regex:state:Board Level=future(\d+)(?::\d+)?$ | Futuro Distante | Dia $1
+regex:state:Board Level=dark(\d+)(?::\d+)?$ | Idade das Trevas | Noite $1
+regex:state:Board Level=beach(\d+)(?::\d+)?$ | Praia da Boa Onda | Dia $1
+regex:state:Board Level=iceage(\d+)(?::\d+)?$ | Cavernas da Geladura | Dia $1
+regex:state:Board Level=lostcity(\d+)(?::\d+)?$ | Cidade Perdida | Dia $1
+regex:state:Board Level=eighties(\d+)(?::\d+)?$ | Turnê Idade da Juba | Dia $1
+regex:state:Board Level=dino(\d+)(?::\d+)?$ | Pântano Jurássico | Dia $1
+regex:state:Board Level=modern(\d+)(?::\d+)?$ | Vida Moderna | Dia $1
+regex:state:Board Level=modern_zomboss_(\d+)(?::\d+)?$ | Vida Moderna | Contra o Dr. Zumbão ($1)
+
+regex:state:Board Level=tutorial(\d+)(?::\d+)?$ | Casa do Jogador | Tutorial - Dia $1
+regex:state:Board Level=intro(\d+)(?::\d+)?$ | Casa do Jogador | Introdução $1
+regex:state:Board Level=goldbloom(\d+)$ | Missão Épica | Broto Dourado - Passo $1
+regex:state:Board Level=challenge_levels[/\\]egypt[/\\]cl_egypt(\d+)$ | Diário de Viagem | Egito Antigo - Nível $1
+regex:state:Board Level=challenge_levels[/\\]premiumquest_[^/\\]+_(\d+)$ | Missão Épica | Planta Premium - Passo $1
+regex:state:Board Level=challenge_levels[/\\].*$ | Diário de Viagem | Jogando uma missão
+regex:state:Board Level=lod_.*$ | Festa Piñata | Em partida
+
+; === 2. FALLBACK POR ARQUIVO DE SALVAMENTO ===
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_egypt(\d+)/save_UIWidgets\.rton$ | Quebravaso | Egito Antigo - Nível $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_pirate(\d+)/save_UIWidgets\.rton$ | Quebravaso | Mar dos Piratas - Nível $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_cowboy(\d+)/save_UIWidgets\.rton$ | Quebravaso | Velho Oeste - Nível $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_future(\d+)/save_UIWidgets\.rton$ | Quebravaso | Futuro Distante - Nível $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_dark(\d+)/save_UIWidgets\.rton$ | Quebravaso | Idade das Trevas - Nível $1
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_endless/save_UIWidgets\.rton$ | Quebravaso | Modo Infinito
+regex:asset:.*/save/[^/]*?_\d{9,}_vasebreaker_([^/]+)/save_UIWidgets\.rton$ | Quebravaso | Nível $1
+
+regex:asset:.*/save/[^/]*?_\d{9,}_egypt_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Pirâmide da Perdição (Egito Antigo)
+regex:asset:.*/save/[^/]*?_\d{9,}_pirate_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Butim do Homem Morto (Mar dos Piratas)
+regex:asset:.*/save/[^/]*?_\d{9,}_cowboy_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Monte Malvadão (Velho Oeste)
+regex:asset:.*/save/[^/]*?_\d{9,}_future_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Terror do Amanhã (Futuro Distante)
+regex:asset:.*/save/[^/]*?_\d{9,}_dark_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Desafio do Artur (Idade das Trevas)
+regex:asset:.*/save/[^/]*?_\d{9,}_beach_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Tocha Tiki (Praia da Boa Onda)
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Campo de Batalha Congelado (Cavernas da Geladura)
+regex:asset:.*/save/[^/]*?_\d{9,}_lostcity_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Templo da Podridão (Cidade Perdida)
+regex:asset:.*/save/[^/]*?_\d{9,}_eighties_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Maiores Sucessos (Turnê Idade da Juba)
+regex:asset:.*/save/[^/]*?_\d{9,}_dino_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Poços de Piche Cerébrasa (Pântano Jurássico)
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_dangerroom/save_UIWidgets\.rton$ | Zona do Infinito | Rodovia da Sala de Pânico (Vida Moderna)
+
+regex:asset:.*/save/[^/]*?_\d{9,}_egypt25/save_UIWidgets\.rton$ | Egito Antigo | Esfingenadora Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_pirate25/save_UIWidgets\.rton$ | Mar dos Piratas | Prancha da Perdição Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_cowboy25/save_UIWidgets\.rton$ | Velho Oeste | Carroça de Guerra Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_future25/save_UIWidgets\.rton$ | Futuro Distante | Zumbô Amanhãtron
+regex:asset:.*/save/[^/]*?_\d{9,}_dark20/save_UIWidgets\.rton$ | Idade das Trevas | Dragão das Trevas Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_beach32/save_UIWidgets\.rton$ | Praia da Boa Onda | Subtubarãotrônico Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage30/save_UIWidgets\.rton$ | Cavernas da Geladura | Zumbô Mastermute 10.000 a.C.
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage32/save_UIWidgets\.rton$ | Cavernas da Geladura | Zumbô Mastermute 10.000 a.C.
+regex:asset:.*/save/[^/]*?_\d{9,}_lostcity32/save_UIWidgets\.rton$ | Cidade Perdida | Gôndola Aerostática Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_eighties32/save_UIWidgets\.rton$ | Turnê Idade da Juba | Zumbô Multimistureba
+regex:asset:.*/save/[^/]*?_\d{9,}_dino32/save_UIWidgets\.rton$ | Pântano Jurássico | Mastodrônico Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_01_egypt/save_UIWidgets\.rton$ | Vida Moderna | Esfingenadora Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_02_pirate/save_UIWidgets\.rton$ | Vida Moderna | Prancha da Perdição Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_03_cowboy/save_UIWidgets\.rton$ | Vida Moderna | Carroça de Guerra Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_04_future/save_UIWidgets\.rton$ | Vida Moderna | Zumbô Amanhãtron
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_05_dark/save_UIWidgets\.rton$ | Vida Moderna | Dragão das Trevas Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_06_beach/save_UIWidgets\.rton$ | Vida Moderna | Subtubarãotrônico Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_07_iceage/save_UIWidgets\.rton$ | Vida Moderna | Zumbô Mastermute 10.000 a.C.
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_08_lostcity/save_UIWidgets\.rton$ | Vida Moderna | Gôndola Aerostática Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_09_eighties/save_UIWidgets\.rton$ | Vida Moderna | Zumbô Multimistureba
+regex:asset:.*/save/[^/]*?_\d{9,}_modern_zomboss_10_dino/save_UIWidgets\.rton$ | Vida Moderna | Mastodrônico Zumbô
+regex:asset:.*/save/[^/]*?_\d{9,}_modern32/save_UIWidgets\.rton$ | Vida Moderna | Dr. Zumbão (Parte 1)
+regex:asset:.*/save/[^/]*?_\d{9,}_modern33/save_UIWidgets\.rton$ | Vida Moderna | Dr. Zumbão (Parte 2)
+regex:asset:.*/save/[^/]*?_\d{9,}_modern34/save_UIWidgets\.rton$ | Vida Moderna | Dr. Zumbão (Batalha Final)
+
+regex:asset:.*/save/[^/]*?_\d{9,}_egypt(\d+)/save_UIWidgets\.rton$ | Egito Antigo | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_pirate(\d+)/save_UIWidgets\.rton$ | Mar dos Piratas | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_cowboy(\d+)/save_UIWidgets\.rton$ | Velho Oeste | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_future(\d+)/save_UIWidgets\.rton$ | Futuro Distante | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_dark(\d+)/save_UIWidgets\.rton$ | Idade das Trevas | Noite $1
+regex:asset:.*/save/[^/]*?_\d{9,}_beach(\d+)/save_UIWidgets\.rton$ | Praia da Boa Onda | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_iceage(\d+)/save_UIWidgets\.rton$ | Cavernas da Geladura | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_lostcity(\d+)/save_UIWidgets\.rton$ | Cidade Perdida | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_eighties(\d+)/save_UIWidgets\.rton$ | Turnê Idade da Juba | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_dino(\d+)/save_UIWidgets\.rton$ | Pântano Jurássico | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_modern(\d+)/save_UIWidgets\.rton$ | Vida Moderna | Dia $1
+regex:asset:.*/save/[^/]*?_\d{9,}_lod_[^/]+/save_UIWidgets\.rton$ | Festa Piñata | Em partida
+
+; === 3. FIM DE NÍVEL ===
+Play_WinMusic | Nível concluído | Coletando recompensa
+
+; === 4. TELAS E MENUS ===
+state:GameStateMgr State=GAME_Almanac | No Almanaque | Consultando plantas e zumbis
+state:GameStateMgr State=GAME_Store | Na Loja | Vendo melhorias e plantas
+state:GameStateMgr State=GAME_ZenGarden | Jardim Zen | Cuidando das plantas
+state:GameStateMgr State=GAME_ArcadeMenu | Quebravaso | Escolhendo nível
+state:GameStateMgr State=GAME_MainMenu | Plants vs. Zombies 2 | No menu principal
+
+rsb:ZenGardenGroup_ | Jardim Zen | Cuidando das plantas
+rsb:DelayLoad_Background_Zen | Jardim Zen | Cuidando das plantas
+temp:rsb:UI_Quests_ | Diário de Viagem | Vendo missões
+temp:rsb:RoadSign_ | Diário de Viagem | Vendo missões
+temp:rsb:UI_Almanac_ | No Almanaque | Consultando plantas e zumbis
+rsb:UI_VaseBreakerMenu_ | Quebravaso | Escolhendo nível
+
+; === 5. MAPAS DOS MUNDOS ===
+state:UniverseMap Shown=true | No mapa | Escolhendo mundo
+state:WorldMap Current World=egypt | No mapa | Egito Antigo
+state:WorldMap Current World=pirate | No mapa | Mar dos Piratas
+state:WorldMap Current World=cowboy | No mapa | Velho Oeste
+state:WorldMap Current World=future | No mapa | Futuro Distante
+state:WorldMap Current World=dark | No mapa | Idade das Trevas
+state:WorldMap Current World=beach | No mapa | Praia da Boa Onda
+state:WorldMap Current World=iceage | No mapa | Cavernas da Geladura
+state:WorldMap Current World=lostcity | No mapa | Cidade Perdida
+state:WorldMap Current World=eighties | No mapa | Turnê Idade da Juba
+state:WorldMap Current World=dino | No mapa | Pântano Jurássico
+state:WorldMap Current World=modern | No mapa | Vida Moderna
+
+rsb:WorldMap_Egypt_ | No mapa | Egito Antigo
+rsb:WorldMap_Pirate_ | No mapa | Mar dos Piratas
+rsb:WorldMap_Cowboy_ | No mapa | Velho Oeste
+rsb:WorldMap_Future_ | No mapa | Futuro Distante
+rsb:WorldMap_Dark_ | No mapa | Idade das Trevas
+rsb:WorldMap_Beach_ | No mapa | Praia da Boa Onda
+rsb:WorldMap_Iceage_ | No mapa | Cavernas da Geladura
+rsb:WorldMap_Lostcity_ | No mapa | Cidade Perdida
+rsb:WorldMap_Eighties_ | No mapa | Turnê Idade da Juba
+rsb:WorldMap_Dino_ | No mapa | Pântano Jurássico
+rsb:WorldMap_Modern_ | No mapa | Vida Moderna
+rsb:UI_World_Preview_ | No mapa | Explorando mundos
+rsb:UI_Universe_ | No mapa | Escolhendo mundo
+rsb:UI_MainMenu_ | Plants vs. Zombies 2 | No menu principal
+
+default | Plants vs. Zombies 2 | No menu principal
