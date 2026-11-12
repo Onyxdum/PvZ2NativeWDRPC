@@ -2,8 +2,14 @@ name: Linux Build
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to upload to (e.g. v1.2.0)'
+        required: true
+        default: ''
 
 permissions:
   contents: write
@@ -37,15 +43,25 @@ jobs:
           cp -a build/pvz2native/pvz2 "dist-linux/Plants vs. Zombies 2 - It's About Time/"
           cp -a build/pvz2native/assets "dist-linux/Plants vs. Zombies 2 - It's About Time/"
           cp -a pvz2native/presence_rules*.txt "dist-linux/Plants vs. Zombies 2 - It's About Time/"
-          (cd dist-linux && zip -r ../PvZ2Native-v4.5.2-Linux.zip "Plants vs. Zombies 2 - It's About Time")
+          (cd dist-linux && zip -r ../PvZ2Native-Linux.zip "Plants vs. Zombies 2 - It's About Time")
 
           mkdir -p "dist-appimage/Plants vs. Zombies 2 - It's About Time"
           cp -a build/pvz2native/pvz2.AppImage "dist-appimage/Plants vs. Zombies 2 - It's About Time/"
           cp -a pvz2native/presence_rules*.txt "dist-appimage/Plants vs. Zombies 2 - It's About Time/"
-          (cd dist-appimage && zip -r ../PvZ2Native-v4.5.2-Linux-AppImage.zip "Plants vs. Zombies 2 - It's About Time")
+          (cd dist-appimage && zip -r ../PvZ2Native-Linux-AppImage.zip "Plants vs. Zombies 2 - It's About Time")
 
-      - name: Upload to Release v1.0.0
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v1.0.0 PvZ2Native-v4.5.2-Linux.zip PvZ2Native-v4.5.2-Linux-AppImage.zip --clobber
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "No release tag specified. Skipping upload."
+            exit 1
+          fi
+          echo "Uploading Linux assets to release: $TAG"
+          gh release upload "$TAG" PvZ2Native-Linux.zip PvZ2Native-Linux-AppImage.zip --clobber
