@@ -1432,6 +1432,11 @@ extern "C" int pvz2_game_is_in_level(void) {
     return pvz2native::dex::g_is_in_level.load(std::memory_order_relaxed) ? 1 : 0;
 }
 
+extern "C" int pvz2_game_on_world_map(void) {
+    std::lock_guard<std::mutex> lk(pvz2native::dex::g_crashlytics_mu);
+    return pvz2native::dex::g_current_gsm_state == "GAME_WorldMap" ? 1 : 0;
+}
+
 extern "C" int pvz2_game_in_seed_chooser(void) {
     std::lock_guard<std::mutex> lk(pvz2native::dex::g_crashlytics_mu);
     return pvz2native::dex::g_in_seed_chooser &&

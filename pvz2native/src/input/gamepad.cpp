@@ -58,6 +58,10 @@ static const float kDragCooldownSec = 0.10f;
 static const float kDpadRepeatInitialSec = 0.18f;
 static const float kDpadRepeatMinSec = 0.14f;
 static const float kDpadRepeatAccelSec = 0.010f;
+/* Lawn mode: how long the box waits after the seed chooser's card panel appears. */
+static const float kChooserSettleSec = 0.3f;
+/* Level objectives / info dialogs: the "Continue" button, at the centre and this fraction of the height. */
+static const float kDialogContinueY = 0.7935f;
 
 class GamepadModule {
 public:
@@ -135,6 +139,16 @@ private:
     void queue_touch(float delay_sec, int type, float nx, float ny);
     void queue_scroll_drag(float from_ny, float to_ny, float nx);
     int current_mode() const;   /* 0 none, 1 level, 2 seed chooser */
+    int game_mode() const;      /* the same, whatever device is in use */
+    void probe_screen(SDL_Window *window);
+    bool dialog_active() const;
+    bool map_active() const;
+    std::string bound_action(SDL_GameControllerButton button) const;
+    void lawn_action(const std::string &action);
+    void activate_power(int n);
+    float chooser_zen_x() const;
+    int handle_map_button(SDL_GameControllerButton button, bool down);
+    void tick_map_triggers();
     bool grid_ready() const;    /* active and past the intro wait */
     void tick_bank_right_stick(float dt_sec);
     void bank_step(int step);
@@ -224,6 +238,23 @@ private:
      * lawn, and "Ready, set, plant" plays. */
     int mode_ = 0;
     float intro_wait_ = 0.0f;
+
+    /* What is on screen, read back from the frame every ~120 ms (see probe_screen): the rows of seed cards
+     * currently visible in the chooser (centres, fractions of the height) and whether a dialog such as the
+     * level objectives is up. */
+    std::vector<float> chooser_rows_;
+    bool chooser_panel_ = false;
+    bool dialog_up_ = false;
+    Uint32 probe_ms_ = 0;
+    std::vector<unsigned char> probe_buf_;
+    bool last_stand_started_ = false;
+    /* Power-ups: Back picks one (1..3, 0 = none), A uses it; while one is active A taps the box's tile. */
+    int power_sel_ = 0;
+    bool power_active_ = false;
+    float power_timer_ = 0.0f;
+    bool event_banner_ = false; /* world map: the "Play event" banner is showing */
+    bool map_loaded_ = false;   /* world map: its buttons are on screen (not the loading screen) */
+    bool chooser_lt_prev_ = false, chooser_rt_prev_ = false;
 
     /* Conveyor belt: the chosen packet is a position along the belt (fraction of the screen height), not a
      * slot, so it can follow a packet that is still moving; the right stick slides it. */
@@ -996,6 +1027,14 @@ int GamepadModule::handle_controller_button(const SDL_Event *e) {
     const bool down = e->type == SDL_CONTROLLERBUTTONDOWN;
     const SDL_GameControllerButton button = static_cast<SDL_GameControllerButton>(e->cbutton.button);
 
+    /* Settings screen: the D-pad walks its rows, A clicks, B goes back (see config_screen_pad_button). */
+    if (overlay_open() && config_screen_is_open()) {
+        if (down && config_screen_pad_button(static_cast<int>(button))) return 1;
+        if (!down && (button == SDL_CONTROLLER_BUTTON_B || dpad_from_button(e->cbutton.button) != DpadDir::None))
+            return 1;
+        if (!down && button == SDL_CONTROLLER_BUTTON_A && !a_held_) return 1;
+    }
+
     /* Overlay UI: cursor + A hold-click + Back (same as Escape) only. */
     if (overlay_open()) {
         if (button == SDL_CONTROLLER_BUTTON_A) {
@@ -1011,14 +1050,26 @@ int GamepadModule::handle_controller_button(const SDL_Event *e) {
         return 1;
     }
 
-    /* R3 switches lawn mode on and off while in a level. */
-    if (button == SDL_CONTROLLER_BUTTON_RIGHTSTICK && pvz2_game_is_in_level()) {
+    /* R3 switches lawn mode on and off while in a level (unless [gamepad_binds] gives it another job). */
+    if (button == SDL_CONTROLLER_BUTTON_RIGHTSTICK && pvz2_game_is_in_level() &&
+        bound_action(SDL_CONTROLLER_BUTTON_RIGHTSTICK).empty()) {
         if (down) {
             grid_enabled_ = !grid_enabled_;
             rumble_now(0.15f, 0.25f, 60);
             if (pvz2_config()->verbose) pvz2_log("[gamepad] lawn mode %s", grid_enabled_ ? "on" : "off");
         }
         return 1;
+    }
+    if (map_active() && handle_map_button(button, down)) return 1;
+    if (dialog_active()) {
+        if (button == SDL_CONTROLLER_BUTTON_A) {
+            if (down) {
+                queue_tap(0.0f, 0.5f, kDialogContinueY); /* "Continue" */
+                rumble_now(0.15f, 0.15f, 50);
+            }
+            return 1;
+        }
+        if (button != SDL_CONTROLLER_BUTTON_START && button != SDL_CONTROLLER_BUTTON_BACK) return 1;
     }
     if (grid_active() && handle_grid_button(button, down)) return 1;
 
@@ -1322,12 +1373,26 @@ void GamepadModule::tick(float dt_sec) {
 
     tick_pending_taps(dt_sec);
     tick_rumble();
+
+    /* The wait after a level starts (camera pan, "Ready, set, plant") follows the game's state, so going
+     * back to the controller after using the mouse shows the box at once. */
+    {
+        const int gm = game_mode();
+        if (gm != mode_) {
+            if (gm == 1 && mode_ != 1) last_stand_started_ = false;
+            mode_ = gm;
+            /* A level only counts once it is being played (after the camera pan), so the box shows at
+             * once, "Ready, set, plant" included; the chooser waits a moment for its panel to settle. */
+            intro_wait_ = gm == 2 ? kChooserSettleSec : 0.0f;
+            pending_taps_.clear();
+        }
+        if (intro_wait_ > 0.0f) intro_wait_ -= dt_sec;
+    }
     if (grid_active()) {
         tick_grid(dt_sec);
         tick_dpad_repeat(dt_sec);
         return;
     }
-    mode_ = 0;
     chooser_was_active_ = false;
     if (grid_was_active_) {
         grid_was_active_ = false;
@@ -1337,7 +1402,8 @@ void GamepadModule::tick(float dt_sec) {
 
     tick_left_stick(dt_sec);
     tick_right_stick(dt_sec);
-    tick_triggers();
+    if (map_active()) tick_map_triggers();
+    else tick_triggers();
     tick_dpad_repeat(dt_sec);
 }
 
@@ -1385,20 +1451,54 @@ static const float kRockFromRight = 0.1528f, kRockY = 0.94f;
 static const float kPauseFromRight = 0.0602f, kSpeedFromRight = 0.162f, kTopButtonsY = 0.0556f;
 /* Seed chooser "pick the same plants again" button, bottom left. */
 static const float kReselectX = 0.0833f, kReselectY = 0.944f;
-static const float kIntroWaitSec = 3.0f;
+/* Last Stand: the "Let's rock" button sits top centre-right until the battle starts. */
+static const float kLastStandFromRight = 0.613f, kLastStandY = 0.0556f;
+
 static const float kConveyorSlideSpeed = 0.9f; /* screen heights per second at full stick */
 
 extern "C" int pvz2_game_in_seed_chooser(void);
 extern "C" int pvz2_game_level_has_conveyor(void);
+extern "C" int pvz2_game_level_last_stand(void);
+extern "C" int pvz2_game_on_world_map(void);
+
+/* World map buttons that config.ini has no bind for (fractions of width / height, measured at 1920x1080). */
+static const float kMapAlmanacX = 0.1021f, kMapAlmanacY = 0.048f;
+static const float kMapJournalX = 0.0469f, kMapJournalY = 0.185f;
+static const float kMapShopX = 0.953f, kMapShopY = 0.060f;
+static const float kMapEventX = 0.154f, kMapEventY = 0.884f;
+/* Seed chooser: "look at the lawn" (below pause, from the right edge, fractions of the height) and the
+ * Zen Garden watering can (top left, fractions of the height). */
+static const float kViewLawnFromRight = 0.0602f, kViewLawnY = 0.162f;
+static const float kChooserZenX = 0.0556f, kChooserZenY = 0.051f;
+static const float kChooserZenXLastStand = 0.2685f; /* Last Stand: the sun counter sits where it usually is */
+/* Seed chooser info panel: the plant's "upgrade" button (fractions of the height; x from the left edge). */
+static const float kUpgradeX = 0.5713f, kUpgradeY = 0.3824f;
 
 bool GamepadModule::level_active() const {
     return grid_enabled_ && controller_mode_ && controller_ready() && !overlay_open() && pvz2_game_is_in_level() &&
-           !pvz2_game_is_paused() && grid_rows_ > 0 && grid_cols_ > 0;
+           !pvz2_game_is_paused() && grid_rows_ > 0 && grid_cols_ > 0 && !dialog_up_;
 }
 
 bool GamepadModule::chooser_active() const {
     return grid_enabled_ && controller_mode_ && controller_ready() && !overlay_open() &&
-           pvz2_game_in_seed_chooser() && !pvz2_game_is_paused();
+           pvz2_game_in_seed_chooser() && !pvz2_game_is_paused() && chooser_panel_ && !dialog_up_;
+}
+
+/* A dialog (level objectives...) over the chooser or a level: the box hides and A presses "Continue". */
+bool GamepadModule::dialog_active() const {
+    return grid_enabled_ && controller_mode_ && controller_ready() && !overlay_open() && dialog_up_ &&
+           (pvz2_game_in_seed_chooser() || pvz2_game_is_in_level());
+}
+
+/* World map: the controller presses its fixed buttons (the cursor still moves with the left stick). */
+bool GamepadModule::map_active() const {
+    return controller_mode_ && controller_ready() && !overlay_open() && pvz2_game_on_world_map() && map_loaded_;
+}
+
+int GamepadModule::game_mode() const {
+    if (pvz2_game_in_seed_chooser() && chooser_panel_) return 2;
+    if (pvz2_game_is_in_level() && !pvz2_game_is_paused()) return 1;
+    return 0;
 }
 
 bool GamepadModule::grid_active() const { return level_active() || chooser_active(); }
@@ -1410,11 +1510,157 @@ int GamepadModule::current_mode() const {
 }
 
 bool GamepadModule::grid_ready() const {
-    const int m = current_mode();
-    return m != 0 && m == mode_ && intro_wait_ <= 0.0f;
+    return grid_active() && intro_wait_ <= 0.0f;
+}
+
+/* Reads the finished game frame back (before anything of ours is drawn on it), at most every 120 ms:
+ * - the chooser's card rows: the gaps between rows are dark across the whole panel, while every row of
+ *   cards has something bright in it, so a row of pixels whose bright end (90th percentile) is dark is a
+ *   gap. That keeps the box on the cards even when the list ends part-way through a row, and tells
+ *   whether the panel is on screen at all (it is not during the camera pan or the objectives dialog);
+ * - a dialog: the cream panel of the level objectives box covers six fixed points around the centre. */
+void GamepadModule::probe_screen(SDL_Window *window) {
+    if (!window || !controller_ready()) return;
+    const bool chooser = pvz2_game_in_seed_chooser() != 0;
+    const bool level = pvz2_game_is_in_level() != 0;
+    const bool map = pvz2_game_on_world_map() != 0;
+    if (!chooser && !level && !map) {
+        chooser_panel_ = false;
+        dialog_up_ = false;
+        event_banner_ = false;
+        map_loaded_ = false;
+        return;
+    }
+    const Uint32 now = SDL_GetTicks();
+    if (now - probe_ms_ < 120) return;
+    probe_ms_ = now;
+    if (map) {
+        /* The event banner is a dark navy strip along the bottom of the map. */
+        int mw = 0, mh = 0;
+        SDL_GL_GetDrawableSize(window, &mw, &mh);
+        if (mw <= 0 || mh <= 0) return;
+        GLint fbo = 0;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        /* Loaded: the green "back" arrow is on screen (the loading screen before it is dark blue). */
+        {
+            unsigned char px[4] = {};
+            float bx = 0.04f, by = 0.06f;
+            const int bi = find_focus_by_name("back");
+            if (bi >= 0) {
+                bx = focus_points_[static_cast<size_t>(bi)].nx;
+                by = focus_points_[static_cast<size_t>(bi)].ny;
+            }
+            glReadPixels(static_cast<int>(bx * mw), mh - 1 - static_cast<int>(by * mh), 1, 1, GL_RGBA,
+                         GL_UNSIGNED_BYTE, px);
+            map_loaded_ = px[1] > 110 && px[1] > px[0] + 30 && px[1] > px[2] + 40;
+        }
+        /* The event banner: a dark strip between two thin white lines (at 0.829 and 0.938 of the height);
+         * other screens can be dark down there too, but have no such lines. */
+        {
+            const int y0 = static_cast<int>(0.80f * mh), y1 = std::min(mh - 1, static_cast<int>(0.96f * mh));
+            const int n = y1 - y0 + 1;
+            bool ok = n > 4;
+            for (float fx : {0.60f, 0.80f}) {
+                if (!ok) break;
+                std::vector<unsigned char> col(static_cast<size_t>(n) * 4);
+                glReadPixels(static_cast<int>(fx * mw), mh - 1 - y1, 1, n, GL_RGBA, GL_UNSIGNED_BYTE, col.data());
+                auto lum_at = [&](float fy) {
+                    /* brightest pixel within +-0.008 of the height around fy (rows are bottom-up) */
+                    int best = 0;
+                    const int c = static_cast<int>(fy * mh);
+                    for (int y = c - static_cast<int>(0.008f * mh); y <= c + static_cast<int>(0.008f * mh); ++y) {
+                        if (y < y0 || y > y1) continue;
+                        const unsigned char *q = col.data() + static_cast<size_t>(y1 - y) * 4;
+                        best = std::max(best, (q[0] + q[1] + q[2]) / 3);
+                    }
+                    return best;
+                };
+                const unsigned char *mid = col.data() + static_cast<size_t>(y1 - static_cast<int>(0.88f * mh)) * 4;
+                ok = lum_at(0.829f) > 180 && lum_at(0.938f) > 180 && (mid[0] + mid[1] + mid[2]) / 3 < 60;
+            }
+            event_banner_ = ok;
+        }
+        chooser_panel_ = false;
+        dialog_up_ = false;
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        return;
+    }
+    event_banner_ = false;
+    map_loaded_ = false;
+
+    int dw = 0, dh = 0;
+    SDL_GL_GetDrawableSize(window, &dw, &dh);
+    if (dw <= 0 || dh <= 0) return;
+    GLint prev_fbo = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+    auto lum = [](const unsigned char *p) { return (p[0] + p[1] + p[2]) / 3; };
+
+    /* Dialog: six points of the cream panel (fractions of width / height). */
+    static const float kPts[6][2] = {{0.30f, 0.52f}, {0.40f, 0.66f}, {0.50f, 0.52f},
+                                     {0.60f, 0.66f}, {0.70f, 0.52f}, {0.65f, 0.70f}};
+    int cream = 0;
+    for (const auto &pt : kPts) {
+        unsigned char px[4] = {};
+        const int x = static_cast<int>(pt[0] * dw), y = dh - 1 - static_cast<int>(pt[1] * dh);
+        glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        if (px[0] > 215 && px[1] > 205 && px[2] > 160 && px[2] < 225 && px[0] - px[2] > 15) ++cream;
+    }
+    dialog_up_ = cream >= 5;
+
+    if (chooser) {
+        /* The card panel: x from 0.204H to 1.0H, y from 0.44H to 0.975H. */
+        const float H = static_cast<float>(dh);
+        const int x0 = static_cast<int>(0.204f * H), x1 = std::min(dw - 1, static_cast<int>(1.0f * H));
+        const int ytop = static_cast<int>(0.44f * H), ybot = std::min(dh - 1, static_cast<int>(0.975f * H));
+        const int w = x1 - x0 + 1, h = ybot - ytop + 1;
+        std::vector<float> rows;
+        if (w > 8 && h > 8) {
+            probe_buf_.resize(static_cast<size_t>(w) * h * 4);
+            glReadPixels(x0, dh - 1 - ybot, w, h, GL_RGBA, GL_UNSIGNED_BYTE, probe_buf_.data());
+            const int step = std::max(1, w / 72);
+            std::vector<int> v;
+            std::vector<bool> gap(static_cast<size_t>(h));
+            for (int r = 0; r < h; ++r) {
+                /* buffer row 0 is the bottom of the rectangle */
+                const unsigned char *line = probe_buf_.data() + static_cast<size_t>(h - 1 - r) * w * 4;
+                v.clear();
+                for (int x = 0; x < w; x += step) v.push_back(lum(line + x * 4));
+                std::sort(v.begin(), v.end());
+                gap[static_cast<size_t>(r)] = v[v.size() * 9 / 10] < 75;
+            }
+            /* A row of cards: a run of non-gap pixel rows between two gaps, about a card tall. */
+            int start = -1;
+            for (int r = 0; r <= h; ++r) {
+                const bool g = r == h || gap[static_cast<size_t>(r)];
+                if (!g && start < 0) start = r;
+                if (g && start >= 0) {
+                    const float len = static_cast<float>(r - start) / H;
+                    if (start > 0 && r < h && len > 0.080f && len < 0.125f)
+                        rows.push_back((ytop + (start + r) * 0.5f) / H);
+                    start = -1;
+                }
+            }
+        }
+        chooser_rows_ = rows;
+        chooser_panel_ = rows.size() >= 2;
+        if (chooser_col_ >= 1 && !chooser_rows_.empty() && chooser_row_ > static_cast<int>(chooser_rows_.size()))
+            chooser_row_ = static_cast<int>(chooser_rows_.size());
+    } else {
+        chooser_panel_ = false;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, prev_fbo);
 }
 
 float GamepadModule::right_edge_nx(float from_right_h) const { return 1.0f - from_right_h / aspect(); }
+
+float GamepadModule::chooser_zen_x() const {
+    return pvz2_game_level_last_stand() ? kChooserZenXLastStand : kChooserZenX;
+}
 
 float GamepadModule::aspect() const {
     int ww = 0, wh = 0;
@@ -1464,7 +1710,10 @@ void GamepadModule::chooser_cell_center(float *nx, float *ny) const {
         return;
     }
     *nx = (kCardX0 + kCardStepX * static_cast<float>(chooser_col_ - 1)) / aspect();
-    *ny = kCardY0 + kCardStepY * static_cast<float>(chooser_row_ - 1);
+    if (chooser_row_ >= 1 && chooser_row_ <= static_cast<int>(chooser_rows_.size()))
+        *ny = chooser_rows_[static_cast<size_t>(chooser_row_ - 1)];
+    else
+        *ny = kCardY0 + kCardStepY * static_cast<float>(chooser_row_ - 1);
 }
 
 void GamepadModule::queue_tap(float delay_sec, float nx, float ny) {
@@ -1537,7 +1786,7 @@ void GamepadModule::grid_move(DpadDir dir) {
     grid_row_ = r;
     grid_col_ = c;
     sweep_timer_ = 0.0f;
-    if (!aiming_) sweep_tile_for_pickups();
+    if (!aiming_ && !power_active_) sweep_tile_for_pickups();
 }
 
 void GamepadModule::chooser_move(DpadDir dir) {
@@ -1548,9 +1797,8 @@ void GamepadModule::chooser_move(DpadDir dir) {
         else if (dir == DpadDir::Right) {
             const float y = kBankY0 + kBankStep * static_cast<float>(chooser_row_ - 1);
             int best = 1;
-            for (int r = 1; r <= kCardRows; ++r)
-                if (std::fabs(kCardY0 + kCardStepY * (r - 1) - y) < std::fabs(kCardY0 + kCardStepY * (best - 1) - y))
-                    best = r;
+            for (int r = 1; r <= static_cast<int>(chooser_rows_.size()); ++r)
+                if (std::fabs(chooser_rows_[r - 1] - y) < std::fabs(chooser_rows_[best - 1] - y)) best = r;
             chooser_col_ = 1;
             chooser_row_ = best;
         }
@@ -1563,7 +1811,8 @@ void GamepadModule::chooser_move(DpadDir dir) {
                 --chooser_col_;
             } else {
                 /* Into the seed bank, at the slot nearest this row. */
-                const float y = kCardY0 + kCardStepY * static_cast<float>(chooser_row_ - 1);
+                float y = 0.0f, unused = 0.0f;
+                chooser_cell_center(&unused, &y);
                 int best = 1;
                 for (int k = 1; k <= kBankSlots; ++k)
                     if (std::fabs(kBankY0 + kBankStep * (k - 1) - y) < std::fabs(kBankY0 + kBankStep * (best - 1) - y))
@@ -1585,7 +1834,7 @@ void GamepadModule::chooser_move(DpadDir dir) {
             }
             break;
         case DpadDir::Down:
-            if (chooser_row_ < kCardRows) {
+            if (chooser_row_ < std::max(1, static_cast<int>(chooser_rows_.size()))) {
                 ++chooser_row_;
             } else {
                 const float y = kCardY0 + kCardStepY * 2.5f;
@@ -1606,9 +1855,14 @@ void GamepadModule::nav_step(DpadDir dir) {
 int GamepadModule::handle_grid_button(SDL_GameControllerButton button, bool down) {
     /* Start pauses in a level and in the chooser, even during the intro wait. */
     if (button == SDL_CONTROLLER_BUTTON_START) {
+        const std::string act = bound_action(button);
         if (down) {
-            queue_tap(0.0f, right_edge_nx(kPauseFromRight), kTopButtonsY);
-            rumble_now(0.10f, 0.15f, 50);
+            if (level_active() && grid_ready() && !act.empty() && act != "pause") {
+                lawn_action(act);
+            } else {
+                queue_tap(0.0f, right_edge_nx(kPauseFromRight), kTopButtonsY);
+                rumble_now(0.10f, 0.15f, 50);
+            }
         }
         return 1;
     }
@@ -1618,6 +1872,16 @@ int GamepadModule::handle_grid_button(SDL_GameControllerButton button, bool down
     grid_cell_norm(&cx, &cy);
     const bool packets = pvz2_game_has_seed_packets() != 0;
     const bool conveyor = pvz2_game_level_has_conveyor() != 0;
+    /* B, X, Y, L3 and R3 do what Settings -> Controller assigns them, on the box's tile; unassigned ones
+     * keep their lawn-mode job below. */
+    if (button == SDL_CONTROLLER_BUTTON_B || button == SDL_CONTROLLER_BUTTON_X || button == SDL_CONTROLLER_BUTTON_Y ||
+        button == SDL_CONTROLLER_BUTTON_LEFTSTICK || button == SDL_CONTROLLER_BUTTON_RIGHTSTICK) {
+        const std::string act = bound_action(button);
+        if (!act.empty()) {
+            if (down) lawn_action(act);
+            return 1;
+        }
+    }
     switch (button) {
         case SDL_CONTROLLER_BUTTON_DPAD_UP:
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
@@ -1632,9 +1896,22 @@ int GamepadModule::handle_grid_button(SDL_GameControllerButton button, bool down
         case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
             if (down && packets) bank_step(button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER ? 1 : -1);
             return 1;
+        case SDL_CONTROLLER_BUTTON_BACK:
+            /* Back: pick a power-up (each press moves to the next one); A uses it. */
+            if (down) {
+                power_sel_ = power_sel_ % 3 + 1;
+                rumble_now(0.0f, 0.12f, 30);
+            }
+            return 1;
         case SDL_CONTROLLER_BUTTON_A:
             if (down) {
-                if (aiming_) {
+                if (power_sel_ > 0) {
+                    activate_power(power_sel_);
+                } else if (power_active_) {
+                    /* A power-up is running: A uses it on whatever is on the box's tile. */
+                    queue_tap(0.0f, cx, cy);
+                    rumble_now(0.35f, 0.30f, 80);
+                } else if (aiming_) {
                     /* A also fires an aimed plant at the box. */
                     queue_tap(0.0f, cx, cy);
                     aiming_ = false;
@@ -1653,22 +1930,23 @@ int GamepadModule::handle_grid_button(SDL_GameControllerButton button, bool down
             }
             return 1;
         case SDL_CONTROLLER_BUTTON_X:
-            if (down && !aiming_) {
-                queue_tap_bind(0.0f, "shovel");
-                queue_tap(kTapGapSec, cx, cy);
-                rumble_now(0.30f, 0.15f, 90);
-            }
-            return 1;
         case SDL_CONTROLLER_BUTTON_Y:
-            if (down && !aiming_) {
-                queue_tap_bind(0.0f, "plant_food");
-                queue_tap(kTapGapSec, cx, cy);
-                rumble_now(0.45f, 0.45f, 180);
+            return 1; /* unassigned in Settings -> Controller */
+        case SDL_CONTROLLER_BUTTON_LEFTSTICK:
+            /* Last Stand: L3 starts the battle once the lawn is ready. */
+            if (!pvz2_game_level_last_stand()) return 0;
+            if (down && !last_stand_started_) {
+                queue_tap(0.0f, right_edge_nx(kLastStandFromRight), kLastStandY);
+                last_stand_started_ = true;
+                rumble_now(0.40f, 0.40f, 200);
             }
             return 1;
         case SDL_CONTROLLER_BUTTON_B:
             if (down) {
-                if (aiming_) {
+                if (power_sel_ > 0 || power_active_) {
+                    power_sel_ = 0;
+                    power_active_ = false;
+                } else if (aiming_) {
                     /* Tapping the picked plant again puts it down without firing. */
                     const int r = grid_row_, c = grid_col_;
                     grid_row_ = aim_row_;
@@ -1687,6 +1965,47 @@ int GamepadModule::handle_grid_button(SDL_GameControllerButton button, bool down
         default:
             return 0;
     }
+}
+
+/* What Settings -> Controller ([gamepad_binds]) assigns to a button: a [shortcuts] name without its
+ * "bind_" prefix ("shovel", "power_2", ...), or empty when the button is unassigned. */
+std::string GamepadModule::bound_action(SDL_GameControllerButton button) const {
+    const auto it = bind_by_button_.find(button);
+    if (it == bind_by_button_.end()) return std::string();
+    const char *n = it->second.c_str();
+    if (SDL_strncasecmp(n, "bind_", 5) == 0) n += 5;
+    if (!n[0] || SDL_strcasecmp(n, "NULL") == 0) return std::string();
+    return n;
+}
+
+/* An assigned action, done on the box's tile the way a finger would: shovel and Plant Food are tapped and
+ * then the tile; a power-up is switched on and then aimed with A; anything else is just pressed. */
+void GamepadModule::lawn_action(const std::string &action) {
+    float cx = 0.0f, cy = 0.0f;
+    grid_cell_norm(&cx, &cy);
+    if (action == "shovel" || action == "plant_food") {
+        if (aiming_) return;
+        queue_tap_bind(0.0f, action.c_str());
+        queue_tap(kTapGapSec, cx, cy);
+        if (action == "shovel") rumble_now(0.30f, 0.15f, 90);
+        else rumble_now(0.45f, 0.45f, 180);
+    } else if (action.compare(0, 6, "power_") == 0 && action.size() == 7 && action[6] >= '1' && action[6] <= '3') {
+        activate_power(action[6] - '0');
+    } else {
+        queue_tap_bind(0.0f, action.c_str());
+        rumble_now(0.10f, 0.15f, 50);
+    }
+}
+
+void GamepadModule::activate_power(int n) {
+    char name[16];
+    std::snprintf(name, sizeof(name), "power_%d", n);
+    queue_tap_bind(0.0f, name);
+    power_sel_ = 0;
+    power_active_ = true;
+    power_timer_ = 0.0f;
+    aiming_ = false;
+    rumble_now(0.40f, 0.40f, 160);
 }
 
 int GamepadModule::handle_chooser_button(SDL_GameControllerButton button, bool down) {
@@ -1725,9 +2044,10 @@ int GamepadModule::handle_chooser_button(SDL_GameControllerButton button, bool d
             if (down) chooser_col_ = 0; /* jump to the seed bank */
             return 1;
         case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
-            if (down && chooser_col_ == 0) {
-                chooser_col_ = 1;
-                chooser_row_ = 1;
+            /* The "upgrade" button of the plant shown in the info panel. */
+            if (down) {
+                queue_tap(0.0f, kUpgradeX / aspect(), kUpgradeY);
+                rumble_now(0.10f, 0.15f, 50);
             }
             return 1;
         case SDL_CONTROLLER_BUTTON_B:
@@ -1854,19 +2174,26 @@ void GamepadModule::tick_chooser(float dt_sec) {
         pending_taps_.clear();
     }
     tick_stick_steps(dt_sec, &GamepadModule::chooser_move);
+
+    /* LT: the Zen Garden watering can; RT: "look at the lawn" (below pause). */
+    const bool lt = trigger_to_float(SDL_GameControllerGetAxis(controller_, SDL_CONTROLLER_AXIS_TRIGGERLEFT)) >=
+                    trigger_threshold_;
+    const bool rt = trigger_to_float(SDL_GameControllerGetAxis(controller_, SDL_CONTROLLER_AXIS_TRIGGERRIGHT)) >=
+                    trigger_threshold_;
+    if (lt && !chooser_lt_prev_) {
+        queue_tap(0.0f, chooser_zen_x() / aspect(), kChooserZenY);
+        rumble_now(0.10f, 0.15f, 50);
+    }
+    if (rt && !chooser_rt_prev_) {
+        queue_tap(0.0f, right_edge_nx(kViewLawnFromRight), kViewLawnY);
+        rumble_now(0.10f, 0.15f, 50);
+    }
+    chooser_lt_prev_ = lt;
+    chooser_rt_prev_ = rt;
 }
 
 void GamepadModule::tick_grid(float dt_sec) {
-    const int m = current_mode();
-    if (m != mode_) {
-        mode_ = m;
-        intro_wait_ = kIntroWaitSec;
-        pending_taps_.clear();
-    }
-    if (intro_wait_ > 0.0f) {
-        intro_wait_ -= dt_sec;
-        return;
-    }
+    if (intro_wait_ > 0.0f) return;
     if (chooser_active()) {
         grid_was_active_ = false;
         tick_chooser(dt_sec);
@@ -1882,6 +2209,8 @@ void GamepadModule::tick_grid(float dt_sec) {
         conveyor_y_ = kConveyorY0;
         pending_taps_.clear();
         aiming_ = false;
+        power_sel_ = 0;
+        power_active_ = false;
     }
     tick_aim_trigger(dt_sec);
     tick_stick_steps(dt_sec, &GamepadModule::grid_move);
@@ -1896,12 +2225,57 @@ void GamepadModule::tick_grid(float dt_sec) {
     }
     lt_prev_ = lt;
 
-    /* Keep collecting what lands on the tile while the box rests there. */
+    /* A power-up lasts a few seconds; after that A goes back to planting. */
+    if (power_active_) {
+        power_timer_ += dt_sec;
+        if (power_timer_ > 10.0f) power_active_ = false;
+    }
+
+    /* Keep collecting what lands on the tile while the box rests there (not while a power-up is aimed:
+     * every pickup tap would spend it). */
     sweep_timer_ += dt_sec;
-    if (sweep_timer_ >= kSweepEverySec && !aiming_) {
+    if (sweep_timer_ >= kSweepEverySec && !aiming_ && !power_active_) {
         sweep_timer_ = 0.0f;
         sweep_tile_for_pickups();
     }
+}
+
+/* World map: B back, LB Almanac, RB Zen Garden, X Travel Log, Y Shop, LT Vasebreaker, RT the event
+ * banner when it shows. A and the left stick keep driving the cursor for the level nodes. */
+int GamepadModule::handle_map_button(SDL_GameControllerButton button, bool down) {
+    const char *bind = nullptr;
+    float nx = -1.0f, ny = -1.0f;
+    switch (button) {
+        case SDL_CONTROLLER_BUTTON_B: bind = "back"; break;
+        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: bind = "zen_garden"; break;
+        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: nx = kMapAlmanacX; ny = kMapAlmanacY; break;
+        case SDL_CONTROLLER_BUTTON_X: nx = kMapJournalX; ny = kMapJournalY; break;
+        case SDL_CONTROLLER_BUTTON_Y: nx = kMapShopX; ny = kMapShopY; break;
+        default: return 0;
+    }
+    if (down) {
+        if (bind) queue_tap_bind(0.0f, bind);
+        else queue_tap(0.0f, nx, ny);
+        rumble_now(0.10f, 0.15f, 50);
+    }
+    return 1;
+}
+
+void GamepadModule::tick_map_triggers() {
+    const bool lt = trigger_to_float(SDL_GameControllerGetAxis(controller_, SDL_CONTROLLER_AXIS_TRIGGERLEFT)) >=
+                    trigger_threshold_;
+    const bool rt = trigger_to_float(SDL_GameControllerGetAxis(controller_, SDL_CONTROLLER_AXIS_TRIGGERRIGHT)) >=
+                    trigger_threshold_;
+    if (lt && !l2_prev_) {
+        queue_tap_bind(0.0f, "vasebreaker");
+        rumble_now(0.10f, 0.15f, 50);
+    }
+    if (rt && !r2_prev_ && event_banner_) {
+        queue_tap(0.0f, kMapEventX, kMapEventY);
+        rumble_now(0.10f, 0.15f, 50);
+    }
+    l2_prev_ = lt;
+    r2_prev_ = rt;
 }
 
 /* ---- rumble ---- */
@@ -2018,7 +2392,10 @@ void GamepadModule::draw_icon(int icon, float cx, float cy, float h) const {
 }
 
 void GamepadModule::draw(SDL_Window *window) {
-    if (!window || !grid_ready()) return;
+    probe_screen(window);
+    const bool dialog = dialog_active();
+    const bool map = !dialog && !grid_ready() && map_active();
+    if (!window || (!grid_ready() && !dialog && !map)) return;
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(window, &dw, &dh);
     if (dw <= 0 || dh <= 0) return;
@@ -2055,7 +2432,40 @@ void GamepadModule::draw(SDL_Window *window) {
     const float icon_h = H * 0.045f;
     const float asp = W / H;
 
-    if (chooser_active()) {
+    if (map) {
+        /* World map: a prompt on each button the controller presses. */
+        if (ensure_icon_texture()) {
+            using namespace pvz2native::gamepad_icons;
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, icon_tex_);
+            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+            const float off = 0.040f * H;
+            auto at_bind = [&](const char *name, int icon) {
+                const int idx = find_focus_by_name(name);
+                if (idx < 0) return;
+                const FocusPoint &f = focus_points_[static_cast<size_t>(idx)];
+                draw_icon(icon, f.nx * W + off, f.ny * H + off, icon_h * 0.85f);
+            };
+            at_bind("back", B);
+            at_bind("zen_garden", RB);
+            at_bind("vasebreaker", LT);
+            draw_icon(LB, kMapAlmanacX * W + off, kMapAlmanacY * H + off, icon_h * 0.85f);
+            draw_icon(X, kMapJournalX * W + off * 1.4f, kMapJournalY * H + off * 1.4f, icon_h * 0.85f);
+            draw_icon(Y, kMapShopX * W - off * 1.2f, kMapShopY * H + off * 1.2f, icon_h * 0.85f);
+            if (event_banner_) draw_icon(RT, kMapEventX * W + 0.075f * W, kMapEventY * H - off, icon_h * 0.85f);
+            glDisable(GL_TEXTURE_2D);
+        }
+    } else if (dialog) {
+        /* Only the A prompt on the dialog's "Continue" button. */
+        if (ensure_icon_texture()) {
+            using namespace pvz2native::gamepad_icons;
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, icon_tex_);
+            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+            draw_icon(A, 0.5f * W + 0.115f * H, kDialogContinueY * H - 0.035f * H, icon_h);
+            glDisable(GL_TEXTURE_2D);
+        }
+    } else if (chooser_active()) {
         /* Seed chooser: corners on the card or bank packet under the box, Y on "Let's rock". */
         float nx = 0.0f, ny = 0.0f;
         chooser_cell_center(&nx, &ny);
@@ -2072,6 +2482,10 @@ void GamepadModule::draw(SDL_Window *window) {
             draw_icon(Y, rx - 0.135f * H, kRockY * H - 0.045f * H, icon_h);
             draw_icon(A, nx * W + cw * 0.5f, ny * H - ch * 0.5f, icon_h * 0.8f);
             draw_icon(X, kReselectX * H + 0.065f * H, kReselectY * H - 0.040f * H, icon_h);
+            draw_icon(RB, kUpgradeX * H + 0.125f * H, kUpgradeY * H, icon_h);
+            draw_icon(LT, chooser_zen_x() * H + 0.045f * H, kChooserZenY * H + 0.040f * H, icon_h * 0.9f);
+            draw_icon(RT, (1.0f - kViewLawnFromRight / asp) * W - 0.040f * H, kViewLawnY * H + 0.040f * H,
+                      icon_h * 0.9f);
             draw_icon(START, (1.0f - kPauseFromRight / asp) * W - 0.035f * H, kTopButtonsY * H + 0.045f * H,
                       icon_h * 0.75f);
             glDisable(GL_TEXTURE_2D);
@@ -2085,7 +2499,39 @@ void GamepadModule::draw(SDL_Window *window) {
         const float bx = (cx - tw * (0.5f - inset)) * W, by = (cy - th * (0.5f - inset)) * H;
         const float bw = tw * (1.0f - 2 * inset) * W, bh = th * (1.0f - 2 * inset) * H;
         if (aiming_) draw_corner_brackets(bx, by, bw, bh, t, 1.0f, 0.25f, 0.15f, pulse);
+        else if (power_active_) draw_corner_brackets(bx, by, bw, bh, t, 0.30f, 0.75f, 1.0f, pulse);
         else draw_corner_brackets(bx, by, bw, bh, t, 1.0f, 0.86f, 0.10f, pulse);
+
+        /* The power-up Back has picked: a yellow arrow centred above its button, pointing down at it. */
+        float power_arrow_x = -1.0f, power_arrow_y = 0.0f;
+        if (power_sel_ > 0) {
+            char pname[16];
+            std::snprintf(pname, sizeof(pname), "power_%d", power_sel_);
+            const int pi = find_focus_by_name(pname);
+            if (pi >= 0) {
+                const FocusPoint &f = focus_points_[static_cast<size_t>(pi)];
+                /* Centred on the button: measured from the right edge (fractions of the height) on 16:9,
+                 * the configured tap point otherwise. */
+                static const float kPowerFromRight[3] = {0.535f, 0.398f, 0.2667f};
+                const float ax = use_43_ ? f.nx * W : W - kPowerFromRight[power_sel_ - 1] * H;
+                const float tip = 0.94f * H - 0.052f * H, as = 0.028f * H;
+                const float bob = 0.006f * H * std::sin(static_cast<float>(SDL_GetTicks()) * 0.010f);
+                glColor4f(0.0f, 0.0f, 0.0f, 0.55f);
+                glBegin(GL_TRIANGLES);
+                glVertex2f(ax, tip + bob + 2.5f);
+                glVertex2f(ax - as - 3.0f, tip + bob - as * 1.4f - 2.0f);
+                glVertex2f(ax + as + 3.0f, tip + bob - as * 1.4f - 2.0f);
+                glEnd();
+                glColor4f(1.0f, 0.86f, 0.10f, 1.0f);
+                glBegin(GL_TRIANGLES);
+                glVertex2f(ax, tip + bob);
+                glVertex2f(ax - as, tip + bob - as * 1.4f);
+                glVertex2f(ax + as, tip + bob - as * 1.4f);
+                glEnd();
+                power_arrow_x = ax;
+                power_arrow_y = tip + bob - as * 0.7f;
+            }
+        }
 
         /* The chosen seed packet: a yellow frame and a marker pointing at it, as on the 360. */
         const bool packets = pvz2_game_has_seed_packets() != 0;
@@ -2093,7 +2539,7 @@ void GamepadModule::draw(SDL_Window *window) {
         float pw = 0.0f, ph = 0.0f;
         bank_packet_size_px(H, &pw, &ph);
         const int n = bank_slots();
-        if (packets && seed_slot_ > 0 && seed_slot_ <= n && !aiming_) {
+        if (packets && seed_slot_ > 0 && seed_slot_ <= n && !aiming_ && !power_active_ && power_sel_ == 0) {
             float snx = 0.0f, sny = 0.0f;
             bank_slot_center(seed_slot_, conveyor, &snx, &sny);
             if (conveyor) sny = conveyor_y_;
@@ -2131,23 +2577,55 @@ void GamepadModule::draw(SDL_Window *window) {
                 draw_icon(LB, ix, fy * H - ph * 0.5f + (conveyor ? icon_h * 0.5f : 0.0f), icon_h);
                 draw_icon(RB, ix, std::min(ly * H + ph * 0.5f, H - icon_h * 0.6f), icon_h);
             }
-            const int shovel = find_focus_by_name("shovel");
-            if (shovel >= 0) {
-                const FocusPoint &f = focus_points_[static_cast<size_t>(shovel)];
-                draw_icon(X, f.nx * W - icon_h * 0.9f, f.ny * H - icon_h * 0.7f, icon_h);
+            /* Each assigned button on the thing it presses (Settings -> Controller). */
+            struct Assigned {
+                SDL_GameControllerButton button;
+                int icon;
+            };
+            static const Assigned kAssigned[] = {
+                {SDL_CONTROLLER_BUTTON_B, B},          {SDL_CONTROLLER_BUTTON_X, X},
+                {SDL_CONTROLLER_BUTTON_Y, Y},          {SDL_CONTROLLER_BUTTON_LEFTSTICK, L3},
+                {SDL_CONTROLLER_BUTTON_RIGHTSTICK, R3}, {SDL_CONTROLLER_BUTTON_START, START},
+            };
+            std::vector<int> drawn_at;
+            bool start_custom = false;
+            for (const Assigned &a : kAssigned) {
+                const std::string act = bound_action(a.button);
+                if (act.empty()) continue;
+                if (a.button == SDL_CONTROLLER_BUTTON_START) {
+                    if (act == "pause") continue; /* drawn on the pause button below */
+                    start_custom = true;
+                }
+                const int idx = find_focus_by_name(act.c_str());
+                if (idx < 0) continue;
+                const int stack = static_cast<int>(std::count(drawn_at.begin(), drawn_at.end(), idx));
+                drawn_at.push_back(idx);
+                const FocusPoint &f = focus_points_[static_cast<size_t>(idx)];
+                draw_icon(a.icon, f.nx * W - icon_h * (0.9f + 0.9f * stack), f.ny * H - icon_h * 0.7f, icon_h);
             }
-            const int food = find_focus_by_name("plant_food");
-            if (food >= 0) {
-                const FocusPoint &f = focus_points_[static_cast<size_t>(food)];
-                draw_icon(Y, f.nx * W - icon_h * 1.1f, f.ny * H - icon_h * 0.7f, icon_h);
+            /* Back on the power-ups. */
+            const int p1 = find_focus_by_name("power_1");
+            if (p1 >= 0) {
+                const FocusPoint &f = focus_points_[static_cast<size_t>(p1)];
+                draw_icon(BACK, f.nx * W - 0.080f * H, f.ny * H - 0.045f * H, icon_h * 0.75f);
             }
             /* While aiming: RT on the box's corner, as the "fire" prompt. */
             if (aiming_) draw_icon(RT, bx + bw, by, icon_h);
-            /* Start on the pause button, LT on the speed-up button (both top right). */
-            draw_icon(START, (1.0f - kPauseFromRight / asp) * W - 0.035f * H, kTopButtonsY * H + 0.045f * H,
-                      icon_h * 0.75f);
+            /* Picking a power-up: A to use it, B to put it back, beside the arrow. */
+            if (power_arrow_x >= 0.0f) {
+                draw_icon(A, power_arrow_x + 0.050f * H, power_arrow_y, icon_h * 0.8f);
+                draw_icon(B, power_arrow_x + 0.095f * H, power_arrow_y, icon_h * 0.8f);
+            }
+            /* Start on the pause button (unless assigned elsewhere), LT on the speed-up button (top right). */
+            if (!start_custom)
+                draw_icon(START, (1.0f - kPauseFromRight / asp) * W - 0.035f * H, kTopButtonsY * H + 0.045f * H,
+                          icon_h * 0.75f);
             draw_icon(LT, (1.0f - kSpeedFromRight / asp) * W - 0.045f * H, kTopButtonsY * H + 0.040f * H,
                       icon_h * 0.9f);
+            /* Last Stand, before the battle: L3 on the "Let's rock" button. */
+            if (pvz2_game_level_last_stand() && !last_stand_started_ &&
+                bound_action(SDL_CONTROLLER_BUTTON_LEFTSTICK).empty())
+                draw_icon(L3, (1.0f - kLastStandFromRight / asp) * W - 0.165f * H, kLastStandY * H, icon_h);
             glDisable(GL_TEXTURE_2D);
         }
     }

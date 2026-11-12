@@ -21,7 +21,8 @@ struct LevelMods {
 };
 
 /* `level` with `mods` applied, or empty when the file is not a level or nothing applies to it. Vasebreaker,
- * Beghouled and tutorial levels are left alone, as are potions in a level that already has them. */
+ * Beghouled and tutorial levels are left alone; potions are not added to a level that already has them,
+ * and a Last Stand starts with none on the lawn (they come as the battle goes on). */
 std::vector<std::uint8_t> level_with_mods(const std::vector<std::uint8_t> &level, const LevelMods &mods);
 
 }  // namespace pvz2native

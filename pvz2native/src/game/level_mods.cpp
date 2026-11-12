@@ -58,7 +58,7 @@ void put_rtid(std::vector<std::uint8_t> &out, const std::string &alias, const st
     }
 }
 
-std::vector<std::uint8_t> potion_module_object() {
+std::vector<std::uint8_t> potion_module_object(std::uint64_t initial) {
     std::vector<std::uint8_t> o;
     o.push_back(0x85);
     put_str(o, "aliases");
@@ -68,7 +68,7 @@ std::vector<std::uint8_t> potion_module_object() {
     put_str(o, "objdata");
     o.push_back(0x85);
     put_str(o, "InitialPotionCount");
-    put_uint(o, kInitialPotions);
+    put_uint(o, initial);
     put_str(o, "MaxPotionCount");
     put_uint(o, kMaxPotions);
     put_str(o, "PotionSpawnTimer");
@@ -121,6 +121,7 @@ std::vector<std::uint8_t> level_with_mods(const std::vector<std::uint8_t> &level
 
     const RtonNode *modules = nullptr;
     bool has_potions = false;
+    bool last_stand = false; /* no potions at the start: they would be on the lawn while you plan */
     std::vector<const RtonNode *> wave_lists;
     for (const RtonNode &obj : objects->a) {
         const RtonNode *cls = obj.get("objclass");
@@ -130,6 +131,7 @@ std::vector<std::uint8_t> level_with_mods(const std::vector<std::uint8_t> &level
         if (data == nullptr) continue;
         if (cls->s == "LevelDefinition") modules = data->get("Modules");
         if (cls->s == "ZombiePotionModuleProperties") has_potions = true;
+        if (cls->s == "LastStandMinigameProperties") last_stand = true;
         if (const RtonNode *alias = obj.get("aliases"))
             for (const RtonNode &a : alias->a)
                 if (a.kind == RtonNode::Str && a.s == kPotionAlias) has_potions = true;
@@ -146,7 +148,7 @@ std::vector<std::uint8_t> level_with_mods(const std::vector<std::uint8_t> &level
         std::vector<std::uint8_t> ref;
         put_rtid(ref, kPotionAlias, "CurrentLevel");
         append_to_array(edits, *modules, 1, std::move(ref));
-        append_to_array(edits, *objects, 1, potion_module_object());
+        append_to_array(edits, *objects, 1, potion_module_object(last_stand ? 0 : kInitialPotions));
     }
     const int extra = mods.horde_multiplier - 1;
     for (const RtonNode *zombies : extra > 0 ? wave_lists : std::vector<const RtonNode *>{}) {

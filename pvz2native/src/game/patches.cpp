@@ -74,6 +74,7 @@ bool icontains(const std::string &hay, const char *needle) {
 }
 
 std::atomic<bool> g_level_has_conveyor{false};
+std::atomic<bool> g_level_last_stand{false};
 
 void rumble_for_sound(const std::string &name) {
     if (name.size() < 6 || std::strncmp(name.c_str(), "Play_", 5) != 0) return;
@@ -600,6 +601,9 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
                 static const char kConveyor[] = "ConveyorSeedBankProperties";
                 g_level_has_conveyor.store(std::search(bytes, bytes + size, kConveyor,
                                                        kConveyor + sizeof(kConveyor) - 1) != bytes + size);
+                static const char kLastStand[] = "LastStandMinigameProperties";
+                g_level_last_stand.store(std::search(bytes, bytes + size, kLastStand,
+                                                     kLastStand + sizeof(kLastStand) - 1) != bytes + size);
             }
             if ((mods.potions || mods.horde_multiplier > 1) && is_level) {
                 const std::vector<std::uint8_t> level =
@@ -1817,4 +1821,8 @@ void game_install_engine_clock(pvz2_elf_image_t *img) {
 
 extern "C" int pvz2_game_level_has_conveyor(void) {
     return pvz2native::g_level_has_conveyor.load() ? 1 : 0;
+}
+
+extern "C" int pvz2_game_level_last_stand(void) {
+    return pvz2native::g_level_last_stand.load() ? 1 : 0;
 }
