@@ -211,6 +211,8 @@ extern "C" int pvz2_session_frame(pvz2_session_t *s) {
     if (pvz2_config()->emulate_iap) {
         dex::iap_deliver_pending(&s->img, &s->rt);
     }
+    /* Battlez answers from the server, likewise between top-level guest calls. */
+    dex::joust_deliver_pending(&s->img, &s->rt);
 
     engine::draw_frame(&s->img, &s->rt, s->frames_run);
     ++s->frames_run;
