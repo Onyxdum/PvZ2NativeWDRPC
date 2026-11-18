@@ -201,6 +201,17 @@ void net_mark_boot_finished();
  * guest runs. */
 std::vector<std::uint8_t> read_cdn_cached_package(GuestRuntime *rt, const char *pkg_path, const char *cache_name);
 
+/* Battlez ("Joust") answered locally -- hooks/joust_local.cpp. The first says whether a URL is the
+ * Battlez game server (pvz2-gs.awspopcap.com/joust/v1/...); the second answers one of its requests with
+ * a JSON body and logs both as [joust]; the third is the generated joust_schedule (weekly tournaments
+ * from 2026), served in place of the OBB's copy, which ends in 2018. */
+bool joust_is_game_server_url(const std::string &url);
+std::string joust_local_respond(const std::string &method, const std::string &url, const std::string &body);
+std::vector<std::uint8_t> joust_schedule_rton();
+/* The Discord name a Battlez name number stands for (numbers from 1000000 up), or false for the game's
+ * own names. */
+bool joust_player_name(long long name_id, std::string &out);
+
 void register_framework_activity(HookTable &t);
 void register_google_play(HookTable &t);
 void register_facebook(HookTable &t);
