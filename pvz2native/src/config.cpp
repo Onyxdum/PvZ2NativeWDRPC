@@ -266,6 +266,11 @@ const Setting kSettings[] = {
      "Game difficulty mode: auto, off, 1..8, hard_plus, hard_plus_plus, point_zero.\n"
      "Default is auto (original dynamic difficulty).",
      "auto", nullptr},
+    {"game", "difficulty_minigames", nullptr, Kind::kBool, offsetof(pvz2_config_t, difficulty_minigames), 0,
+     "Let the difficulty modes also change minigame levels (cannons, Mummy Memory,\n"
+     "Wall-nut bowling, Beghouled...). 0 = off (default): minigames are played as the\n"
+     "game made them. 1 = on.",
+     nullptr, "0"},
 
     {"game", "package_name", nullptr, Kind::kString, offsetof(pvz2_config_t, package_name),
      sizeof(g_config.package_name),
@@ -2294,6 +2299,10 @@ const char *pvz2_config_get_difficulty(void) {
     }
     return g_config.difficulty;
 }
+
+int pvz2_config_get_difficulty_minigames(void) { return g_config.difficulty_minigames != 0 ? 1 : 0; }
+
+void pvz2_config_set_difficulty_minigames(int on) { g_config.difficulty_minigames = on ? 1 : 0; }
 
 void pvz2_config_set_difficulty(const char *mode) {
     if (!mode || mode[0] == '\0') mode = "auto";

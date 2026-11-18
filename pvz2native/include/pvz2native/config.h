@@ -122,6 +122,9 @@ typedef struct pvz2_config {
 
     /* Dynamic Difficulty override: "auto", "off", "1".."8", "hard_plus", "hard_plus_plus", "point_zero" */
     char difficulty[32];
+    /* [game] difficulty_minigames: 1 = the difficulty modes also change minigame levels (cannons, Mummy
+     * Memory, bowling...). 0 (default) = minigames are played as the game made them. */
+    int difficulty_minigames;
 
     /* [video] -- how the window and the guest surface are sized.
      *
@@ -330,6 +333,8 @@ void pvz2_config_set_paths_and_package(const char *so_path, const char *obb_path
 /* Difficulty mode accessors */
 const char *pvz2_config_get_difficulty(void);
 void pvz2_config_set_difficulty(const char *mode);
+int pvz2_config_get_difficulty_minigames(void);
+void pvz2_config_set_difficulty_minigames(int on);
 
 #ifdef __cplusplus
 }  /* extern "C" */

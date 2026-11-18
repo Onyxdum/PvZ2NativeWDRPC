@@ -79,9 +79,15 @@ std::atomic<bool> g_level_last_stand{false};
  * is chosen (both players must face the same level). */
 std::atomic<bool> g_level_is_joust{false};
 
-/* The chosen difficulty mode, or nullptr ("auto": the game's own) while a Battlez level is played. */
+/* The level being played is a minigame (cannons, Mummy Memory, Wall-nut bowling, Beghouled, Vasebreaker...):
+ * left as the game made it unless [game] difficulty_minigames is on. Last Stand is not on this list. */
+std::atomic<bool> g_level_is_minigame{false};
+
+/* The chosen difficulty mode, or nullptr ("auto": the game's own) while a Battlez level -- or a minigame,
+ * unless the player asked for difficulties there too -- is played. */
 const char *difficulty_for_level() {
     if (g_level_is_joust.load()) return nullptr;
+    if (g_level_is_minigame.load() && !pvz2_config_get_difficulty_minigames()) return nullptr;
     return pvz2_config_get_difficulty();
 }
 
@@ -605,6 +611,20 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
                 static const char kLastStand[] = "LastStandMinigameProperties";
                 g_level_last_stand.store(std::search(bytes, bytes + size, kLastStand,
                                                      kLastStand + sizeof(kLastStand) - 1) != bytes + size);
+                static const char *const kMinigameClasses[] = {
+                    "CannonMinigameProperties", "CamelMinigameProperties", "CowboyMinigameProperties",
+                    "BowlingMinigameProperties", "BeghouledPresetProperties", "BeghouledArcadeModuleProperties",
+                    "VaseBreakerPresetProperties", "VaseBreakerArcadeModuleProperties", "VaseBreakerEndlessProperties",
+                };
+                bool minigame = false;
+                for (const char *cls : kMinigameClasses) {
+                    const std::size_t n = std::strlen(cls);
+                    if (std::search(bytes, bytes + size, cls, cls + n) != bytes + size) {
+                        minigame = true;
+                        break;
+                    }
+                }
+                g_level_is_minigame.store(minigame);
                 static const char kJoust[] = "JoustGameModuleProperties";
                 g_level_is_joust.store(std::search(bytes, bytes + size, kJoust, kJoust + sizeof(kJoust) - 1) !=
                                        bytes + size);

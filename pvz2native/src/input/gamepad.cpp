@@ -8,6 +8,9 @@
 #include "pvz2native/surface.h"
 #include "gamepad_icons.h"
 
+/* main.c: hides / shows the mouse pointer over the game window. */
+extern "C" void pvz2_host_set_pointer_hidden(int hidden);
+
 #include <glad/gl.h>
 
 #include <SDL.h>
@@ -250,8 +253,9 @@ private:
     bool last_stand_started_ = false;
     /* Power-ups: Back picks one (1..3, 0 = none), A uses it; while one is active A taps the box's tile. */
     int power_sel_ = 0;
-    bool power_active_ = false;
+    bool power_active_ = false; /* a power-up is running: the free cursor aims it (see activate_power) */
     float power_timer_ = 0.0f;
+    int pointer_hidden_ = -1;   /* last state sent to pvz2_host_set_pointer_hidden (-1 = never) */
     bool event_banner_ = false; /* world map: the "Play event" banner is showing */
     bool map_loaded_ = false;   /* world map: its buttons are on screen (not the loading screen) */
     bool chooser_lt_prev_ = false, chooser_rt_prev_ = false;
@@ -259,6 +263,7 @@ private:
     /* Conveyor belt: the chosen packet is a position along the belt (fraction of the screen height), not a
      * slot, so it can follow a packet that is still moving; the right stick slides it. */
     float conveyor_y_ = 0.0f;
+    bool conveyor_sliding_ = false;
     bool lt_prev_ = false;
     DpadDir rstick_dir_ = DpadDir::None;
     float rstick_timer_ = 0.0f;
@@ -1060,6 +1065,13 @@ int GamepadModule::handle_controller_button(const SDL_Event *e) {
         }
         return 1;
     }
+    if (power_active_ && button == SDL_CONTROLLER_BUTTON_B) {
+        if (down) {
+            if (a_held_) on_button_a_release();
+            power_active_ = false; /* back to the selector */
+        }
+        return 1;
+    }
     if (map_active() && handle_map_button(button, down)) return 1;
     if (dialog_active()) {
         if (button == SDL_CONTROLLER_BUTTON_A) {
@@ -1374,6 +1386,25 @@ void GamepadModule::tick(float dt_sec) {
     tick_pending_taps(dt_sec);
     tick_rumble();
 
+    /* A running power-up: the free cursor aims it until its time is up or B is pressed. */
+    if (power_active_) {
+        power_timer_ += dt_sec;
+        if (power_timer_ > 10.0f || !pvz2_game_is_in_level() || !controller_mode_) {
+            if (a_held_) on_button_a_release();
+            power_active_ = false;
+        }
+    }
+
+    /* The mouse pointer is hidden while the selector is in use (a level, the seed chooser, a dialog) and
+     * shown again for the mouse, the free cursor and power-ups. */
+    {
+        const bool hide = controller_mode_ && !overlay_open() && (grid_active() || dialog_active());
+        if (static_cast<int>(hide) != pointer_hidden_) {
+            pointer_hidden_ = hide ? 1 : 0;
+            pvz2_host_set_pointer_hidden(pointer_hidden_);
+        }
+    }
+
     /* The wait after a level starts (camera pan, "Ready, set, plant") follows the game's state, so going
      * back to the controller after using the mouse shows the box at once. */
     {
@@ -1433,8 +1464,9 @@ static const float kStickTileThreshold = 0.55f;
 static const float kBankX = 0.0843f;
 static const float kPacketW = 0.150f, kPacketH = 0.0926f;
 static const float kBankY0 = 0.162f, kBankStep = 0.0983f;        /* regular bank: 8 slots */
-static const float kConveyorY0 = 0.048f, kConveyorStep = 0.1046f; /* conveyor belt: packets stack from the top */
-static const int kBankSlots = 8, kConveyorSlots = 9;
+/* conveyor belt: packets stack from the top, 105 px apart at 1080 (first centred at 55 px) */
+static const float kConveyorY0 = 0.0509f, kConveyorStep = 0.0972f;
+static const int kBankSlots = 8, kConveyorSlots = 10;
 
 /* Lawn on a 16:9 screen (fractions of width / height). */
 static const float kLawnX0 = 0.3630f, kLawnStepX = 0.07193f;
@@ -1476,7 +1508,7 @@ static const float kUpgradeX = 0.5713f, kUpgradeY = 0.3824f;
 
 bool GamepadModule::level_active() const {
     return grid_enabled_ && controller_mode_ && controller_ready() && !overlay_open() && pvz2_game_is_in_level() &&
-           !pvz2_game_is_paused() && grid_rows_ > 0 && grid_cols_ > 0 && !dialog_up_;
+           !pvz2_game_is_paused() && grid_rows_ > 0 && grid_cols_ > 0 && !dialog_up_ && !power_active_;
 }
 
 bool GamepadModule::chooser_active() const {
@@ -2006,6 +2038,15 @@ void GamepadModule::activate_power(int n) {
     power_timer_ = 0.0f;
     aiming_ = false;
     rumble_now(0.40f, 0.40f, 160);
+    /* Power-ups are aimed at zombies, tapped or dragged where they stand, so the selector steps aside and
+     * the cursor takes over from the box's tile: left stick moves it, A is the finger (hold and move to
+     * drag), B goes back to the selector. It ends by itself after the power-up's time. */
+    float cx = 0.0f, cy = 0.0f;
+    grid_cell_norm(&cx, &cy);
+    int wx = 0, wy = 0;
+    norm_to_window(cx, cy, &wx, &wy);
+    warp_cursor(wx, wy);
+    snap_nav_ = false;
 }
 
 int GamepadModule::handle_chooser_button(SDL_GameControllerButton button, bool down) {
@@ -2089,7 +2130,16 @@ void GamepadModule::tick_bank_right_stick(float dt_sec) {
     if (!pvz2_game_has_seed_packets()) return;
     const float ry = axis_to_float(SDL_GameControllerGetAxis(controller_, SDL_CONTROLLER_AXIS_RIGHTY));
     if (pvz2_game_level_has_conveyor()) {
-        if (std::fabs(ry) < stick_deadzone_) return;
+        if (std::fabs(ry) < stick_deadzone_) {
+            /* Let go: settle on the nearest packet position, where the packets stop. */
+            if (conveyor_sliding_) {
+                conveyor_sliding_ = false;
+                const float k = std::round((conveyor_y_ - kConveyorY0) / kConveyorStep);
+                conveyor_y_ = kConveyorY0 + kConveyorStep * std::max(0.0f, std::min(float(kConveyorSlots - 1), k));
+            }
+            return;
+        }
+        conveyor_sliding_ = true;
         if (seed_slot_ == 0) seed_slot_ = 1;
         const float top = kConveyorY0, bottom = kConveyorY0 + kConveyorStep * (kConveyorSlots - 1);
         conveyor_y_ = std::max(top, std::min(bottom, conveyor_y_ + ry * kConveyorSlideSpeed * dt_sec));
@@ -2225,12 +2275,6 @@ void GamepadModule::tick_grid(float dt_sec) {
     }
     lt_prev_ = lt;
 
-    /* A power-up lasts a few seconds; after that A goes back to planting. */
-    if (power_active_) {
-        power_timer_ += dt_sec;
-        if (power_timer_ > 10.0f) power_active_ = false;
-    }
-
     /* Keep collecting what lands on the tile while the box rests there (not while a power-up is aimed:
      * every pickup tap would spend it). */
     sweep_timer_ += dt_sec;
@@ -2326,34 +2370,130 @@ static void gl_quad(float x, float y, float w, float h) {
 }
 
 /* The Xbox 360 game's tile cursor: four L-shaped corners, with a dark edge so it reads on any lawn. */
+/* The look shared by everything the controller draws (box corners, packet frame, arrows): a soft shadow,
+ * a dark rim, a vertical gradient from a pale tint at the top of the shape to the full colour at the
+ * bottom, and a thin light line along the top of each bar. `bars` are {x, y, w, h}; `top`/`bottom` span
+ * the whole shape so the gradient runs across it, not bar by bar. `bright` (0..1) dims it for pulsing. */
+struct Bar {
+    float x, y, w, h;
+};
+static void draw_styled_bars(const Bar *bars, int n, float top, float bottom, float r, float g, float b,
+                             float bright) {
+    const float span = std::max(1.0f, bottom - top);
+    const float rim = std::max(1.5f, std::min(bars[0].w, bars[0].h) * 0.28f);
+    /* rim colour: the colour darkened to a deep brown-ish shade */
+    const float rr = 0.12f + r * 0.14f, rg = 0.07f + g * 0.10f, rb = 0.02f + b * 0.12f;
+    glBegin(GL_QUADS);
+    /* soft shadow */
+    glColor4f(0.0f, 0.0f, 0.0f, 0.28f);
+    for (int i = 0; i < n; ++i) gl_quad(bars[i].x + rim, bars[i].y + rim * 1.4f, bars[i].w, bars[i].h);
+    /* rim */
+    glColor4f(rr, rg, rb, 1.0f);
+    for (int i = 0; i < n; ++i) gl_quad(bars[i].x - rim, bars[i].y - rim, bars[i].w + 2 * rim, bars[i].h + 2 * rim);
+    glEnd();
+    /* gradient body */
+    glBegin(GL_QUADS);
+    for (int i = 0; i < n; ++i) {
+        const Bar &q = bars[i];
+        float c[2][3];
+        for (int k = 0; k < 2; ++k) {
+            const float t = std::max(0.0f, std::min(1.0f, ((k == 0 ? q.y : q.y + q.h) - top) / span));
+            const float lift = 0.45f * (1.0f - t); /* pale at the top, full colour at the bottom */
+            c[k][0] = (r + (1.0f - r) * lift) * bright;
+            c[k][1] = (g + (1.0f - g) * lift) * bright;
+            c[k][2] = (b + (1.0f - b) * lift) * bright;
+        }
+        glColor4f(c[0][0], c[0][1], c[0][2], 1.0f);
+        glVertex2f(q.x, q.y);
+        glVertex2f(q.x + q.w, q.y);
+        glColor4f(c[1][0], c[1][1], c[1][2], 1.0f);
+        glVertex2f(q.x + q.w, q.y + q.h);
+        glVertex2f(q.x, q.y + q.h);
+    }
+    glEnd();
+    /* light line along the top edge of the wide bars */
+    glBegin(GL_QUADS);
+    glColor4f(1.0f, 1.0f, 1.0f, 0.40f * bright);
+    for (int i = 0; i < n; ++i)
+        if (bars[i].w > bars[i].h * 1.5f) gl_quad(bars[i].x + 1.0f, bars[i].y + 1.0f, bars[i].w - 2.0f, std::max(1.0f, bars[i].h * 0.22f));
+    glEnd();
+}
+
+/* The Xbox 360 game's tile cursor: four L-shaped corners. */
 static void draw_corner_brackets(float x, float y, float w, float h, float t, float r, float g, float b, float a) {
     const float L = std::min(w, h) * 0.30f;
-    for (int pass = 0; pass < 2; ++pass) {
-        const float o = pass == 0 ? 1.5f : 0.0f; /* outline first, then the colour */
-        const float tt = t + 2.0f * o;
-        if (pass == 0) glColor4f(0.0f, 0.0f, 0.0f, 0.55f * a);
-        else glColor4f(r * a + (1.0f - a) * r * 0.6f, g * a + (1.0f - a) * g * 0.6f, b * a + (1.0f - a) * b * 0.6f,
-                       1.0f); /* pulse by brightness, not transparency: no see-through seams */
-        const float x0 = x - o, y0 = y - o, x1 = x + w + o, y1 = y + h + o, LL = L + o;
-        /* Each corner is a horizontal bar plus a vertical bar that starts where the horizontal one ends:
-         * overlapping them would draw the corner square twice, darker than the rest when translucent. */
-        glBegin(GL_QUADS);
-        gl_quad(x0, y0, LL, tt);            gl_quad(x0, y0 + tt, tt, LL - tt);          /* top left */
-        gl_quad(x1 - LL, y0, LL, tt);       gl_quad(x1 - tt, y0 + tt, tt, LL - tt);     /* top right */
-        gl_quad(x0, y1 - tt, LL, tt);       gl_quad(x0, y1 - LL, tt, LL - tt);          /* bottom left */
-        gl_quad(x1 - LL, y1 - tt, LL, tt);  gl_quad(x1 - tt, y1 - LL, tt, LL - tt);     /* bottom right */
+    const float x1 = x + w, y1 = y + h;
+    /* Each corner is a horizontal bar plus a vertical bar that starts where the horizontal one ends:
+     * overlapping them would draw the corner square twice. */
+    const Bar bars[8] = {
+        {x, y, L, t},           {x, y + t, t, L - t},          /* top left */
+        {x1 - L, y, L, t},      {x1 - t, y + t, t, L - t},     /* top right */
+        {x, y1 - t, L, t},      {x, y1 - L, t, L - t},         /* bottom left */
+        {x1 - L, y1 - t, L, t}, {x1 - t, y1 - L, t, L - t},    /* bottom right */
+    };
+    draw_styled_bars(bars, 8, y, y1, r, g, b, 0.80f + 0.20f * a);
+}
+
+/* A game-style pointer arrow: shaft and head, dark brown rim, gold gradient (light at the back, deep at the
+ * tip), a light streak along the shaft and a soft shadow. `tip_x/tip_y` is where it points; `s` its head
+ * half-width; `left` = pointing left (body to the right of the tip), otherwise pointing down. */
+static void draw_pointer_arrow(float tip_x, float tip_y, float s, bool left) {
+    /* Outline of the arrow in its own frame: tip at (0,0), pointing down (+y), body at negative y. */
+    static const float kShape[7][2] = {
+        {0.0f, 0.0f}, {-1.0f, -1.05f}, {-0.40f, -1.05f}, {-0.40f, -2.0f},
+        {0.40f, -2.0f}, {0.40f, -1.05f}, {1.0f, -1.05f},
+    };
+    auto place = [&](float x, float y, float &ox, float &oy) {
+        if (left) {
+            ox = tip_x - y * s;
+            oy = tip_y + x * s;
+        } else {
+            ox = tip_x + x * s;
+            oy = tip_y + y * s;
+        }
+    };
+    /* Head and shaft as triangles (indices into kShape). */
+    static const int kTris[3][3] = {{0, 1, 6}, {2, 3, 4}, {2, 4, 5}};
+    auto fill = [&](float dx, float dy, float r0, float g0, float b0, float r1, float g1, float b1, float a) {
+        glBegin(GL_TRIANGLES);
+        for (const auto &tri : kTris) {
+            for (int k : tri) {
+                const float t = -kShape[k][1] / 2.0f; /* 0 at the tip, 1 at the back */
+                glColor4f(r0 + (r1 - r0) * t, g0 + (g1 - g0) * t, b0 + (b1 - b0) * t, a);
+                float ox = 0.0f, oy = 0.0f;
+                place(kShape[k][0], kShape[k][1], ox, oy);
+                glVertex2f(ox + dx, oy + dy);
+            }
+        }
         glEnd();
-    }
+    };
+    const float rim = std::max(2.0f, s * 0.12f);
+    /* soft shadow */
+    fill(rim * 1.2f, rim * 1.6f, 0, 0, 0, 0, 0, 0, 0.30f);
+    /* dark brown rim: the shape stamped around itself */
+    static const float kRing[8][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {0.7f, 0.7f}, {-0.7f, 0.7f}, {0.7f, -0.7f}, {-0.7f, -0.7f}};
+    for (const auto &d : kRing)
+        fill(d[0] * rim, d[1] * rim, 0.23f, 0.13f, 0.03f, 0.23f, 0.13f, 0.03f, 1.0f);
+    /* gold body: deep orange-gold at the tip, pale yellow at the back */
+    fill(0, 0, 0.96f, 0.62f, 0.05f, 1.0f, 0.93f, 0.45f, 1.0f);
+    /* light streak along the shaft */
+    float x0, y0, x1, y1, x2, y2, x3, y3;
+    place(-0.30f, -1.95f, x0, y0);
+    place(-0.12f, -1.95f, x1, y1);
+    place(-0.12f, -1.10f, x2, y2);
+    place(-0.30f, -1.10f, x3, y3);
+    glColor4f(1.0f, 1.0f, 1.0f, 0.45f);
+    glBegin(GL_QUADS);
+    glVertex2f(x0, y0);
+    glVertex2f(x1, y1);
+    glVertex2f(x2, y2);
+    glVertex2f(x3, y3);
+    glEnd();
 }
 
 static void draw_frame_rect(float x, float y, float w, float h, float t, float r, float g, float b, float a) {
-    glColor4f(r, g, b, a);
-    glBegin(GL_QUADS);
-    gl_quad(x, y, w, t);
-    gl_quad(x, y + h - t, w, t);
-    gl_quad(x, y + t, t, h - 2 * t);
-    gl_quad(x + w - t, y + t, t, h - 2 * t);
-    glEnd();
+    const Bar bars[4] = {{x, y, w, t}, {x, y + h - t, w, t}, {x, y + t, t, h - 2 * t}, {x + w - t, y + t, t, h - 2 * t}};
+    draw_styled_bars(bars, 4, y, y + h, r, g, b, a);
 }
 
 bool GamepadModule::ensure_icon_texture() {
@@ -2395,7 +2535,8 @@ void GamepadModule::draw(SDL_Window *window) {
     probe_screen(window);
     const bool dialog = dialog_active();
     const bool map = !dialog && !grid_ready() && map_active();
-    if (!window || (!grid_ready() && !dialog && !map)) return;
+    const bool power_cursor = power_active_ && controller_mode_ && !overlay_open() && pvz2_game_is_in_level();
+    if (!window || (!grid_ready() && !dialog && !map && !power_cursor)) return;
     int dw = 0, dh = 0;
     SDL_GL_GetDrawableSize(window, &dw, &dh);
     if (dw <= 0 || dh <= 0) return;
@@ -2432,7 +2573,22 @@ void GamepadModule::draw(SDL_Window *window) {
     const float icon_h = H * 0.045f;
     const float asp = W / H;
 
-    if (map) {
+    if (power_cursor) {
+        /* Aiming a power-up with the cursor: A (tap / hold to drag) and B (back to the selector) beside it. */
+        if (ensure_icon_texture()) {
+            using namespace pvz2native::gamepad_icons;
+            int ww = 0, wh = 0;
+            SDL_GetWindowSize(window, &ww, &wh);
+            const float sx = ww > 0 ? W / static_cast<float>(ww) : 1.0f, sy = wh > 0 ? H / static_cast<float>(wh) : 1.0f;
+            const float mx = cursor_x_ * sx, my = cursor_y_ * sy;
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, icon_tex_);
+            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+            draw_icon(A, mx + 0.050f * H, my + 0.045f * H, icon_h * 0.75f);
+            draw_icon(B, mx + 0.088f * H, my + 0.045f * H, icon_h * 0.75f);
+            glDisable(GL_TEXTURE_2D);
+        }
+    } else if (map) {
         /* World map: a prompt on each button the controller presses. */
         if (ensure_icon_texture()) {
             using namespace pvz2native::gamepad_icons;
@@ -2472,7 +2628,7 @@ void GamepadModule::draw(SDL_Window *window) {
         const float cw = (chooser_col_ == 0 ? kPacketW : kCardW) * H;
         const float ch = (chooser_col_ == 0 ? kPacketH : kCardH) * H;
         draw_corner_brackets(nx * W - cw * 0.5f - t, ny * H - ch * 0.5f - t, cw + 2 * t, ch + 2 * t, t,
-                             1.0f, 0.86f, 0.10f, pulse);
+                             1.0f, 0.78f, 0.08f, pulse);
         if (ensure_icon_texture()) {
             using namespace pvz2native::gamepad_icons;
             glEnable(GL_TEXTURE_2D);
@@ -2500,7 +2656,7 @@ void GamepadModule::draw(SDL_Window *window) {
         const float bw = tw * (1.0f - 2 * inset) * W, bh = th * (1.0f - 2 * inset) * H;
         if (aiming_) draw_corner_brackets(bx, by, bw, bh, t, 1.0f, 0.25f, 0.15f, pulse);
         else if (power_active_) draw_corner_brackets(bx, by, bw, bh, t, 0.30f, 0.75f, 1.0f, pulse);
-        else draw_corner_brackets(bx, by, bw, bh, t, 1.0f, 0.86f, 0.10f, pulse);
+        else draw_corner_brackets(bx, by, bw, bh, t, 1.0f, 0.78f, 0.08f, pulse);
 
         /* The power-up Back has picked: a yellow arrow centred above its button, pointing down at it. */
         float power_arrow_x = -1.0f, power_arrow_y = 0.0f;
@@ -2512,24 +2668,15 @@ void GamepadModule::draw(SDL_Window *window) {
                 const FocusPoint &f = focus_points_[static_cast<size_t>(pi)];
                 /* Centred on the button: measured from the right edge (fractions of the height) on 16:9,
                  * the configured tap point otherwise. */
-                static const float kPowerFromRight[3] = {0.535f, 0.398f, 0.2667f};
+                /* Gold rim centres measured at 1920x1080: 585.5, 448 and 309.5 px from the right edge. */
+                static const float kPowerFromRight[3] = {0.5421f, 0.4148f, 0.2866f};
                 const float ax = use_43_ ? f.nx * W : W - kPowerFromRight[power_sel_ - 1] * H;
-                const float tip = 0.94f * H - 0.052f * H, as = 0.028f * H;
-                const float bob = 0.006f * H * std::sin(static_cast<float>(SDL_GetTicks()) * 0.010f);
-                glColor4f(0.0f, 0.0f, 0.0f, 0.55f);
-                glBegin(GL_TRIANGLES);
-                glVertex2f(ax, tip + bob + 2.5f);
-                glVertex2f(ax - as - 3.0f, tip + bob - as * 1.4f - 2.0f);
-                glVertex2f(ax + as + 3.0f, tip + bob - as * 1.4f - 2.0f);
-                glEnd();
-                glColor4f(1.0f, 0.86f, 0.10f, 1.0f);
-                glBegin(GL_TRIANGLES);
-                glVertex2f(ax, tip + bob);
-                glVertex2f(ax - as, tip + bob - as * 1.4f);
-                glVertex2f(ax + as, tip + bob - as * 1.4f);
-                glEnd();
+                const float as = 0.024f * H;
+                const float bob = 0.007f * H * (0.5f + 0.5f * std::sin(static_cast<float>(SDL_GetTicks()) * 0.009f));
+                const float tip = 0.94f * H - 0.050f * H - bob;
+                draw_pointer_arrow(ax, tip, as, false);
                 power_arrow_x = ax;
-                power_arrow_y = tip + bob - as * 0.7f;
+                power_arrow_y = tip - as * 1.5f;
             }
         }
 
@@ -2539,27 +2686,17 @@ void GamepadModule::draw(SDL_Window *window) {
         float pw = 0.0f, ph = 0.0f;
         bank_packet_size_px(H, &pw, &ph);
         const int n = bank_slots();
+        float seed_frame_y = -1.0f, seed_frame_right = 0.0f; /* where the chosen packet's frame is, if drawn */
         if (packets && seed_slot_ > 0 && seed_slot_ <= n && !aiming_ && !power_active_ && power_sel_ == 0) {
             float snx = 0.0f, sny = 0.0f;
             bank_slot_center(seed_slot_, conveyor, &snx, &sny);
             if (conveyor) sny = conveyor_y_;
             const float px = snx * W - pw * 0.5f, py = sny * H - ph * 0.5f;
-            draw_frame_rect(px - 1.5f, py - 1.5f, pw + 3.0f, ph + 3.0f, t + 3.0f, 0.0f, 0.0f, 0.0f, 0.5f);
-            draw_frame_rect(px, py, pw, ph, t, 1.0f, 0.86f, 0.10f, 1.0f);
+            draw_frame_rect(px, py, pw, ph, t, 1.0f, 0.78f, 0.08f, 1.0f);
             /* Marker beside the packet, pointing at it. */
-            const float mx = px + pw + t * 1.5f, my = sny * H, ms = ph * 0.22f;
-            glColor4f(0.0f, 0.0f, 0.0f, 0.55f);
-            glBegin(GL_TRIANGLES);
-            glVertex2f(mx - 2.0f, my);
-            glVertex2f(mx + ms + 2.0f, my - ms - 2.0f);
-            glVertex2f(mx + ms + 2.0f, my + ms + 2.0f);
-            glEnd();
-            glColor4f(1.0f, 0.86f, 0.10f, 1.0f);
-            glBegin(GL_TRIANGLES);
-            glVertex2f(mx, my);
-            glVertex2f(mx + ms, my - ms);
-            glVertex2f(mx + ms, my + ms);
-            glEnd();
+            draw_pointer_arrow(px + pw + t * 2.0f, sny * H, ph * 0.17f, true);
+            seed_frame_y = sny * H;
+            seed_frame_right = px + pw;
         }
 
         /* Button prompts on the things they work. */
@@ -2574,8 +2711,31 @@ void GamepadModule::draw(SDL_Window *window) {
                 bank_slot_center(1, conveyor, &fx, &fy);
                 bank_slot_center(n, conveyor, &lx, &ly);
                 const float ix = fx * W + pw * 0.5f + icon_h * 0.85f;
-                draw_icon(LB, ix, fy * H - ph * 0.5f + (conveyor ? icon_h * 0.5f : 0.0f), icon_h);
-                draw_icon(RB, ix, std::min(ly * H + ph * 0.5f, H - icon_h * 0.6f), icon_h);
+                if (conveyor && seed_frame_y >= 0.0f) {
+                    /* Conveyor: the prompts travel with the frame -- LB above it, RB below it, and the right
+                     * stick (with up / down marks) beside the arrow, since it slides the frame along the belt. */
+                    const float lb_y = std::max(icon_h * 0.6f, seed_frame_y - ph * 0.5f - icon_h * 0.55f);
+                    const float rb_y = std::min(H - icon_h * 0.6f, seed_frame_y + ph * 0.5f + icon_h * 0.55f);
+                    draw_icon(LB, seed_frame_right - icon_h * 0.6f, lb_y, icon_h * 0.9f);
+                    draw_icon(RB, seed_frame_right - icon_h * 0.6f, rb_y, icon_h * 0.9f);
+                    const float sx = seed_frame_right + ph * 0.17f * 2.6f + icon_h * 0.75f;
+                    draw_icon(R3, sx, seed_frame_y, icon_h * 0.85f);
+                    glDisable(GL_TEXTURE_2D);
+                    const float m = icon_h * 0.13f, gap = icon_h * 0.58f;
+                    draw_pointer_arrow(sx, seed_frame_y + gap + m * 2.0f, m, false); /* down */
+                    /* up: the same arrow, mirrored -- drawn as a down arrow flipped about its tip */
+                    glMatrixMode(GL_MODELVIEW);
+                    glPushMatrix();
+                    glTranslatef(sx, seed_frame_y - gap - m * 2.0f, 0.0f);
+                    glScalef(1.0f, -1.0f, 1.0f);
+                    draw_pointer_arrow(0.0f, 0.0f, m, false);
+                    glPopMatrix();
+                    glEnable(GL_TEXTURE_2D);
+                    glBindTexture(GL_TEXTURE_2D, icon_tex_);
+                } else {
+                    draw_icon(LB, ix, fy * H - ph * 0.5f + (conveyor ? icon_h * 0.5f : 0.0f), icon_h);
+                    draw_icon(RB, ix, std::min(ly * H + ph * 0.5f, H - icon_h * 0.6f), icon_h);
+                }
             }
             /* Each assigned button on the thing it presses (Settings -> Controller). */
             struct Assigned {
@@ -2613,8 +2773,8 @@ void GamepadModule::draw(SDL_Window *window) {
             if (aiming_) draw_icon(RT, bx + bw, by, icon_h);
             /* Picking a power-up: A to use it, B to put it back, beside the arrow. */
             if (power_arrow_x >= 0.0f) {
-                draw_icon(A, power_arrow_x + 0.050f * H, power_arrow_y, icon_h * 0.8f);
-                draw_icon(B, power_arrow_x + 0.095f * H, power_arrow_y, icon_h * 0.8f);
+                draw_icon(A, power_arrow_x + 0.046f * H, power_arrow_y, icon_h * 0.72f);
+                draw_icon(B, power_arrow_x + 0.084f * H, power_arrow_y, icon_h * 0.72f);
             }
             /* Start on the pause button (unless assigned elsewhere), LT on the speed-up button (top right). */
             if (!start_custom)

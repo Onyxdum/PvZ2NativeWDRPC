@@ -230,6 +230,7 @@ struct Strings {
 	const char *diff_hard_plus;
 	const char *diff_hard_plus_plus;
 	const char *diff_point_zero;
+	const char *diff_minigames; /* checkbox: difficulty modes also change minigame levels */
 };
 
 static const Strings kStringsEN = {
@@ -267,7 +268,8 @@ static const Strings kStringsEN = {
 	"Lock Mouse to Window",
 	"Difficulty", "Dynamic (Vanilla)", "Disabled (Level 0)",
 	"Hard + (Level 9)", "Hard ++ (70% More Zombies, No Mowers)",
-	"Point 0 (Hard ++ & Zombie Potions)"
+	"Point 0 (Hard ++ & Zombie Potions)",
+	"Difficulty in Minigames Too"
 };
 static const Strings kStringsES = {
 	"Configuración",
@@ -304,7 +306,8 @@ static const Strings kStringsES = {
 	"Bloquear ratón en ventana",
 	"Dificultad", "Dinámica (Vanilla)", "Desactivada (Nivel 0)",
 	"Difícil + (Nivel 9)", "Difícil ++ (+70% Zombies, Sin Podadoras)",
-	"Punto 0 (Difícil ++ y Pociones)"
+	"Punto 0 (Difícil ++ y Pociones)",
+	"Dificultad también en minijuegos"
 };
 static const Strings kStringsFR = {
 	"Configuration",
@@ -341,7 +344,8 @@ static const Strings kStringsFR = {
 	"Bloquer la souris dans la fenêtre",
 	"Difficulté", "Dynamique (Original)", "Désactivée (Niveau 0)",
 	"Difficile + (Niveau 9)", "Difficile ++ (+70% Zombies, Sans Tondeuses)",
-	"Point 0 (Difficile ++ et Potions)"
+	"Point 0 (Difficile ++ et Potions)",
+	"Difficulté aussi dans les mini-jeux"
 };
 static const Strings kStringsDE = {
 	"Konfiguration",
@@ -378,7 +382,8 @@ static const Strings kStringsDE = {
 	"Maus im Fenster sperren",
 	"Schwierigkeit", "Dynamisch (Original)", "Deaktiviert (Stufe 0)",
 	"Schwer + (Stufe 9)", "Schwer ++ (+70% Zombies, Keine Rasenmäher)",
-	"Punkt 0 (Schwer ++ und Tränke)"
+	"Punkt 0 (Schwer ++ und Tränke)",
+	"Schwierigkeit auch in Minispielen"
 };
 static const Strings kStringsPT = {
 	"Configurações",
@@ -415,7 +420,8 @@ static const Strings kStringsPT = {
 	"Bloquear mouse na janela",
 	"Dificuldade", "Dinâmica (Original)", "Desativada (Nível 0)",
 	"Difícil + (Nível 9)", "Difícil ++ (+70% Zumbis, Sem Cortadores)",
-	"Ponto 0 (Difícil ++ e Poções)"
+	"Ponto 0 (Difícil ++ e Poções)",
+	"Dificuldade também em minijogos"
 };
 static const Strings kStringsIT = {
 	"Configurazione",
@@ -452,7 +458,8 @@ static const Strings kStringsIT = {
 	"Blocca mouse nella finestra",
 	"Difficoltà", "Dinamica (Originale)", "Disattivata (Livello 0)",
 	"Difficile + (Livello 9)", "Difficile ++ (+70% Zombie, Senza Tosaerba)",
-	"Punto 0 (Difficile ++ e Pozioni)"
+	"Punto 0 (Difficile ++ e Pozioni)",
+	"Difficoltà anche nei minigiochi"
 };
 
 static const Strings *get_strings(const char *locale) {
@@ -1419,6 +1426,7 @@ struct EditConfig {
 	int  rewrite_cdn  = 0;
 	int  lock_cursor  = 0;
 	char difficulty[32] = "auto";
+	int  difficulty_minigames = 0;
 
 	void load_from_live() {
 		const pvz2_config_t *c = pvz2_config();
@@ -1431,6 +1439,7 @@ struct EditConfig {
 		SDL_strlcpy(cur_symbol, c->currency_symbol,  sizeof(cur_symbol));
 		SDL_strlcpy(cur_code,   c->currency_code,    sizeof(cur_code));
 		SDL_strlcpy(difficulty, pvz2_config_get_difficulty(), sizeof(difficulty));
+		difficulty_minigames = pvz2_config_get_difficulty_minigames();
 		emulate_iap  = c->emulate_iap;
 		achievement_notifications = c->achievement_notifications;
 		use_cdn      = c->use_cdn;
@@ -2111,6 +2120,9 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
             bool sel = (strcmp(g_edit.difficulty, m) == 0);
             items.push_back({label, false, false, sel, ""});
         }
+        {
+            items.push_back({str->diff_minigames, false, false, g_edit.difficulty_minigames != 0, ""});
+        }
     } else if (screen == Screen::Bindings) {
         /* One edit-icon row per bind entry */
         const pvz2_config_t *cfg = pvz2_config();
@@ -2407,6 +2419,8 @@ static void write_overlay_settings_to_ini(void) {
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.achievement_notifications);
 	set_key("game", "achievement_notifications", tmp);
 	set_key("game", "difficulty", g_edit.difficulty);
+	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.difficulty_minigames);
+	set_key("game", "difficulty_minigames", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.use_cdn);
 	set_key("runtime", "use_cdn", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.rewrite_cdn);
@@ -3423,6 +3437,8 @@ static void handle_event(const SDL_Event *e) {
 		};
 		for (const char *m : s_diff_modes)
 			ritems.push_back({false,false,false,strcmp(g_edit.difficulty, m) == 0,-1,0,0,0,0,m,nullptr,nullptr});
+		/* last row: difficulty in minigames (checkbox) */
+		ritems.push_back({false,false,false,g_edit.difficulty_minigames != 0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 	} else if (g_screen == Screen::Resolution) {
 		const std::vector<ResOpt> opts = filtered_res_opts(
 			g_edit.fullscreen, g_edit.video_width, g_edit.video_height);
@@ -3977,6 +3993,10 @@ static void handle_event(const SDL_Event *e) {
 						SDL_strlcpy(g_edit.difficulty, s_diff_modes[i], sizeof(g_edit.difficulty));
 						pvz2_config_set_difficulty(g_edit.difficulty);
 						write_overlay_settings_to_ini();
+					} else if (i == sizeof(s_diff_modes)/sizeof(s_diff_modes[0])) {
+						g_edit.difficulty_minigames = !g_edit.difficulty_minigames;
+						pvz2_config_set_difficulty_minigames(g_edit.difficulty_minigames);
+						write_overlay_settings_to_ini();
 					}
 				} else if (g_screen == Screen::Events) {
 					if (i == 0) g_edit.use_cdn = !g_edit.use_cdn;
@@ -4165,23 +4185,38 @@ void draw_pad_focus(void) {
 	if (y < top - 1.0f || y + h > bot + 1.0f) return;
 	const float t = std::max(3.0f, sc(6.0f, s)), L = h * 0.30f;
 	const float pulse = 0.80f + 0.20f * std::sin((float)SDL_GetTicks() * 0.008f);
+	/* Same look as the controller's lawn selector: soft shadow, dark rim, gold gradient (pale at the top),
+	 * light line along the top of the wide bars. */
+	const float x0 = x + sc(4.0f, s), y0 = y + sc(4.0f, s);
+	const float x1 = x + w - sc(4.0f, s), y1 = y + h - sc(4.0f, s);
+	const float bars[8][4] = {
+		{x0, y0, L, t},           {x0, y0 + t, t, L - t},
+		{x1 - L, y0, L, t},       {x1 - t, y0 + t, t, L - t},
+		{x0, y1 - t, L, t},       {x0, y1 - L, t, L - t},
+		{x1 - L, y1 - t, L, t},   {x1 - t, y1 - L, t, L - t},
+	};
+	const float rim = std::max(1.5f, t * 0.28f), span = std::max(1.0f, y1 - y0);
+	auto q = [](float qx, float qy, float qw, float qh) {
+		glVertex2f(qx, qy); glVertex2f(qx + qw, qy); glVertex2f(qx + qw, qy + qh); glVertex2f(qx, qy + qh);
+	};
 	glDisable(GL_TEXTURE_2D);
-	for (int pass = 0; pass < 2; ++pass) {
-		const float o = pass == 0 ? 1.5f : 0.0f, tt = t + 2 * o, LL = L + o;
-		const float x0 = x + sc(4.0f, s) - o, y0 = y + sc(4.0f, s) - o;
-		const float x1 = x + w - sc(4.0f, s) + o, y1 = y + h - sc(4.0f, s) + o;
-		if (pass == 0) glColor4f(0, 0, 0, 0.55f);
-		else glColor4f(1.0f * pulse, 0.86f * pulse, 0.10f * pulse, 1.0f);
-		auto q = [](float qx, float qy, float qw, float qh) {
-			glVertex2f(qx, qy); glVertex2f(qx + qw, qy); glVertex2f(qx + qw, qy + qh); glVertex2f(qx, qy + qh);
-		};
-		glBegin(GL_QUADS);
-		q(x0, y0, LL, tt);           q(x0, y0 + tt, tt, LL - tt);
-		q(x1 - LL, y0, LL, tt);      q(x1 - tt, y0 + tt, tt, LL - tt);
-		q(x0, y1 - tt, LL, tt);      q(x0, y1 - LL, tt, LL - tt);
-		q(x1 - LL, y1 - tt, LL, tt); q(x1 - tt, y1 - LL, tt, LL - tt);
-		glEnd();
+	glBegin(GL_QUADS);
+	glColor4f(0, 0, 0, 0.28f);
+	for (const auto &b : bars) q(b[0] + rim, b[1] + rim * 1.4f, b[2], b[3]);
+	glColor4f(0.26f, 0.15f, 0.03f, 1.0f);
+	for (const auto &b : bars) q(b[0] - rim, b[1] - rim, b[2] + 2 * rim, b[3] + 2 * rim);
+	for (const auto &b : bars) {
+		const float t0 = (b[1] - y0) / span, t1 = (b[1] + b[3] - y0) / span;
+		const float l0 = 0.45f * (1.0f - t0), l1 = 0.45f * (1.0f - t1);
+		glColor4f((1.0f) * pulse, (0.78f + 0.22f * l0) * pulse, (0.08f + 0.92f * l0) * pulse, 1.0f);
+		glVertex2f(b[0], b[1]); glVertex2f(b[0] + b[2], b[1]);
+		glColor4f((1.0f) * pulse, (0.78f + 0.22f * l1) * pulse, (0.08f + 0.92f * l1) * pulse, 1.0f);
+		glVertex2f(b[0] + b[2], b[1] + b[3]); glVertex2f(b[0], b[1] + b[3]);
 	}
+	glColor4f(1, 1, 1, 0.40f * pulse);
+	for (const auto &b : bars)
+		if (b[2] > b[3] * 1.5f) q(b[0] + 1.0f, b[1] + 1.0f, b[2] - 2.0f, std::max(1.0f, b[3] * 0.22f));
+	glEnd();
 	glEnable(GL_TEXTURE_2D);
 }
 
