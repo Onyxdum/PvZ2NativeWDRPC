@@ -216,6 +216,11 @@ void register_libgles(ImportTable &t);
 bool gl_strict_enabled();
 void gl_check_error_after(GuestCall &c, const char *name);
 
+/* Forgets which program the guest last bound (libgles.cpp tracks it so it never
+ * has to ask the driver). Called before every guest frame, because the host's
+ * own overlays bind their programs between frames without going through it. */
+void gl_forget_current_program();
+
 void register_libstdcxx(ImportTable &t);
 void register_libopensles(ImportTable &t);
 void register_libdl(ImportTable &t);
