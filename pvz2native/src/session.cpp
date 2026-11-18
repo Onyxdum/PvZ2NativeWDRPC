@@ -29,6 +29,7 @@
 #include <pvz2native/diagnostics/diagnostics.h>
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/engine/engine.h>
+#include <pvz2native/gfx/joust_avatars.h>
 #include <pvz2native/quest_fix.h>
 #include <pvz2native/game/patches.h>
 #include <pvz2native/game/symbols.h>
@@ -213,6 +214,8 @@ extern "C" int pvz2_session_frame(pvz2_session_t *s) {
     }
     /* Battlez answers from the server, likewise between top-level guest calls. */
     dex::joust_deliver_pending(&s->img, &s->rt);
+    /* Discord pictures that finished downloading go into the Battlez avatar atlas (GL thread). */
+    pvz2native::joust_avatars::tick_gl();
 
     engine::draw_frame(&s->img, &s->rt, s->frames_run);
     ++s->frames_run;

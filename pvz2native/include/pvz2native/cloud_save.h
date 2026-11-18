@@ -32,6 +32,8 @@ typedef struct Pvz2CloudConfig {
     char auth_discord_id[64];
     char auth_discord_name[128];
     char auth_discord_token[256];
+    /* Discord avatar hash of that account ("" = Discord's default picture), for Battlez. */
+    char auth_discord_avatar[64];
 
     /* Authenticated Google Drive account (top button when provider == Google Drive) */
     char gdrive_user[128];

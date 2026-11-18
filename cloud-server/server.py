@@ -48,6 +48,23 @@ def verify_discord_token(token: str, expected_id: str) -> bool:
     return discord_user_name(token, expected_id) is not None
 
 
+def discord_avatar_url(discord_id: str, avatar_hash) -> str:
+    """The account's profile picture on Discord's CDN, or Discord's default one."""
+    if avatar_hash:
+        return "https://cdn.discordapp.com/avatars/%s/%s.png?size=256" % (discord_id, avatar_hash)
+    try:
+        return "https://cdn.discordapp.com/embed/avatars/%d.png" % ((int(discord_id) >> 22) % 6)
+    except ValueError:
+        return "https://cdn.discordapp.com/embed/avatars/0.png"
+
+
+def discord_cached_avatar(discord_id: str) -> str:
+    for entry in TOKEN_CACHE.values():
+        if entry.get("id") == discord_id and entry.get("avatar"):
+            return entry["avatar"]
+    return discord_avatar_url(discord_id, None)
+
+
 def discord_user_name(token: str, expected_id: str, fallback_name: str = ""):
     """The Discord display name of the token's account when it is `expected_id`, else None.
     `fallback_name` (what the client says) is used only when the account is verified from the cache and
@@ -74,7 +91,8 @@ def discord_user_name(token: str, expected_id: str, fallback_name: str = ""):
             real_id = str(user.get("id", ""))
             if real_id and real_id == expected_id:
                 name = user.get("global_name") or user.get("username") or "Player"
-                TOKEN_CACHE[tok_hash] = {"id": real_id, "name": name, "ts": int(time.time())}
+                avatar = discord_avatar_url(real_id, user.get("avatar"))
+                TOKEN_CACHE[tok_hash] = {"id": real_id, "name": name, "avatar": avatar, "ts": int(time.time())}
                 save_token_cache()
                 return name
     except Exception:
@@ -93,16 +111,23 @@ def discord_user_name(token: str, expected_id: str, fallback_name: str = ""):
 # and is ignored. Protocol: CLAUDE.md section 3.E. One tournament per week from Monday 2026-01-05 00:00
 # UTC, the same calendar the port generates for joust_schedule.
 #
-# Names: the game shows a player's name from a NUMBER. Every Discord account gets one from 1000000 up
-# (`nameId`), and each response carries {"names": {"<nameId>": "<Discord name>"}} for the numbers in it,
-# which the port shows instead of the game's own names.
+# Names and pictures: the game shows a player's name and avatar from NUMBERS, and zeroes any number out of
+# its own range while reading a response (name ids up to 9980, icons 0..24, icon k = AVATAR_k+1). So:
+#   - every Discord account gets a name id from 9000 up (`nameId`; the AI uses 1..8999), and each response
+#     carries {"names": {"<nameId>": "<Discord name>"}}, which the port shows instead of the game's names;
+#   - icons 15..24 (AVATAR_16..25) are handed out per response to the Discord players in it, the player
+#     first, and {"avatars": {"<icon>": "<picture URL>"}} says whose picture the port paints into each of
+#     them; the AI uses icons 0..14.
 
 JOUST_FILE = os.path.join(DATA_DIR, "_joust.json")
 JOUST_LOCK = threading.Lock()
 JOUST_SCHEDULE_BASE = 1767571200  # Monday 2026-01-05 00:00 UTC
 JOUST_WEEK = 7 * 24 * 3600
 JOUST_LEVEL_SETS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 22, 27]
-JOUST_NAME_BASE = 1000000
+JOUST_NAME_BASE = 9000      # Discord players: 9000..9980 (the game's limit is 9981 names)
+JOUST_NAME_LAST = 9980
+JOUST_ICON_FIRST = 15       # Discord pictures: icons 15..24
+JOUST_ICON_LAST = 24
 JOUST_MAX_REPLAYS = 500
 JOUST_MAX_REPLAY_CHARS = 64 * 1024
 JOUST_CROWNS_WIN = 5   # CrownSet_Normal
@@ -119,7 +144,14 @@ def joust_load():
     data.setdefault("players", {})
     data.setdefault("replays", [])
     data.setdefault("matches", {})
-    data.setdefault("nextNameId", JOUST_NAME_BASE + 1)
+    # Name ids handed out before the game's range was known (1000001...) move into 9000..9980.
+    if data.get("nextNameId", 0) > JOUST_NAME_LAST:
+        nxt = JOUST_NAME_BASE
+        for q in data["players"].values():
+            q["nameId"] = nxt
+            nxt += 1
+        data["nextNameId"] = nxt
+    data.setdefault("nextNameId", JOUST_NAME_BASE)
     return data
 
 
@@ -147,11 +179,15 @@ def joust_player(discord_id, name):
     players = JOUST["players"]
     p = players.get(discord_id)
     if p is None:
-        p = {"nameId": JOUST["nextNameId"], "icon": 0, "league": 1, "crowns": 0, "crownStreak": 0,
+        if JOUST["nextNameId"] > JOUST_NAME_LAST:
+            JOUST["nextNameId"] = JOUST_NAME_BASE  # more players than names: numbers are shared
+        p = {"nameId": JOUST["nextNameId"], "league": 1, "crowns": 0, "crownStreak": 0,
              "rewardStreak": 0, "difficultyBand": 0, "totalWins": 0, "tournament": joust_week()}
         JOUST["nextNameId"] += 1
         players[discord_id] = p
+    p.pop("icon", None)
     p["name"] = name
+    p["avatar"] = discord_cached_avatar(discord_id)
     week = joust_week()
     if p.get("tournament") != week:
         p["tournament"] = week
@@ -159,9 +195,33 @@ def joust_player(discord_id, name):
     return p
 
 
-def joust_state(p):
+class JoustPeople:
+    """The Discord players one response shows: their names, and an icon 15..24 each with its picture."""
+
+    def __init__(self):
+        self.names, self.avatars, self.icons = {}, {}, {}
+
+    def icon(self, q):
+        if "nameId" not in q:
+            return 0
+        self.names[str(q["nameId"])] = q.get("name", "Player")
+        key = q["nameId"]
+        if key not in self.icons:
+            icon = JOUST_ICON_FIRST + len(self.icons)
+            if icon > JOUST_ICON_LAST:
+                return 0  # more players than squares: the game's first avatar
+            self.icons[key] = icon
+            if q.get("avatar"):
+                self.avatars[str(icon)] = q["avatar"]
+        return self.icons[key]
+
+    def fields(self):
+        return {"names": self.names, "avatars": self.avatars}
+
+
+def joust_state(p, people):
     return {k: p[k] for k in ("league", "crowns", "crownStreak", "rewardStreak", "difficultyBand",
-                              "totalWins", "icon")} | {"name": p["nameId"]}
+                              "totalWins")} | {"name": p["nameId"], "icon": people.icon(p)}
 
 
 def joust_table(league=None):
@@ -173,48 +233,49 @@ def joust_table(league=None):
     return rows
 
 
-def joust_dashboard(discord_id, p):
+def joust_dashboard(discord_id, p, people):
     week = joust_week()
-    rows = joust_table(p["league"])
-    board, names, position = [], {}, 1
-    for i, (did, q) in enumerate(rows):
+    state = joust_state(p, people)  # the player takes the first square
+    board, position = [], 0
+    for i, (did, q) in enumerate(joust_table(p["league"])):
         if did == discord_id:
-            position = i + 1
-        board.append({"name": q["nameId"], "icon": q.get("icon", 0), "crowns": q.get("crowns", 0)})
-        names[str(q["nameId"])] = q.get("name", "Player")
+            position = i  # the game reads it as a 0-based row index
+        board.append({"name": q["nameId"], "icon": people.icon(q), "crowns": q.get("crowns", 0)})
     end_left = JOUST_SCHEDULE_BASE + (week + 1) * JOUST_WEEK - int(time.time())
     return {"tournament": {"tournamentId": week + 1, "endTime": max(0, end_left)},
-            "position": position, "state": joust_state(p), "leaderboard": board, "names": names}
+            "position": position, "state": state, "leaderboard": board}
 
 
-def joust_match(discord_id, p):
+def joust_match(discord_id, p, people):
     """An opponent: the replay of another player on this week's level, else the game's own AI."""
+    people.icon(p)
     seed = joust_level_seed(joust_week())
-    pool = [r for r in JOUST["replays"] if r["levelSeed"] == seed and r["player"] != discord_id]
+    # A match left at once scores 0 and replays nothing: never an opponent.
+    pool = [r for r in JOUST["replays"]
+            if r["levelSeed"] == seed and r["player"] != discord_id and r.get("score", 0) > 0]
     same_league = [r for r in pool if r.get("league") == p["league"]]
     pool = (same_league or pool)[-50:]
     match_id = "m%d-%s" % (int(time.time() * 1000), secrets.token_hex(4))
-    names = {}
     if pool:
         r = random.choice(pool)
-        q = JOUST["players"].get(r["player"], {})
-        opp = {"opponentId": r["player"], "name": q.get("nameId", 0), "icon": q.get("icon", 0),
+        q = JOUST["players"].get(r["player"]) or {}
+        opp = {"opponentId": r["player"], "name": q.get("nameId", 0), "icon": people.icon(q),
                "league": r.get("league", 1), "levelSeed": seed, "score": r["score"], "replay": r["replay"]}
-        names[str(q.get("nameId", 0))] = q.get("name", "Player")
     else:
-        opp = {"opponentId": "ai-%d" % random.randint(1, 10 ** 6), "name": random.randint(1, 9980),
-               "icon": random.randint(1, 25), "league": p["league"], "levelSeed": seed, "score": 0,
-               "replay": ""}
+        # The game's own names and avatars, outside the numbers kept for Discord players.
+        opp = {"opponentId": "ai-%d" % random.randint(1, 10 ** 6), "name": random.randint(1, JOUST_NAME_BASE - 1),
+               "icon": random.randint(0, JOUST_ICON_FIRST - 1), "league": p["league"], "levelSeed": seed,
+               "score": 0, "replay": ""}
     JOUST["matches"][match_id] = {"player": discord_id, "opponentId": opp["opponentId"], "levelSeed": seed,
                                   "ts": int(time.time())}
     # Forget matches nobody finished after a day.
     cutoff = time.time() - 86400
     for mid in [m for m, v in JOUST["matches"].items() if v.get("ts", 0) < cutoff]:
         del JOUST["matches"][mid]
-    return {"matchId": match_id, "opponents": [opp], "names": names}
+    return {"matchId": match_id, "opponents": [opp]}
 
 
-def joust_complete(discord_id, p, body):
+def joust_complete(discord_id, p, body, people):
     r = body.get("r") or {}
     match = JOUST["matches"].get(str(body.get("matchId", "")))
     if match is None or match.get("player") != discord_id:
@@ -230,13 +291,13 @@ def joust_complete(discord_id, p, body):
         p["crownStreak"] = 0
         p["rewardStreak"] = 0
     replay = str(r.get("replay") or "")
-    if replay and len(replay) <= JOUST_MAX_REPLAY_CHARS:
+    if replay and len(replay) <= JOUST_MAX_REPLAY_CHARS and int(r.get("score") or 0) > 0:
         JOUST["replays"].append({"player": discord_id, "levelSeed": str(r.get("levelSeed") or match["levelSeed"]),
                                  "league": p["league"], "score": int(r.get("score") or 0), "replay": replay,
                                  "ts": int(time.time())})
         del JOUST["replays"][:-JOUST_MAX_REPLAYS]
     match["done"] = True
-    return 200, {"grantedRewards": {"crowns": granted}, "state": joust_state(p)}
+    return 200, {"grantedRewards": {"crowns": granted}, "state": joust_state(p, people)}
 
 
 def joust_finalize(discord_id, p, body):
@@ -250,22 +311,21 @@ def joust_handle(route, discord_id, name, body):
     """(status, payload) for one Battlez request from an authenticated Discord account."""
     with JOUST_LOCK:
         p = joust_player(discord_id, name)
-        if route in ("dashboard", "registerForTournament"):
-            code, out = 200, joust_dashboard(discord_id, p)
-        elif route == "avatar":
-            try:
-                p["icon"] = int(body.get("icon", p["icon"]))
-            except (TypeError, ValueError):
-                pass
-            code, out = 200, joust_dashboard(discord_id, p)
+        people = JoustPeople()
+        if route in ("dashboard", "registerForTournament", "avatar"):
+            # avatar: the game's avatar picker has nothing to choose, the Discord picture is the avatar.
+            code, out = 200, joust_dashboard(discord_id, p, people)
         elif route == "match":
-            code, out = 200, joust_match(discord_id, p)
+            code, out = 200, joust_match(discord_id, p, people)
         elif route == "completeMatch":
-            code, out = joust_complete(discord_id, p, body)
+            code, out = joust_complete(discord_id, p, body, people)
         elif route == "finalizeMatch":
             code, out = joust_finalize(discord_id, p, body)
         else:
             code, out = 404, {"error": "unknown_route"}
+        if code == 200:
+            people.icon(p)
+            out |= people.fields()
         joust_save()
     return code, out
 
@@ -325,6 +385,14 @@ class SaveHandler(BaseHTTPRequestHandler):
         if VALID_ID_RE.match(discord_id) and auth.lower().startswith("bearer "):
             claimed = urllib.parse.unquote(self.headers.get("X-Discord-Name", "")).strip()
             name = discord_user_name(auth[7:].strip(), discord_id, claimed)
+            claimed_avatar = self.headers.get("X-Discord-Avatar", "").strip()
+            if name is not None and re.fullmatch(r"(a_)?[0-9a-f]{32}", claimed_avatar):
+                # Same rule as the name: only for an account verified by its token, and only when the
+                # avatar could not be read from Discord itself.
+                with JOUST_LOCK:
+                    for entry in TOKEN_CACHE.values():
+                        if entry.get("id") == discord_id and not entry.get("avatar"):
+                            entry["avatar"] = discord_avatar_url(discord_id, claimed_avatar)
         if name is None:
             self._send_json(401, {"ErrorCode": "INVALID_PLAYER_ID"})
             return
@@ -335,9 +403,10 @@ class SaveHandler(BaseHTTPRequestHandler):
                 self._send_json(413, {"error": "invalid_payload_size"})
                 return
             try:
-                # The game's request body can end with its C string terminator.
-                raw = self.rfile.read(length).rstrip(b"\x00 \r\n\t")
-                body = json.loads(raw.decode("utf-8") or "{}")
+                # The game's request body can carry a stray byte or a NUL after the JSON value
+                # (older ports sent them): read the first value and ignore what follows it.
+                raw = self.rfile.read(length).decode("utf-8", "replace").strip("\x00 \r\n\t")
+                body = json.JSONDecoder().raw_decode(raw)[0] if raw else {}
                 if not isinstance(body, dict):
                     body = {}
             except Exception:
