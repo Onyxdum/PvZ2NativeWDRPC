@@ -27,6 +27,7 @@
  */
 
 #include <pvz2native/dex/dex.h>
+#include <pvz2native/cloud_save.h>
 #include <pvz2native/config.h>
 #include <pvz2native/credits_screen.h>
 #include <pvz2native/dependencies/vfs.h>
@@ -71,6 +72,8 @@ struct TxInfo {
     std::string url;
     int status_code = 0;
     int response_length = 0;
+    std::string body;    /* SetRequestBody */
+    std::string headers; /* SetRequestHeader, "k: v; " -- logged for Battlez only */
 };
 
 std::mutex g_lock;
@@ -170,6 +173,14 @@ constexpr CdnPackageMap kCdnPackageMap[] = {
     {"arcade_config.json", "PACKAGES\\ARCADE_CONFIG.RTON"},
     {"easquared_config.json", "PACKAGES\\EASQUARED_CONFIG.RTON"},
     {"lootmodifierschedule.json", "PACKAGES\\LOOTMODIFIERSCHEDULE.RTON"},
+    /* Battlez (6.6.1; absent from 4.5.2's OBB, where the seed just skips them). joust_schedule is
+     * generated instead -- see joust_local.cpp. */
+    {"joust_config.json", "PACKAGES\\JOUST_CONFIG.RTON"},
+    {"joust_levels.json", "PACKAGES\\JOUST_LEVELS.RTON"},
+    {"joust_leaderboards.json", "PACKAGES\\JOUST_LEADERBOARDS.RTON"},
+    {"joust_crownrewards.json", "PACKAGES\\JOUST_CROWNREWARDS.RTON"},
+    {"joust_progressiverewards.json", "PACKAGES\\JOUST_PROGRESSIVEREWARDS.RTON"},
+    {"joust_tournamentrewards.json", "PACKAGES\\JOUST_TOURNAMENTREWARDS.RTON"},
 };
 
 std::string packages_path_for_cdn(const std::string &url) {
@@ -429,7 +440,15 @@ bool resolve_cdn_body(GuestRuntime *rt, const std::string &url, std::string &src
             return true;
         }
     }
-    return false;
+
+    /* A folder seeded before this file joined kCdnPackageMap lacks it: take it from the OBB now. */
+    body = read_obb_packages_file(rt, packages_path_for_cdn(url));
+    drop_packages_cache();
+    if (body.empty()) return false;
+    const std::string out = root + "/" + bare_l + "." + tag;
+    if (host_files::write(out, body)) pvz2_log("[http] CDN seed added %s from the OBB", out.c_str());
+    src_label = out;
+    return true;
 }
 
 TxInfo tx_copy(std::uint32_t thiz) {
@@ -566,11 +585,42 @@ void start(DexCall &d) {
 
     const bool is_get =
         tx.method.empty() || tx.method == "GET" || tx.method == "get";
+
+    /* Battlez game server: answered locally (phase 1, see joust_local.cpp), whatever use_cdn says. */
+    if (joust_is_game_server_url(tx.url)) {
+        /* Battlez needs the Discord account linked for cloud saves (it is the player's identity on the
+         * server); without it the request fails and the game shows its "Disconnected" dialog. */
+        const Pvz2CloudConfig *cloud = pvz2_cloud_config();
+        if (cloud == nullptr || cloud->auth_discord_id[0] == '\0' || cloud->auth_discord_token[0] == '\0') {
+            d.c.log("[joust] %s refused: no Discord account linked (settings > cloud save)", tx.url.c_str());
+            fail_tx(d, tx);
+            return;
+        }
+        if (!tx.headers.empty()) d.c.log("[joust]   request headers: %s", tx.headers.c_str());
+        const std::string json = joust_local_respond(tx.method, tx.url, tx.body);
+        const std::vector<std::uint8_t> body(json.begin(), json.end());
+        if (serve_local(d, tx, "joust-local", body)) {
+            d.ret(0);
+            return;
+        }
+        fail_tx(d, tx);
+        return;
+    }
+
     if (pvz2_config()->use_cdn == 0) {
         static bool announced = false;
         if (!announced) {
             announced = true;
             d.c.log("[http] use_cdn=0 -- CDN requests are not served; the game uses the OBB data only");
+        }
+    } else if (is_get && !tx.url.empty() &&
+               ascii_lower_copy(strip_cdn_version_suffix(basename_of(url_rel_path(tx.url)))) ==
+                   "joust_schedule.json") {
+        /* The OBB's schedule ends in 2018 -- serve a generated one with current dates. */
+        const std::vector<std::uint8_t> body = joust_schedule_rton();
+        if (serve_local(d, tx, "generated joust_schedule", body)) {
+            d.ret(0);
+            return;
         }
     } else if (is_get && !tx.url.empty()) {
         std::string src;
@@ -586,6 +636,31 @@ void start(DexCall &d) {
     }
 
     fail_tx(d, tx);
+}
+
+/* void SetRequestBody(byte[]) -- kept for the local Battlez server and for the log. Our byte[] IS its
+ * buffer (jni_env.cpp), allocated at exactly the array's length. */
+void set_request_body(DexCall &d) {
+    const std::uint32_t arr = d.arg(0);
+    std::string body;
+    if (arr != 0) {
+        const std::uint32_t len = d.c.rt->heap.size_of(arr);
+        body.assign(reinterpret_cast<const char *>(&d.c.img->mem[arr]), len);
+    }
+    std::lock_guard<std::mutex> lk(g_lock);
+    auto it = g_tx.find(d.thiz);
+    if (it != g_tx.end()) it->second.body = std::move(body);
+    d.ret(0);
+}
+
+/* void SetRequestHeader(String, String) */
+void set_request_header(DexCall &d) {
+    const std::string k = d.string_arg(0);
+    const std::string v = d.string_arg(1);
+    std::lock_guard<std::mutex> lk(g_lock);
+    auto it = g_tx.find(d.thiz);
+    if (it != g_tx.end()) it->second.headers += k + ": " + v + "; ";
+    d.ret(0);
 }
 
 /* void Release() -- the engine is done with the transaction; forget its mapping
@@ -694,6 +769,9 @@ void register_android_http(HookTable &t) {
     t.add(kClass, "<init>", ctor);
     t.add(kClass, "Start", start);
     t.add(kClass, "Release", release);
+    t.add(kClass, "SetRequestBody", set_request_body);
+    t.add(kClass, "SetRequestHeader", set_request_header);
+    t.add(kClass, "SetTimeout", hook_ignored);
     t.add(kClass, "GetStatusCode", get_status_code);
     t.add(kClass, "GetResponseLength", get_response_length);
     t.add(kClass, "GetStatusLine", get_status_line);

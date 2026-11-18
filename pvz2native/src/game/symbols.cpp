@@ -337,6 +337,7 @@ const GameSymbols kVersions[] = {
             .show_lawn_mowers_fn    = 0x6e84cc,
             .rton_open_memory_fn    = 0xc67038,
             .wwise_id_from_string_fn = 0xed5100,
+            .joust_avatar_name_fn   = 0x6b155c,
         },
         .fingerprint_draw_frame    = 0xE79F0000E59F0004ull, /* LDR R0,[PC,#4]; LDR R0,[PC,R0]     */
         .fingerprint_game_app_init = 0xE28DB01CE92D4FF0ull, /* PUSH {R4-R11,LR}; ADD R11,SP,#0x1C */

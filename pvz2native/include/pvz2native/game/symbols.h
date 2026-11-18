@@ -309,6 +309,9 @@ struct GameSymbols {
         /* Wwise AK::SoundEngine::GetIDFromString(const char *): every sound event the game plays by
          * name ("Play_CherryBomb") is hashed here first. */
         std::uint32_t wwise_id_from_string_fn;
+        /* Battlez: (32-bit wide string *out, int nameId) -> the text key of a player name ("[JOUST_AVATAR_NAME...]",
+         * from JoustConfig AvatarNamePattern). Every Battlez name on screen comes through it. 6.6.1 only. */
+        std::uint32_t joust_avatar_name_fn;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.

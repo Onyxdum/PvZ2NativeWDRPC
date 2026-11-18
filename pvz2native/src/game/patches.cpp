@@ -75,6 +75,15 @@ bool icontains(const std::string &hay, const char *needle) {
 
 std::atomic<bool> g_level_has_conveyor{false};
 std::atomic<bool> g_level_last_stand{false};
+/* The level being played is a Battlez one: matches are played as the game made them, whatever difficulty
+ * is chosen (both players must face the same level). */
+std::atomic<bool> g_level_is_joust{false};
+
+/* The chosen difficulty mode, or nullptr ("auto": the game's own) while a Battlez level is played. */
+const char *difficulty_for_level() {
+    if (g_level_is_joust.load()) return nullptr;
+    return pvz2_config_get_difficulty();
+}
 
 void rumble_for_sound(const std::string &name) {
     if (name.size() < 6 || std::strncmp(name.c_str(), "Play_", 5) != 0) return;
@@ -526,7 +535,7 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
         const std::uint32_t dda_target = sym().patch.dynamic_difficulty_fn;
         constexpr std::uint32_t kDdaPush = 0xe92d4830u; /* push {r4, r5, fp, lr} */
         install_svc_at(img, dda_target, kDdaPush, "board.dynamic_difficulty", [](GuestCall &call) {
-            const char *mode = pvz2_config_get_difficulty();
+            const char *mode = difficulty_for_level();
             if (!mode || std::strcmp(mode, "auto") == 0) {
                 emulate_push(call, {4, 5, 11}, call.lr());
                 call.no_return();
@@ -554,7 +563,7 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
         const bool is_661 = (std::strcmp(sym().version, "6.6.1") == 0);
         const std::uint32_t kSlmExpect = is_661 ? 0xe92d4df0u : 0xe92d47f0u;
         install_svc_at(img, slm_target, kSlmExpect, "board.spawn_lawn_mower", [](GuestCall &call) {
-            const char *mode = pvz2_config_get_difficulty();
+            const char *mode = difficulty_for_level();
             if (mode && (std::strcmp(mode, "hard_plus_plus") == 0 || std::strcmp(mode, "point_zero") == 0)) {
                 call.set_result(0);
                 return;
@@ -579,14 +588,6 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
         const std::uint32_t kRtonOpenPush = is_661 ? 0xe92d4df0u  /* push {r4-r8, sl, fp, lr} */
                                                    : 0xe92d48f0u; /* push {r4-r7, fp, lr} */
         install_svc_at(img, sym().patch.rton_open_memory_fn, kRtonOpenPush, "rton.open_memory", [](GuestCall &call) {
-            const char *mode = pvz2_config_get_difficulty();
-            LevelMods mods;
-            if (mode != nullptr && std::strcmp(mode, "point_zero") == 0) {
-                mods.potions = true;
-                mods.horde_multiplier = 4;
-            } else if (mode != nullptr && std::strcmp(mode, "hard_plus_plus") == 0) {
-                mods.horde_multiplier = 3;
-            }
             const std::uint32_t data = call.regs[1];
             const std::uint32_t size = call.regs[2];
             static const char kLevelClass[] = "LevelDefinition";
@@ -604,6 +605,17 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
                 static const char kLastStand[] = "LastStandMinigameProperties";
                 g_level_last_stand.store(std::search(bytes, bytes + size, kLastStand,
                                                      kLastStand + sizeof(kLastStand) - 1) != bytes + size);
+                static const char kJoust[] = "JoustGameModuleProperties";
+                g_level_is_joust.store(std::search(bytes, bytes + size, kJoust, kJoust + sizeof(kJoust) - 1) !=
+                                       bytes + size);
+            }
+            const char *mode = difficulty_for_level();
+            LevelMods mods;
+            if (mode != nullptr && std::strcmp(mode, "point_zero") == 0) {
+                mods.potions = true;
+                mods.horde_multiplier = 4;
+            } else if (mode != nullptr && std::strcmp(mode, "hard_plus_plus") == 0) {
+                mods.horde_multiplier = 3;
             }
             if ((mods.potions || mods.horde_multiplier > 1) && is_level) {
                 const std::vector<std::uint8_t> level =
@@ -640,6 +652,61 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
             call.no_return();
             call.regs[15] = call.img->so_base + sym().patch.wwise_id_from_string_fn + 4;
         }, "sound rumble");
+    }
+
+    /* Battlez names: the game carries a player's name as a number and builds the text key of one of its
+     * own names from it here. For our numbers (Discord accounts, see joust_local.cpp) the result is the
+     * Discord name itself -- plain text, which the game shows as it is. */
+    if (sym().patch.joust_avatar_name_fn != 0) {
+        constexpr std::uint32_t kAvatarNamePush = 0xe92d4df0u; /* push {r4-r8, sl, fp, lr} */
+        install_svc_at(img, sym().patch.joust_avatar_name_fn, kAvatarNamePush, "joust.avatar_name",
+                       [](GuestCall &call) {
+            std::string name;
+            const std::uint32_t out = call.regs[0];
+            if (pvz2_config()->verbose)
+                pvz2_log("[joust] name id %d requested (lr=0x%08x)", (std::int32_t)call.regs[1],
+                         call.lr() - call.img->so_base);
+            if (dex::joust_player_name((std::int32_t)call.regs[1], name) && !name.empty()) {
+                /* The result is a WIDE string (libc++ std::basic_string of 32-bit chars -- "onyxdum" written
+                 * as bytes came out as "odnn"), always written in the long form {capacity|1, size, data}:
+                 * the short one only holds one character. The UTF-8 name is decoded to code points. The
+                 * game frees the buffer with operator delete, which lands in the same guest heap. */
+                std::vector<std::uint32_t> wide;
+                for (std::size_t i = 0; i < name.size();) {
+                    const unsigned char c = (unsigned char)name[i];
+                    std::uint32_t cp = c;
+                    int extra = 0;
+                    if (c >= 0xF0) { cp = c & 0x07; extra = 3; }
+                    else if (c >= 0xE0) { cp = c & 0x0F; extra = 2; }
+                    else if (c >= 0xC0) { cp = c & 0x1F; extra = 1; }
+                    ++i;
+                    for (int k = 0; k < extra && i < name.size(); ++k, ++i)
+                        cp = (cp << 6) | ((unsigned char)name[i] & 0x3F);
+                    wide.push_back(cp);
+                }
+                const std::uint32_t n = (std::uint32_t)wide.size();
+                bool written = false;
+                {
+                    const std::uint32_t cap = (n + 4) & ~3u; /* in characters */
+                    const std::uint32_t data = call.rt->heap.alloc(cap * 4, call.lr());
+                    if (data != 0) {
+                        for (std::uint32_t i = 0; i < n; ++i) call.write32(data + i * 4, wide[i]);
+                        call.write32(data + n * 4, 0);
+                        call.write32(out, cap | 1u);
+                        call.write32(out + 4, n);
+                        call.write32(out + 8, data);
+                        written = true;
+                    }
+                }
+                if (written) {
+                    call.set_result(out);
+                    return;
+                }
+            }
+            emulate_push(call, {4, 5, 6, 7, 8, 10, 11}, call.lr());
+            call.no_return();
+            call.regs[15] = call.img->so_base + sym().patch.joust_avatar_name_fn + 4;
+        }, "Battlez Discord names");
     }
 
     if (sym().patch.zomboss_setup_stage == 0) return;
