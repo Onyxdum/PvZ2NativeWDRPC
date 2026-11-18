@@ -49,6 +49,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace pvz2native {
@@ -78,6 +79,15 @@ struct TxInfo {
 
 std::mutex g_lock;
 std::map<std::uint32_t, TxInfo> g_tx;
+
+/* Battlez answers waiting to be handed to the engine (guarded by g_lock). */
+struct JoustDone {
+    std::uint32_t thiz;
+    std::uint32_t native;
+    int status;
+    std::string body;
+};
+std::vector<JoustDone> g_joust_done;
 
 /* Absolute path of `userdata/...` from the process cwd (the build dir). */
 std::string userdata_path(const std::string &rel) {
@@ -596,14 +606,17 @@ void start(DexCall &d) {
             fail_tx(d, tx);
             return;
         }
-        if (!tx.headers.empty()) d.c.log("[joust]   request headers: %s", tx.headers.c_str());
-        const std::string json = joust_local_respond(tx.method, tx.url, tx.body);
-        const std::vector<std::uint8_t> body(json.begin(), json.end());
-        if (serve_local(d, tx, "joust-local", body)) {
-            d.ret(0);
-            return;
-        }
-        fail_tx(d, tx);
+        if (!tx.headers.empty() && pvz2_config()->verbose)
+            d.c.log("[joust]   request headers: %s", tx.headers.c_str());
+        /* Asynchronous, as on a device: the server is asked on a worker thread, and the answer reaches
+         * the engine between frames (joust_deliver_pending). The engine shows its own spinner. */
+        const std::uint32_t thiz = d.thiz;
+        std::thread([thiz, tx]() {
+            JoustReply reply = joust_request(tx.method, tx.url, tx.body);
+            std::lock_guard<std::mutex> lk(g_lock);
+            g_joust_done.push_back({thiz, tx.native, reply.status, std::move(reply.body)});
+        }).detach();
+        d.ret(0);
         return;
     }
 
@@ -646,6 +659,8 @@ void set_request_body(DexCall &d) {
     if (arr != 0) {
         const std::uint32_t len = d.c.rt->heap.size_of(arr);
         body.assign(reinterpret_cast<const char *>(&d.c.img->mem[arr]), len);
+        /* The engine's array can carry its C string's terminator; a JSON parser rejects it. */
+        while (!body.empty() && body.back() == '\0') body.pop_back();
     }
     std::lock_guard<std::mutex> lk(g_lock);
     auto it = g_tx.find(d.thiz);
@@ -753,6 +768,55 @@ std::vector<std::uint8_t> read_cdn_cached_package(GuestRuntime *rt, const char *
     if (!body.empty() && host_files::write(file, body))
         pvz2_log("[http] cached %s from the OBB into %s", pkg_path, file.c_str());
     return body;
+}
+
+void joust_deliver_pending(pvz2_elf_image_t *img, GuestRuntime *rt) {
+    std::vector<JoustDone> due;
+    {
+        std::lock_guard<std::mutex> lk(g_lock);
+        if (g_joust_done.empty()) return;
+        due.swap(g_joust_done);
+    }
+    const std::uint32_t resp = http_cb(sym().jni_native.http_received_response, "HttpReceivedResponse");
+    const std::uint32_t data = http_cb(sym().jni_native.http_received_data, "HttpReceivedData");
+    const std::uint32_t done = http_cb(sym().jni_native.http_transaction_complete, "HttpTransactionComplete");
+    const std::uint32_t err = http_cb(sym().jni_native.http_transaction_error, "HttpTransactionError");
+    for (JoustDone &j : due) {
+        bool alive;
+        {
+            std::lock_guard<std::mutex> lk(g_lock);
+            auto it = g_tx.find(j.thiz);
+            alive = it != g_tx.end() && it->second.native == j.native;
+            if (alive) {
+                it->second.status_code = j.status;
+                it->second.response_length = (int)j.body.size();
+            }
+        }
+        if (!alive) {
+            pvz2_log("[joust] answer for a released transaction 0x%08x dropped", j.thiz);
+            continue;
+        }
+        /* Same order and arguments as serve_local, called the way the purchase driver calls back. */
+        const std::uint32_t base = img->so_base;
+        if (j.status == 0 || resp == 0 || data == 0 || done == 0) {
+            if (err != 0) {
+                const std::uint32_t a[4] = {kJniEnvPtrAddr, j.thiz, j.native, 0};
+                call_guest_between_frames_n(base + err, a, 4);
+            }
+            continue;
+        }
+        const std::uint32_t a[4] = {kJniEnvPtrAddr, j.thiz, j.native, 0};
+        call_guest_between_frames_n(base + resp, a, 4);
+        for (std::size_t off = 0; off < j.body.size(); off += kDataChunk) {
+            const std::size_t n = std::min(kDataChunk, j.body.size() - off);
+            const std::uint32_t arr = rt->heap.alloc((std::uint32_t)n);
+            if (arr == 0) break;
+            std::memcpy(&img->mem[arr], j.body.data() + off, n);
+            const std::uint32_t ad[6] = {kJniEnvPtrAddr, j.thiz, j.native, 0, arr, (std::uint32_t)n};
+            call_guest_between_frames_n(base + data, ad, 6);
+        }
+        call_guest_between_frames_n(base + done, a, 4);
+    }
 }
 
 void net_mark_boot_finished() {

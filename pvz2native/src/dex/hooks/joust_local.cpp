@@ -33,15 +33,24 @@
 #include <pvz2native/host_files.h>
 #include <pvz2native/log.h>
 
+#include <atomic>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
+#include <map>
 #include <mutex>
 #include <random>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 namespace pvz2native {
 namespace dex {
@@ -346,14 +355,168 @@ std::string match_result_json_locked(const std::string &body, bool finalize) {
 
 }  // namespace
 
+namespace {
+
+std::mutex g_names_lock;
+std::map<long long, std::string> g_names; /* name number -> Discord name, from the server's "names" */
+
+/* Reads a JSON string literal starting at text[p] == '"'; returns the position after it. */
+std::size_t read_json_string(const std::string &text, std::size_t p, std::string &out) {
+    out.clear();
+    for (++p; p < text.size() && text[p] != '"'; ++p) {
+        char ch = text[p];
+        if (ch == '\\' && p + 1 < text.size()) {
+            ch = text[++p];
+            if (ch == 'n') ch = '\n';
+            else if (ch == 't') ch = '\t';
+            else if (ch == 'u' && p + 4 < text.size()) {
+                const unsigned cp = (unsigned)std::strtoul(text.substr(p + 1, 4).c_str(), nullptr, 16);
+                p += 4;
+                if (cp < 0x80) out.push_back((char)cp);
+                else if (cp < 0x800) {
+                    out.push_back((char)(0xC0 | (cp >> 6)));
+                    out.push_back((char)(0x80 | (cp & 0x3F)));
+                } else {
+                    out.push_back((char)(0xE0 | (cp >> 12)));
+                    out.push_back((char)(0x80 | ((cp >> 6) & 0x3F)));
+                    out.push_back((char)(0x80 | (cp & 0x3F)));
+                }
+                continue;
+            }
+        }
+        out.push_back(ch);
+    }
+    return p + 1;
+}
+
+/* Remembers the server's {"names": {"<number>": "<Discord name>", ...}}. */
+void register_names(const std::string &json) {
+    std::size_t p = json.find("\"names\"");
+    if (p == std::string::npos) return;
+    p = json.find('{', p);
+    if (p == std::string::npos) return;
+    std::lock_guard<std::mutex> lk(g_names_lock);
+    while (p < json.size()) {
+        p = json.find_first_of("\"}", p + 1);
+        if (p == std::string::npos || json[p] == '}') break;
+        std::string key, value;
+        p = read_json_string(json, p, key);
+        p = json.find('"', p);
+        if (p == std::string::npos) break;
+        p = read_json_string(json, p, value) - 1;
+        g_names[std::atoll(key.c_str())] = value;
+    }
+}
+
+#if defined(_WIN32)
+int run_hidden(const std::string &cmd) {
+    STARTUPINFOA si{};
+    PROCESS_INFORMATION pi{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    std::string cmdline = "cmd.exe /C \"" + cmd + "\"";
+    std::vector<char> buf(cmdline.begin(), cmdline.end());
+    buf.push_back('\0');
+    if (!CreateProcessA(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si,
+                        &pi))
+        return -1;
+    WaitForSingleObject(pi.hProcess, 20000);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return (int)code;
+}
+#else
+int run_hidden(const std::string &cmd) { return std::system((cmd + " >/dev/null 2>&1").c_str()); }
+#endif
+
+}  // namespace
+
 bool joust_player_name(long long name_id, std::string &out) {
     /* The local player's own row takes its number from the profile, not from state.name, and an
      * avatar never picked there is 0 -- so 0 is the local player too. Nobody else is ever sent 0. */
-    if (name_id != kLocalNameId && name_id != 0) return false;
+    if (name_id != kLocalNameId && name_id != 0) {
+        std::lock_guard<std::mutex> lk(g_names_lock);
+        auto it = g_names.find(name_id);
+        if (it == g_names.end() || it->second.empty()) return false;
+        out = it->second;
+        return true;
+    }
     const Pvz2CloudConfig *cloud = pvz2_cloud_config();
     if (cloud == nullptr || cloud->auth_discord_name[0] == '\0') return false;
     out = cloud->auth_discord_name;
     return true;
+}
+
+JoustReply joust_request(const std::string &method, const std::string &url, const std::string &body) {
+    JoustReply reply;
+    const Pvz2CloudConfig *cloud = pvz2_cloud_config();
+    std::string base = (cloud && cloud->nas_server_url[0]) ? cloud->nas_server_url : PVZ2_DEFAULT_NAS_SERVER_URL;
+    while (!base.empty() && base.back() == '/') base.pop_back();
+    const auto v1 = url.find("/joust/v1/");
+    const bool linked = cloud && cloud->auth_discord_id[0] && cloud->auth_discord_token[0];
+    if (v1 != std::string::npos && linked) {
+        const std::string target = base + url.substr(v1);
+        /* One temp file set per request: several may be in flight. */
+        static std::atomic<unsigned> s_seq{0};
+        const std::filesystem::path dir = std::filesystem::temp_directory_path();
+        const std::string tag = "pvz2_joust_" + std::to_string(s_seq.fetch_add(1)) + "_";
+        const std::filesystem::path in_file = dir / (tag + "in.json");
+        const std::filesystem::path out_file = dir / (tag + "out.json");
+        const std::filesystem::path code_file = dir / (tag + "code.txt");
+        std::string cmd = "curl -sS -m 12 -X " + (method.empty() ? std::string("GET") : method) +
+                          " -H \"Content-Type: application/json\" -H \"X-Client-Version: 6.6.1\""
+                          " -H \"X-Discord-Id: " + std::string(cloud->auth_discord_id) + "\""
+                          " -H \"Authorization: Bearer " + std::string(cloud->auth_discord_token) + "\"";
+        /* The name shown to other players, percent-encoded (any UTF-8, and nothing cmd.exe or the
+         * shell could read as syntax). The server only uses it when Discord itself cannot be asked. */
+        {
+            std::string enc;
+            for (const char *p = cloud->auth_discord_name; *p; ++p) {
+                const unsigned char ch = (unsigned char)*p;
+                if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.') {
+                    enc.push_back((char)ch);
+                } else {
+                    char hex[4];
+                    std::snprintf(hex, sizeof(hex), "%%%02X", ch);
+                    enc += hex;
+                }
+            }
+            if (!enc.empty()) cmd += " -H \"X-Discord-Name: " + enc + "\"";
+        }
+        if (method == "POST") {
+            host_files::write(in_file.string(), std::vector<std::uint8_t>(body.begin(), body.end()));
+            cmd += " --data-binary @\"" + in_file.string() + "\"";
+        }
+        cmd += " -o \"" + out_file.string() + "\" -w \"%{http_code}\" \"" + target + "\" > \"" +
+               code_file.string() + "\"";
+        const int rc = run_hidden(cmd);
+        const std::vector<std::uint8_t> out = host_files::read(out_file.string());
+        const std::vector<std::uint8_t> code = host_files::read(code_file.string());
+        std::error_code ec;
+        std::filesystem::remove(in_file, ec);
+        std::filesystem::remove(out_file, ec);
+        std::filesystem::remove(code_file, ec);
+        const int status = code.empty() ? 0 : std::atoi(std::string(code.begin(), code.end()).c_str());
+        /* 404 means a server without Battlez (not updated yet): answered locally like a dead one. */
+        if (rc == 0 && status >= 200 && status < 500 && status != 404 && !out.empty()) {
+            reply.status = status;
+            reply.body.assign(out.begin(), out.end());
+            reply.from_server = true;
+            register_names(reply.body);
+            pvz2_log("[joust] %s %s -> %s: HTTP %d", method.c_str(), url.c_str(), target.c_str(), status);
+            if (!body.empty()) pvz2_log("[joust]   request body (%zu bytes): %.600s", body.size(), body.c_str());
+            pvz2_log("[joust]   response: %.1500s", reply.body.c_str());
+            return reply;
+        }
+        pvz2_log("[joust] %s unreachable for %s (curl rc=%d, HTTP %d) -- answering locally", target.c_str(),
+                 url.c_str(), rc, status);
+    }
+    reply.status = 200;
+    reply.body = joust_local_respond(method, url, body);
+    return reply;
 }
 
 bool joust_is_game_server_url(const std::string &url) {
