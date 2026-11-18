@@ -125,6 +125,7 @@ extern "C" pvz2_session_t *pvz2_session_start(const char *so_path) {
     /* Imported STT_OBJECT symbols got real guest memory from the loader; fill
      * them in before any guest code runs (the ctype tables in particular). */
     rt_::build_import_handler_cache(&s->img);
+    rt_::install_guest_fastpaths(&s->img);
     pvz2native::initialize_data_imports(&s->img, &s->rt);
 
     dex::install(&s->img);

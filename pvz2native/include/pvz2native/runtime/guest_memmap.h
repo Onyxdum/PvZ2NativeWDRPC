@@ -87,6 +87,19 @@ constexpr std::uint32_t kFakeObjStride = 0x40;
 constexpr std::uint32_t kFakeObjMax = 16;
 constexpr std::uint32_t kFakeObjEnd = kFakeObjBase + kFakeObjMax * kFakeObjStride;
 
+/* --- in-JIT fast paths for hot imports ------------------------------------ *
+ *
+ * ARM code for a few tiny libc functions (memcmp, wcscmp, memcpy, __aeabi_memclr*) that
+ * the engine calls hundreds of thousands of times a frame in some screens. Their
+ * trampolines branch here instead of trapping to the host, so the JIT runs them
+ * inline. See runtime/guest_fastpaths.cpp.
+ *
+ * Above the loader's imported-data block (PVZ2_DATA_IMPORT_BASE 0xB000, 16 slots
+ * of 1 KB, defined in elf32_loader.c): the ctype tables live there. */
+constexpr std::uint32_t kDataImportEnd = 0x0000B000 + 16 * 1024;
+constexpr std::uint32_t kFastPathAddr = 0x00010000;
+constexpr std::uint32_t kFastPathSize = 0x00000800;
+
 /* --- the layout is consistent, checked at build time ---------------------- */
 
 static_assert(kTrampolineEnd <= kFakeHandleBase,
@@ -108,6 +121,9 @@ static_assert(kScratchAddr + kScratchSize <= kFakeObjBase,
               "the scratch area overlaps the GameAppInitialize placeholder objects");
 static_assert(kFakeObjEnd <= kImageBase,
               "the placeholder objects run into the loaded .so image");
+static_assert(kFakeObjEnd <= kFastPathAddr, "the placeholder objects overlap the import fast paths");
+static_assert(kDataImportEnd <= kFastPathAddr, "the imported-data block overlaps the import fast paths");
+static_assert(kFastPathAddr + kFastPathSize <= kImageBase, "the import fast paths run into the .so image");
 
 }  // namespace memmap
 }  // namespace runtime

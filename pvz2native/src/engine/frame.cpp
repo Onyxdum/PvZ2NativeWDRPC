@@ -11,6 +11,7 @@
 
 #include <cstdio>
 
+#include <pvz2native/dependencies/dependency.h>
 #include <pvz2native/game/symbols.h>
 #include <pvz2native/runtime/dynarmic_config.h>
 
@@ -19,6 +20,9 @@ namespace engine {
 
 void draw_frame(pvz2_elf_image_t *img, GuestRuntime *rt, int index) {
     char label[64];
+
+    /* The host overlays drawn since the last frame bound their own GL programs. */
+    gl_forget_current_program();
 
     /* Deliver queued lifecycle events BEFORE drawing, when the version has a
      * separate native for it -- see GameSymbols::native.pump_message_queue.

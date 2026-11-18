@@ -394,6 +394,11 @@ void unmap_page_for_watch(std::uint32_t vaddr);
  * so growing it under them would be a data race on the buffer itself). */
 void build_import_handler_cache(pvz2_elf_image_t *img);
 
+/* Points the trampolines of a few hot imports (memcmp, wcscmp, memcpy, __aeabi_memclr*)
+ * at ARM routines in guest memory so the JIT runs them inline instead of trapping
+ * to the host on every call. Must run before any guest code. guest_fastpaths.cpp. */
+void install_guest_fastpaths(pvz2_elf_image_t *img);
+
 /* Lets make_guest_callback() and call_guest_between_frames() reach the live
  * session. Cleared at shutdown so neither can outlive it. */
 void set_session_image(pvz2_elf_image_t *img, GuestRuntime *rt);

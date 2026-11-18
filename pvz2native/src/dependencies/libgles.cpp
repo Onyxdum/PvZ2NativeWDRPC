@@ -51,6 +51,33 @@ namespace {
  * maximised window. Only the composite draws to framebuffer 0. */
 std::atomic<GLuint> g_bound_fbo{0};
 
+/* The program the guest last bound with glUseProgram, or -1 when unknown.
+ * gl_glUniformMatrix4fv needs it on every call, and asking the driver
+ * (glGetIntegerv(GL_CURRENT_PROGRAM)) is a sync point: with NVIDIA's threaded
+ * optimisation each one cost ~0.1 ms, and busy screens such as the Battlez seed
+ * chooser upload thousands of matrices a frame, which held them near 20 fps.
+ * Reset to unknown before each guest frame (gl_forget_current_program), since the
+ * host overlays bind their own programs directly. */
+std::atomic<GLint> g_current_program{-1};
+
+/* glGetUniformLocation answers, per program and uniform name. */
+std::mutex g_uniform_loc_lock;
+std::unordered_map<GLuint, std::unordered_map<std::string, GLint>> g_uniform_locs;
+
+void forget_uniform_locations(GLuint program) {
+    std::lock_guard<std::mutex> lk(g_uniform_loc_lock);
+    g_uniform_locs.erase(program);
+}
+
+GLint current_program() {
+    GLint p = g_current_program.load(std::memory_order_relaxed);
+    if (p < 0) {
+        glGetIntegerv(GL_CURRENT_PROGRAM, &p);
+        g_current_program.store(p, std::memory_order_relaxed);
+    }
+    return p;
+}
+
 /* Drains the host GL error queue after an operation the guest never checks
  * itself. Budgeted, so a per-frame error cannot flood the log. */
 void report_gl_error(GuestCall &c, const char *what) {
@@ -745,6 +772,7 @@ void gl_glCompileShader(GuestCall &c) {
 void gl_glLinkProgram(GuestCall &c) {
     GLuint program = c.arg(0);
     glLinkProgram(program);
+    forget_uniform_locations(program);
     /* Same reasoning as gl_glCompileShader: the engine never checks, so a failed
      * link is otherwise invisible and reads as a black screen. */
     GLint status = 0;
@@ -1031,6 +1059,7 @@ void gl_glDeleteFramebuffers(GuestCall &c) {
 
 void gl_glDeleteProgram(GuestCall &c) {
     glDeleteProgram(c.arg(0));
+    forget_uniform_locations(c.arg(0));
 }
 
 void gl_glDeleteShader(GuestCall &c) {
@@ -1367,8 +1396,7 @@ void gl_glUniformMatrix4fv(GuestCall &c) {
      * Re-resolving against the bound program fixes it without touching the
      * engine's caching. Only done when the program has exactly one mat4, so a
      * shader with several is never second-guessed. */
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    const GLint program = current_program();
     if (program != 0) {
         const GLint actual = sole_mat4_location((GLuint)program);
         if (actual >= 0 && actual != loc) {
@@ -1477,6 +1505,7 @@ void gl_glUniformMatrix4fv(GuestCall &c) {
 
 void gl_glUseProgram(GuestCall &c) {
     glUseProgram(c.arg(0));
+    g_current_program.store((GLint)c.arg(0), std::memory_order_relaxed);
 }
 
 void gl_glVertexAttribPointer(GuestCall &c) {
@@ -1493,7 +1522,22 @@ void gl_glVertexPointer(GuestCall &c) {
  * silently alias every uniform onto slot 0. */
 void gl_glGetUniformLocation(GuestCall &c) {
     std::string nm = c.cstr(c.arg(1), 256);
-    const GLint loc = glGetUniformLocation(c.arg(0), nm.c_str());
+    /* Cached per program: the engine asks again every frame, and each driver query
+     * cost ~35 us (see g_current_program). A location is fixed until the program is
+     * relinked or deleted, which clear its entries (forget_uniform_locations). */
+    const GLuint program = c.arg(0);
+    GLint loc;
+    {
+        std::lock_guard<std::mutex> lk(g_uniform_loc_lock);
+        auto &names = g_uniform_locs[program];
+        auto it = names.find(nm);
+        if (it != names.end()) {
+            loc = it->second;
+        } else {
+            loc = glGetUniformLocation(program, nm.c_str());
+            names.emplace(nm, loc);
+        }
+    }
     /* The engine ends up calling glUniformMatrix4fv with location 0, which is
      * a sampler2D -- so either it never asks for the matrix's location, or it
      * asks and does not get 2. Logging every query answers which, and a failed
@@ -1513,6 +1557,8 @@ void gl_glGetUniformLocation(GuestCall &c) {
 }  // namespace
 
 bool gl_strict_enabled() { return pvz2_config()->gl_strict != 0; }
+
+void gl_forget_current_program() { g_current_program.store(-1, std::memory_order_relaxed); }
 
 /* glUniformMatrix4fv rejects with INVALID_OPERATION when the uniform at that
  * location is not a mat4 (or the location does not belong to the current
