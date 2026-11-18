@@ -493,7 +493,14 @@ static void open_debug_console(void) {
     if (cw) ShowWindow(cw, SW_SHOW);
 }
 
+/* Set by the controller's lawn mode: the pointer is hidden while the selector is in use. */
+static int g_pointer_hidden = 0;
+
 static LRESULT CALLBACK app_wndproc(HWND hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
+    if (msg == WM_SETCURSOR && LOWORD(l_param) == HTCLIENT && g_pointer_hidden) {
+        SetCursor(NULL);
+        return TRUE;
+    }
     if (msg == WM_SETCURSOR && g_app_cursor && LOWORD(l_param) == HTCLIENT) {
         SetCursor(g_app_cursor);
         return TRUE;
@@ -1897,6 +1904,17 @@ static void print_usage(const char *argv0) {
     printf("  --video.mode=native\n");
     printf("  --fps_limit=120\n");
     printf("  --paths.obb=data.obb\n");
+}
+
+/* Shows or hides the mouse pointer over the game window (the controller hides it while its selector is
+ * in use). Windows keeps the game's own cursor through app_wndproc, so it is told there too. */
+void pvz2_host_set_pointer_hidden(int hidden) {
+#ifdef _WIN32
+    g_pointer_hidden = hidden ? 1 : 0;
+    if (hidden) SetCursor(NULL);
+    else if (g_app_cursor) SetCursor(g_app_cursor);
+#endif
+    SDL_ShowCursor(hidden ? SDL_DISABLE : SDL_ENABLE);
 }
 
 int main(int argc, char **argv) {
