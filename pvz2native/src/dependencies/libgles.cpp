@@ -22,6 +22,7 @@
 #include <pvz2native/diagnostics/verbose.h>
 #include <pvz2native/gfx/gl_requirements.h>
 #include <pvz2native/gfx/cloud_icon.h>
+#include <pvz2native/gfx/joust_avatars.h>
 #include <pvz2native/surface.h>
 
 #include <glad/gl.h>
@@ -1002,6 +1003,22 @@ void gl_glCompressedTexImage2D(GuestCall &c) {
     if (internalformat == 0x8D64 /* GL_ETC1_RGB8_OES */ && level == 0)
         data = pvz2native::cloud_icon_filter_etc1(data, imageSize, width, height);
 
+    /* Battlez avatar atlas: always decoded to RGB8, so Discord pictures can be painted into it later
+     * (a compressed texture takes no glTexSubImage2D of plain pixels). */
+    if (internalformat == 0x8D64 /* GL_ETC1_RGB8_OES */ && level == 0) {
+        const int atlas = pvz2native::joust_avatars::match_color(data, imageSize, width, height);
+        static thread_local std::vector<std::uint8_t> avatar_rgb;
+        if (atlas >= 0 && etc1_decode((const std::uint8_t *)data, imageSize, width, height, avatar_rgb)) {
+            glTexImage2D(c.arg(0), level, 0x8051 /* GL_RGB8 */, width, height, 0, 0x1907 /* GL_RGB */,
+                         0x1401 /* GL_UNSIGNED_BYTE */, avatar_rgb.data());
+            report_gl_error(c, "glTexImage2D(avatar atlas ETC1->RGB8)");
+            GLint bound = 0;
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+            pvz2native::joust_avatars::uploaded(atlas, false, (std::uint32_t)bound);
+            return;
+        }
+    }
+
     /* ETC1: decode to RGB8 on the CPU and upload uncompressed, so it no longer
      * matters whether this driver exposes ETC1/ETC2 at all. Every non-RGBA PvZ2
      * texture takes this path -- backgrounds, plants, the lot -- and passing ETC1
@@ -1067,7 +1084,9 @@ void gl_glDeleteShader(GuestCall &c) {
 }
 
 void gl_glDeleteTextures(GuestCall &c) {
-    glDeleteTextures(c.arg(0), (const GLuint *)c.ptr(c.arg(1)));
+    const auto *names = (const GLuint *)c.ptr(c.arg(1));
+    for (GLsizei i = 0; names != nullptr && i < (GLsizei)c.arg(0); ++i) pvz2native::joust_avatars::deleted(names[i]);
+    glDeleteTextures(c.arg(0), names);
 }
 
 void gl_glDepthFunc(GuestCall &c) {
@@ -1322,10 +1341,18 @@ void gl_glTexEnvf(GuestCall &c) {
 void gl_glTexImage2D(GuestCall &c) {
     const void *pixels = c.ptr(c.arg(8));
     /* The main menu atlas carries its alpha as a separate GL_ALPHA image. */
-    if (c.arg(1) == 0 && c.arg(6) == 0x1906 /* GL_ALPHA */ && c.arg(7) == 0x1401 /* GL_UNSIGNED_BYTE */)
+    int avatar_atlas = -1;
+    if (c.arg(1) == 0 && c.arg(6) == 0x1906 /* GL_ALPHA */ && c.arg(7) == 0x1401 /* GL_UNSIGNED_BYTE */) {
         pixels = pvz2native::cloud_icon_filter_alpha(pixels, (int)c.arg(3), (int)c.arg(4));
+        avatar_atlas = pvz2native::joust_avatars::match_alpha(pixels, (int)c.arg(3), (int)c.arg(4));
+    }
     glTexImage2D(c.arg(0), c.arg(1), c.arg(2), c.arg(3), c.arg(4), c.arg(5),
                               c.arg(6), c.arg(7), pixels);
+    if (avatar_atlas >= 0) {
+        GLint bound = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+        pvz2native::joust_avatars::uploaded(avatar_atlas, true, (std::uint32_t)bound);
+    }
 }
 
 void gl_glTexParameteri(GuestCall &c) {
@@ -1335,11 +1362,19 @@ void gl_glTexParameteri(GuestCall &c) {
 void gl_glTexSubImage2D(GuestCall &c) {
     const void *pixels = c.ptr(c.arg(8));
     /* Atlas alpha arrives as one full-size sub-upload into a texture allocated empty. */
+    int avatar_atlas = -1;
     if (c.arg(1) == 0 && c.arg(2) == 0 && c.arg(3) == 0 && c.arg(6) == 0x1906 /* GL_ALPHA */ &&
-        c.arg(7) == 0x1401 /* GL_UNSIGNED_BYTE */)
+        c.arg(7) == 0x1401 /* GL_UNSIGNED_BYTE */) {
         pixels = pvz2native::cloud_icon_filter_alpha(pixels, (int)c.arg(4), (int)c.arg(5));
+        avatar_atlas = pvz2native::joust_avatars::match_alpha(pixels, (int)c.arg(4), (int)c.arg(5));
+    }
     glTexSubImage2D(c.arg(0), c.arg(1), c.arg(2), c.arg(3), c.arg(4), c.arg(5),
                                   c.arg(6), c.arg(7), pixels);
+    if (avatar_atlas >= 0) {
+        GLint bound = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+        pvz2native::joust_avatars::uploaded(avatar_atlas, true, (std::uint32_t)bound);
+    }
 }
 
 void gl_glUniform1i(GuestCall &c) {

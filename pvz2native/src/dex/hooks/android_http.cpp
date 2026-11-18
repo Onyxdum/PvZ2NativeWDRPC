@@ -659,8 +659,16 @@ void set_request_body(DexCall &d) {
     if (arr != 0) {
         const std::uint32_t len = d.c.rt->heap.size_of(arr);
         body.assign(reinterpret_cast<const char *>(&d.c.img->mem[arr]), len);
-        /* The engine's array can carry its C string's terminator; a JSON parser rejects it. */
-        while (!body.empty() && body.back() == '\0') body.pop_back();
+        /* The heap block behind the array can be a byte or so longer than the text the engine put in
+         * it (seen: a 166-byte body sent as 167, the last byte garbage), and a JSON parser rejects
+         * anything after the value. Keep the text up to its first NUL and, for a JSON body, up to its
+         * final closing bracket. */
+        const auto nul = body.find('\0');
+        if (nul != std::string::npos) body.resize(nul);
+        if (!body.empty() && (body[0] == '{' || body[0] == '[')) {
+            const auto end = body.find_last_of(body[0] == '{' ? '}' : ']');
+            if (end != std::string::npos) body.resize(end + 1);
+        }
     }
     std::lock_guard<std::mutex> lk(g_lock);
     auto it = g_tx.find(d.thiz);

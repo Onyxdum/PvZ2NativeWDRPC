@@ -30,6 +30,7 @@
 
 #include <pvz2native/cloud_save.h>
 #include <pvz2native/dex/dex.h>
+#include <pvz2native/gfx/joust_avatars.h>
 #include <pvz2native/host_files.h>
 #include <pvz2native/log.h>
 
@@ -246,11 +247,11 @@ std::string json_escape(const std::string &s) {
     return out;
 }
 
-/* Player names: the game only carries a name NUMBER and turns it into one of its own names (patches.cpp
- * hooks that step). Numbers from kDiscordNameBase up are ours: each stands for a Discord name. Locally
- * there is one, the linked account's; the server will hand out the others with its responses. */
-constexpr long long kDiscordNameBase = 1000000;
-constexpr long long kLocalNameId = kDiscordNameBase;
+/* Player names: the game only carries a name NUMBER (0..9980; a larger one is zeroed while the response
+ * is read) and turns it into one of its own names (patches.cpp hooks that step). The server gives Discord
+ * players 9000..9980 and sends their names; this stand-in has only the local player, number 0, which
+ * joust_player_name shows as the linked Discord account. */
+constexpr long long kLocalNameId = 0;
 
 std::string state_json_locked() {
     g_state.name = kLocalNameId;
@@ -281,10 +282,10 @@ std::string dashboard_json_locked() {
     board.push_back({kLocalNameId, g_state.icon, g_state.crowns, true});
     for (std::size_t i = 1; i < board.size(); ++i) /* insertion sort, crowns descending */
         for (std::size_t j = i; j > 0 && board[j].crowns > board[j - 1].crowns; --j) std::swap(board[j], board[j - 1]);
-    long long position = 1;
+    long long position = 0; /* 0-based: the game highlights row `position` as "You" */
     std::string lb = "[";
     for (std::size_t i = 0; i < board.size(); ++i) {
-        if (board[i].me) position = (long long)i + 1;
+        if (board[i].me) position = (long long)i;
         char e[128];
         std::snprintf(e, sizeof(e), "%s{\"name\":%lld,\"icon\":%lld,\"crowns\":%lld}", i ? "," : "",
                       board[i].name, board[i].icon, board[i].crowns);
@@ -389,23 +390,33 @@ std::size_t read_json_string(const std::string &text, std::size_t p, std::string
     return p + 1;
 }
 
-/* Remembers the server's {"names": {"<number>": "<Discord name>", ...}}. */
-void register_names(const std::string &json) {
-    std::size_t p = json.find("\"names\"");
-    if (p == std::string::npos) return;
+/* Every "<number>": "<text>" pair of the flat object at top-level key `key`. */
+std::vector<std::pair<long long, std::string>> string_map(const std::string &json, const char *key) {
+    std::vector<std::pair<long long, std::string>> out;
+    std::size_t p = json.find(std::string("\"") + key + "\"");
+    if (p == std::string::npos) return out;
     p = json.find('{', p);
-    if (p == std::string::npos) return;
-    std::lock_guard<std::mutex> lk(g_names_lock);
-    while (p < json.size()) {
+    while (p != std::string::npos && p < json.size()) {
         p = json.find_first_of("\"}", p + 1);
         if (p == std::string::npos || json[p] == '}') break;
-        std::string key, value;
-        p = read_json_string(json, p, key);
+        std::string k, v;
+        p = read_json_string(json, p, k);
         p = json.find('"', p);
         if (p == std::string::npos) break;
-        p = read_json_string(json, p, value) - 1;
-        g_names[std::atoll(key.c_str())] = value;
+        p = read_json_string(json, p, v) - 1;
+        out.emplace_back(std::atoll(k.c_str()), v);
     }
+    return out;
+}
+
+/* Remembers what the server says about Discord players: {"names": {"<name number>": "<Discord name>"},
+ * "avatars": {"<icon 15..24>": "<picture URL>"}}. */
+void register_names(const std::string &json) {
+    {
+        std::lock_guard<std::mutex> lk(g_names_lock);
+        for (auto &kv : string_map(json, "names")) g_names[kv.first] = kv.second;
+    }
+    for (auto &kv : string_map(json, "avatars")) joust_avatars::set_picture((int)kv.first, kv.second);
 }
 
 #if defined(_WIN32)
@@ -435,9 +446,9 @@ int run_hidden(const std::string &cmd) { return std::system((cmd + " >/dev/null 
 }  // namespace
 
 bool joust_player_name(long long name_id, std::string &out) {
-    /* The local player's own row takes its number from the profile, not from state.name, and an
-     * avatar never picked there is 0 -- so 0 is the local player too. Nobody else is ever sent 0. */
-    if (name_id != kLocalNameId && name_id != 0) {
+    /* 0 is the local player (the stand-in's number, and what the game reads for a number out of its
+     * range); the server never sends it for anybody else. */
+    if (name_id != kLocalNameId) {
         std::lock_guard<std::mutex> lk(g_names_lock);
         auto it = g_names.find(name_id);
         if (it == g_names.end() || it->second.empty()) return false;
@@ -485,6 +496,13 @@ JoustReply joust_request(const std::string &method, const std::string &url, cons
                 }
             }
             if (!enc.empty()) cmd += " -H \"X-Discord-Name: " + enc + "\"";
+        }
+        /* The avatar hash Discord gave at sign-in (hex, nothing to escape), for the same fallback. */
+        {
+            std::string hash;
+            for (const char *p = cloud->auth_discord_avatar; *p; ++p)
+                if (std::isalnum((unsigned char)*p) || *p == '_') hash.push_back(*p);
+            if (!hash.empty()) cmd += " -H \"X-Discord-Avatar: " + hash + "\"";
         }
         if (method == "POST") {
             host_files::write(in_file.string(), std::vector<std::uint8_t>(body.begin(), body.end()));

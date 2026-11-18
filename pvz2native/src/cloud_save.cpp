@@ -445,6 +445,8 @@ void load_cloud_section() {
             copy_str(g_cfg.auth_discord_name, sizeof(g_cfg.auth_discord_name), v);
         } else if (k == "auth_discord_token") {
             copy_str(g_cfg.auth_discord_token, sizeof(g_cfg.auth_discord_token), v);
+        } else if (k == "auth_discord_avatar") {
+            copy_str(g_cfg.auth_discord_avatar, sizeof(g_cfg.auth_discord_avatar), v);
         } else if (k == "gdrive_user") {
             copy_str(g_cfg.gdrive_user, sizeof(g_cfg.gdrive_user), v);
         } else if (k == "gdrive_token") {
@@ -957,7 +959,7 @@ std::string build_auth_html(int provider) {
       << "function setMsg(t,err){var el=document.getElementById('status');el.className=err?'msg err':'msg';el.textContent=t;}"
       << "function finish(prov,id,name,tok){"
       << "  setMsg('Vinculando con PvZ2Native...',false);"
-      << "  fetch('/complete?provider='+encodeURIComponent(prov)+'&id='+encodeURIComponent(id)+'&name='+encodeURIComponent(name)+'&token='+encodeURIComponent(tok))"
+      << "  fetch('/complete?provider='+encodeURIComponent(prov)+'&id='+encodeURIComponent(id)+'&name='+encodeURIComponent(name)+'&token='+encodeURIComponent(tok)+'&avatar='+encodeURIComponent(window.pvzAvatar||''))"
       << "  .then(()=>{document.querySelector('.card').innerHTML='<h1 style=\"color:#4ade80\">¡Cuenta vinculada!</h1><p>Ya puedes cerrar esta pestaña y volver a Plants vs. Zombies 2.</p>';});"
       << "}"
       << "if(window.location.hash.indexOf('access_token=')!==-1){"
@@ -965,7 +967,7 @@ std::string build_auth_html(int provider) {
       << "  var tok=params.get('access_token');"
       << "  setMsg('Verificando cuenta con Discord...',false);"
       << "  fetch('https://discord.com/api/v10/users/@me',{headers:{Authorization:'Bearer '+tok}})"
-      << "  .then(r=>r.json()).then(u=>{if(u&&u.id)finish('discord',u.id,u.username||u.global_name||'User',tok);else setMsg('Error al verificar Discord',true);})"
+      << "  .then(r=>r.json()).then(u=>{if(u&&u.id){window.pvzAvatar=u.avatar||'';finish('discord',u.id,u.username||u.global_name||'User',tok);}else setMsg('Error al verificar Discord',true);})"
       << "  .catch(()=>setMsg('Error de red al verificar Discord',true));"
       << "}"
       << "</script></body></html>";
@@ -1190,6 +1192,7 @@ bool exchange_discord_oauth_code(const std::string &code, std::string &user_out)
         copy_str(g_cfg.auth_discord_id, sizeof(g_cfg.auth_discord_id), id);
         copy_str(g_cfg.auth_discord_name, sizeof(g_cfg.auth_discord_name), username);
         copy_str(g_cfg.auth_discord_token, sizeof(g_cfg.auth_discord_token), access_tok);
+        copy_str(g_cfg.auth_discord_avatar, sizeof(g_cfg.auth_discord_avatar), json_extract_string(ujson, "avatar"));
     }
     pvz2_cloud_save_config();
     user_out = username + " (" + id + ")";
@@ -1282,6 +1285,7 @@ void run_auth_server_thread() {
                 std::string id = query_param(query, "id");
                 std::string name = query_param(query, "name");
                 std::string tok = query_param(query, "token");
+                std::string avatar = query_param(query, "avatar");
 
                 {
                     std::lock_guard<std::mutex> lk(g_cfg_mutex);
@@ -1289,6 +1293,7 @@ void run_auth_server_thread() {
                         copy_str(g_cfg.auth_discord_id, sizeof(g_cfg.auth_discord_id), id);
                         copy_str(g_cfg.auth_discord_name, sizeof(g_cfg.auth_discord_name), name);
                         copy_str(g_cfg.auth_discord_token, sizeof(g_cfg.auth_discord_token), tok);
+                        copy_str(g_cfg.auth_discord_avatar, sizeof(g_cfg.auth_discord_avatar), avatar);
                     } else if (prov == "google") {
                         copy_str(g_cfg.gdrive_user, sizeof(g_cfg.gdrive_user), name);
                         copy_str(g_cfg.gdrive_token, sizeof(g_cfg.gdrive_token), tok);
@@ -1883,6 +1888,7 @@ extern "C" void pvz2_cloud_save_config(void) {
         out.push_back(std::string("auth_discord_id = ") + g_cfg.auth_discord_id);
         out.push_back(std::string("auth_discord_name = ") + g_cfg.auth_discord_name);
         out.push_back(std::string("auth_discord_token = ") + g_cfg.auth_discord_token);
+        out.push_back(std::string("auth_discord_avatar = ") + g_cfg.auth_discord_avatar);
         out.push_back(std::string("gdrive_user = ") + g_cfg.gdrive_user);
         out.push_back(std::string("gdrive_token = ") + g_cfg.gdrive_token);
         out.push_back(std::string("gdrive_refresh_token = ") + g_cfg.gdrive_refresh_token);
