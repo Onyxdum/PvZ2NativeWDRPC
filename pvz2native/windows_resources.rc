@@ -126,6 +126,7 @@
 316 RCDATA "../assets/achievements/achievement_present_perfect.bmp"
 317 RCDATA "../assets/config/achievement_unlock.wav"
 318 RCDATA "../assets/config/zombie_time.ogg"
+320 RCDATA "../assets/config/btn_friends_hud.bmp"
 
 /* Steam Grid Artwork (350-352) */
 350 RCDATA "../assets/steam/Grid.png"

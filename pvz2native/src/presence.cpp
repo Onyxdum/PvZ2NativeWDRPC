@@ -37,6 +37,8 @@
 #include <pvz2native/config.h>
 #include <pvz2native/host_paths.h>
 #include <pvz2native/presence.h>
+#include <pvz2native/cloud_save.h>
+#include <pvz2native/social_invite.h>
 
 #include <SDL.h>
 
@@ -543,6 +545,10 @@ std::string g_world_icon_url = "https://raw.githubusercontent.com/Onyxdum/PvZ2Na
 std::string g_button_url = "https://github.com/Onyxdum/PvZ2NativeWDRPC";
 std::string g_button_label = "GitHub";
 
+/* Where the player is now (the world map's world, the level being played), for the friends list. */
+std::mutex g_loc_mtx;
+std::string g_loc_world, g_loc_level;
+
 std::mutex g_user_mu;
 std::string g_user_id;
 std::string g_username;
@@ -606,9 +612,15 @@ std::string activity_json(const Activity *a, std::int64_t start, unsigned nonce)
             j += ",\"assets\":{\"large_image\":\"" + json_escape(g_image) +
                  "\",\"large_text\":\"PvZ2Native\"}";
         }
+        /* Second button: the invite page of this player (the world map's invite button copies the same link). */
+        const std::string invite_lbl = g_lang == PresLang::ES ? "Jugar conmigo" : "Play with me";
+        const std::string invite_btn =
+            "{\"label\":\"" + json_escape(invite_lbl) + "\",\"url\":\"" + json_escape(invite_url()) + "\"}";
         if (!g_button_url.empty() && g_button_url != "0" && g_button_url != "none") {
             const std::string lbl = !g_button_label.empty() ? g_button_label : "GitHub";
-            j += ",\"buttons\":[{\"label\":\"" + json_escape(clip(lbl, 32)) + "\",\"url\":\"" + json_escape(g_button_url) + "\"}]";
+            j += ",\"buttons\":[{\"label\":\"" + json_escape(clip(lbl, 32)) + "\",\"url\":\"" + json_escape(g_button_url) + "\"}," + invite_btn + "]";
+        } else {
+            j += ",\"buttons\":[" + invite_btn + "]";
         }
         j += "}";
     }
@@ -875,7 +887,14 @@ void worker() {
             batch.swap(g_queue);
         }
 
-        for (const std::string &ev : batch) {
+        for (const std::string &raw_ev : batch) {
+            /* 6.6.1 names some levels with their folder ("arcade/vasebreaker_tutorial1"); the rules and
+             * the level checks below expect the bare name, as 4.5.2 gives it. */
+            std::string ev = raw_ev;
+            if (ev.rfind("state:Board Level=", 0) == 0) {
+                const std::size_t slash = ev.find_last_of("/\\");
+                if (slash != std::string::npos && slash >= 18) ev.erase(18, slash - 18 + 1);
+            }
             const std::string ev_lower = lower(ev);
             const bool always_trace = ev.rfind("rsb:", 0) == 0 || ev.rfind("state:", 0) == 0;
             if (trace && trace_lines < kTraceMax && (always_trace || seen.insert(ev).second)) {
@@ -951,6 +970,18 @@ void worker() {
             static std::string last_known_world;
             const PresStrings *ps_ev = pres_str();
 
+            /* What was shown before the travel log opened, put back when it closes. The world the engine
+             * last named is not enough: 6.6.1 names "egypt" once while building the galaxy map and never
+             * again, so falling back to it showed Ancient Egypt wherever the player was. */
+            static Activity before_log;
+            static bool have_before_log = false;
+            auto note_log_opening = [&]() {
+                if (!travel_log_open && persistent.details != ps_ev->travel_log) {
+                    before_log = persistent;
+                    have_before_log = true;
+                }
+            };
+
             auto restore_world_activity = [&]() {
                 const std::string tgt_world = lower(!current_world.empty() ? current_world : last_known_world);
                 if (!tgt_world.empty()) {
@@ -973,8 +1004,18 @@ void worker() {
                 persistent = def;
                 desired = def;
             };
+            auto restore_after_log = [&]() {
+                if (have_before_log) {
+                    persistent = before_log;
+                    desired = persistent;
+                    have_before_log = false;
+                } else {
+                    restore_world_activity();
+                }
+            };
 
             if (ev.rfind("state:Board Level=", 0) == 0) {
+                have_before_log = false;
                 travel_log_open = false;
                 vasebreaker_menu_open = false;
                 credits_open = false;
@@ -1078,6 +1119,7 @@ void worker() {
 
             if (ev == "state:TravelLog Shown=true") {
                 if (current_level.empty() && !level_won) {
+                    note_log_opening();
                     travel_log_open = true;
                     in_temp = false;
                     persistent = Activity{ps_ev->travel_log, ps_ev->viewing_quests};
@@ -1085,10 +1127,11 @@ void worker() {
                 }
                 continue;
             } else if (ev == "state:TravelLog Shown=false") {
+                const bool was_open = travel_log_open;
                 travel_log_open = false;
                 in_temp = false;
-                if (current_level.empty() && !level_won && !credits_open) {
-                    restore_world_activity();
+                if (was_open && current_level.empty() && !level_won && !credits_open) {
+                    restore_after_log();
                 }
                 continue;
             } else if (ev == "state:Credits Shown=true") {
@@ -1142,7 +1185,7 @@ void worker() {
                     travel_log_open = false;
                     in_temp = false;
                     if (current_level.empty() && !level_won && !credits_open) {
-                        restore_world_activity();
+                        restore_after_log();
                     }
                 }
                 if (ev.find("Play_UI_Menu_Store_Close") != std::string::npos) {
@@ -1314,6 +1357,7 @@ void worker() {
                 }
                 if (!hit) continue;
                 if (ev_lower.rfind("rsb:ui_quests_", 0) == 0 && current_level.empty() && !level_won) {
+                    note_log_opening();
                     travel_log_open = true;
                 } else if (ev_lower.rfind("rsb:ui_vasebreakermenu_", 0) == 0 && current_level.empty()) {
                     vasebreaker_menu_open = true;
@@ -1435,6 +1479,11 @@ void worker() {
         }
 
         resolve_activity_assets(desired, current_level, current_world, level_won);
+        {
+            std::lock_guard<std::mutex> lk(g_loc_mtx);
+            if (!current_world.empty()) g_loc_world = current_world;
+            g_loc_level = current_level;
+        }
 
         if (ipc.is_open()) drain(ipc);
 
@@ -1478,6 +1527,7 @@ void pvz2_presence_start(void) {
         return;
     }
     if (g_thread.joinable()) return;
+    pvz2_cloud_init(); /* here, on the main thread: the presence thread reads the Discord account for the invite */
 
     if (cfg->user_locale[0] != '\0') {
         if (std::strncmp(cfg->user_locale, "es", 2) == 0) g_lang = PresLang::ES;
@@ -1535,6 +1585,13 @@ void pvz2_presence_start(void) {
 }
 
 int pvz2_presence_enabled(void) { return pvz2native::g_on.load(std::memory_order_relaxed) ? 1 : 0; }
+
+int pvz2_presence_location(char *world_out, unsigned world_cap, char *level_out, unsigned level_cap) {
+    std::lock_guard<std::mutex> lk(pvz2native::g_loc_mtx);
+    if (world_out && world_cap) std::snprintf(world_out, world_cap, "%s", pvz2native::g_loc_world.c_str());
+    if (level_out && level_cap) std::snprintf(level_out, level_cap, "%s", pvz2native::g_loc_level.c_str());
+    return !pvz2native::g_loc_world.empty() || !pvz2native::g_loc_level.empty();
+}
 
 void pvz2_presence_note(const char *source, const char *text) {
     using namespace pvz2native;

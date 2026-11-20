@@ -46,6 +46,10 @@ int pvz2_presence_get_user(char *id_out, unsigned id_cap, char *name_out, unsign
  * fills `id_out` / `name_out`. Returns 1 on success, 0 if Discord is not running. */
 int pvz2_presence_auth_now(char *id_out, unsigned id_cap, char *name_out, unsigned name_cap);
 
+/* The world on the world map and the level being played (empty when not in one), as the presence
+ * thread last saw them. Returns 0 when it knows neither (presence off, or nothing seen yet). */
+int pvz2_presence_location(char *world_out, unsigned world_cap, char *level_out, unsigned level_cap);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

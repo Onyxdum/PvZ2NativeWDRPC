@@ -25,6 +25,7 @@
 #include <pvz2native/config_screen.h>
 #include <pvz2native/achievements.h>
 #include <pvz2native/credits_screen.h>
+#include <pvz2native/friends_screen.h>
 #include <pvz2native/host_assets.h>
 #include <pvz2native/host_paths.h>
 #include <pvz2native/input/gamepad.h>
@@ -1521,7 +1522,8 @@ void pvz2_host_update_cursor_lock(void) {
     if (cfg && cfg->lock_cursor) {
         Uint32 flags = SDL_GetWindowFlags(g_window);
         int has_focus = (flags & SDL_WINDOW_INPUT_FOCUS) && !(flags & SDL_WINDOW_MINIMIZED);
-        int overlay_open = config_screen_is_open() || achievements_screen_is_open() || credits_screen_is_open();
+        int overlay_open = config_screen_is_open() || achievements_screen_is_open() || credits_screen_is_open() ||
+                           friends_screen_is_open();
         if (has_focus && !overlay_open) {
             should_lock = 1;
         }
@@ -1724,6 +1726,10 @@ static void host_pump(void) {
         }
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE &&
             event.key.repeat == 0) {
+            if (friends_screen_is_open()) {
+                friends_screen_close();
+                continue;
+            }
             if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
                 if (pvz2_game_is_in_level()) {
                     trigger_pause_shortcut();
@@ -1744,6 +1750,8 @@ static void host_pump(void) {
             continue;
         if (credits_screen_is_open()) {
             credits_screen_handle_event(&event);
+        } else if (friends_screen_is_open()) {
+            friends_screen_handle_event(&event);
         } else if (achievements_screen_is_open()) {
             achievements_screen_handle_event(&event);
         } else if (config_screen_is_open()) {
@@ -1918,10 +1926,17 @@ void pvz2_host_set_pointer_hidden(int hidden) {
 }
 
 int main(int argc, char **argv) {
+    const char *pending_invite_uri = NULL;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
+        }
+        if (strncmp(argv[i], "pvz2native://", 13) == 0) {
+            if (friends_try_forward_invite_uri(argv[i])) {
+                return 0;
+            }
+            pending_invite_uri = argv[i];
         }
     }
 
@@ -1991,6 +2006,9 @@ int main(int argc, char **argv) {
     }
     pvz2_check_steam_shortcut_prompt();
     pvz2_fix_future_save_dates();
+    friends_claim_gifts_at_boot();
+    friends_register_url_protocol();
+    if (pending_invite_uri) friends_handle_invite_uri(pending_invite_uri);
     pvz2_check_updates_async();
 
     /* PvZ2's .so only imports gl* symbols, never egl* -- on real Android the
@@ -2150,6 +2168,10 @@ int main(int argc, char **argv) {
                 }
                 if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE &&
                     event.key.repeat == 0) {
+                    if (friends_screen_is_open()) {
+                        friends_screen_close();
+                        continue;
+                    }
                     if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
                         if (pvz2_game_is_in_level()) {
                             trigger_pause_shortcut();
@@ -2171,10 +2193,14 @@ int main(int argc, char **argv) {
                 /* Credits screen takes priority over everything when open. */
                 if (credits_screen_is_open()) {
                     credits_screen_handle_event(&event);
+                } else if (friends_screen_is_open()) {
+                    friends_screen_handle_event(&event);
                 } else if (achievements_screen_is_open()) {
                     achievements_screen_handle_event(&event);
                 } else if (config_screen_is_open()) {
                     config_screen_handle_event(&event);
+                } else if (friends_screen_hud_button_event(&event, window)) {
+                    /* consumed by the 6.6.1 top-left Friends HUD button */
                 } else if (event.type != SDL_WINDOWEVENT) {
                     handle_sdl_event(&event);
                 }
@@ -2191,7 +2217,8 @@ int main(int argc, char **argv) {
                 s_last_gp_ms = now;
                 pvz2_gamepad_tick(dt);
             }
-            if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open()) {
+            if (!config_screen_is_open() && !achievements_screen_is_open() && !credits_screen_is_open() &&
+                !friends_screen_is_open()) {
                 process_mouse_wheel_scroll();
                 maybe_force_touch_recovery();
                 sync_text_input();
@@ -2224,12 +2251,21 @@ int main(int argc, char **argv) {
             if (g_boot_overlay_active) draw_boot_splash_fade(window);
             /* Controller lawn mode: the tile box and the chosen seed packet */
             pvz2_gamepad_draw(window);
+            /* 6.6.1 top-left HUD Friends button (only visible when WorldMap / PlayModes bar is drawn) */
+            if (!config_screen_is_open() && !achievements_screen_is_open() &&
+                !friends_screen_is_open() && !credits_screen_is_open()) {
+                friends_screen_draw_hud_button(window);
+            }
             /* Draw config screen overlay on top of the game frame (before swap) */
             if (config_screen_is_open()) config_screen_draw(window);
             /* Achievements: popup draws always (if animating), screen on top of config */
             achievements_draw(window);
+            /* Friends list (the world map's envelope button); also starts its status worker */
+            friends_screen_draw(window);
             /* Credits roll overlay on top of everything */
             if (credits_screen_is_open()) credits_screen_draw(window);
+            /* Notifications always sit on top of all panels (settings, friends, achievements, credits) */
+            if (config_screen_has_toast()) config_screen_draw_toast(window);
             SDL_GL_SwapWindow(window);
             update_fps_title();
             /* After the swap and the title, so the wait is the last thing in the
@@ -2242,6 +2278,7 @@ int main(int argc, char **argv) {
 
     pvz2_gamepad_shutdown();
     credits_screen_shutdown();
+    friends_screen_shutdown();
     achievements_shutdown();
     /* Cursor / UI audio must go before DestroyWindow + SDL_Quit (X11/Pulse). */
     pvz2_host_pre_sdl_quit();

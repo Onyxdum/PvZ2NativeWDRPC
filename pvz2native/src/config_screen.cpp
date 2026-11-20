@@ -1957,6 +1957,34 @@ static void draw_round_rect(float x, float y, float w, float h, float r,
 	glEnd();
 }
 
+/* Nine-slice textured box: keeps corners and beveled borders unstretched at any aspect ratio. */
+static void draw_nine_slice(const Tex &t, float x, float y, float w, float h,
+							float src_border, float dst_border, float a = 1.0f) {
+	if (!t.id || t.w <= 0 || t.h <= 0 || w <= 0.0f || h <= 0.0f) return;
+	const float bx = std::min(dst_border, w * 0.5f);
+	const float by = std::min(dst_border, h * 0.5f);
+	const float bu = std::min(src_border / (float)t.w, 0.5f);
+	const float bv = std::min(src_border / (float)t.h, 0.5f);
+	const float xs[4] = {x, x + bx, x + w - bx, x + w};
+	const float ys[4] = {y, y + by, y + h - by, y + h};
+	const float us[4] = {0.0f, bu, 1.0f - bu, 1.0f};
+	const float vs[4] = {0.0f, bv, 1.0f - bv, 1.0f};
+	glBindTexture(GL_TEXTURE_2D, t.id);
+	glColor4f(1.0f, 1.0f, 1.0f, a);
+	glBegin(GL_QUADS);
+	for (int row = 0; row < 3; ++row) {
+		if (ys[row + 1] <= ys[row]) continue;
+		for (int col = 0; col < 3; ++col) {
+			if (xs[col + 1] <= xs[col]) continue;
+			glTexCoord2f(us[col],     vs[row]);     glVertex2f(xs[col],     ys[row]);
+			glTexCoord2f(us[col + 1], vs[row]);     glVertex2f(xs[col + 1], ys[row]);
+			glTexCoord2f(us[col + 1], vs[row + 1]); glVertex2f(xs[col + 1], ys[row + 1]);
+			glTexCoord2f(us[col],     vs[row + 1]); glVertex2f(xs[col],     ys[row + 1]);
+		}
+	}
+	glEnd();
+}
+
 static void draw_toast(float win_w, float win_h) {
 	while (!g_toasts.empty()) {
 		Toast &t = g_toasts.front();
@@ -1965,7 +1993,7 @@ static void draw_toast(float win_w, float win_h) {
 		if (now - t.start_ms < kToastShowMs) break;
 		g_toasts.pop_front();
 	}
-	if (g_toasts.empty() || !g_font.ok || !g_tex_list_item.id) return;
+	if (g_toasts.empty() || !g_font.ok || !g_tex_panel.id || !g_tex_list_bg.id) return;
 	const Toast &t = g_toasts.front();
 	const float s = ui_scale(win_w, win_h);
 	const float elapsed = (float)(SDL_GetTicks() - t.start_ms);
@@ -1977,28 +2005,31 @@ static void draw_toast(float win_w, float win_h) {
 	shown = clampf(shown, 0.0f, 1.0f);
 	shown = 1.0f - (1.0f - shown) * (1.0f - shown); /* ease out */
 
-	const float w = sc((float)g_tex_list_item.w, s);
-	const float pad = sc(kItemTextOffX, s);
-	std::vector<std::string> lines = wrap_item_label(g_font, t.text.c_str(), w - 2.0f * pad, win_w, win_h);
+	const float inset = sc(25.0f, s);
+	const float w = sc(g_tex_list_item.id ? (float)g_tex_list_item.w : 737.0f, s);
+	const float inner_w = w - 2.0f * inset;
+	const float text_pad = sc(40.0f, s);
+	std::vector<std::string> lines = wrap_item_label(g_font, t.text.c_str(), inner_w - 2.0f * text_pad, win_w, win_h);
 	if (lines.empty()) return;
 	const float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
 	const float line_h = cap_h * 1.35f;
 	const float block_h = cap_h + (float)(lines.size() - 1) * line_h;
-	const float h = std::max(sc((float)g_tex_list_item.h, s), block_h + sc(40.0f, s));
+	const float inner_h = std::max(sc(96.0f, s), block_h + sc(42.0f, s));
+	const float h = inner_h + 2.0f * inset;
 	const float x = (win_w - w) * 0.5f;
-	const float margin = sc(24.0f, s);
+	const float margin = sc(20.0f, s);
 	const float y = -h + (h + margin) * shown;
 
-	/* Rounded card: a blue border with the menu rows' cream inside. */
-	const float rim = sc(5.0f, s);
-	const float radius = sc(22.0f, s);
+	/* Soft drop shadow behind the panel frame. */
 	glDisable(GL_TEXTURE_2D);
-	draw_round_rect(x - rim, y - rim, w + 2.0f * rim, h + 2.0f * rim, radius + rim,
-					0x1f / 255.f, 0x5f / 255.f, 0xc4 / 255.f, 0.97f);
-	draw_round_rect(x, y, w, h, radius, 0xf3 / 255.f, 0xeb / 255.f, 0xc8 / 255.f, 1.0f);
+	draw_round_rect(x, y + sc(6.0f, s), w, h, sc(28.0f, s), 0.0f, 0.0f, 0.0f, 0.38f);
 	glEnable(GL_TEXTURE_2D);
 
-	float baseline = y + (h - block_h) * 0.5f + cap_h;
+	/* Menu-style card: nine-sliced wooden panel frame with recessed parchment interior. */
+	draw_nine_slice(g_tex_panel, x, y, w, h, 48.0f, sc(38.0f, s));
+	draw_nine_slice(g_tex_list_bg, x + inset, y + inset, inner_w, inner_h, 28.0f, sc(24.0f, s));
+
+	float baseline = y + inset + (inner_h - block_h) * 0.5f + cap_h;
 	for (const std::string &l : lines) {
 		const float lw = measure_string(g_font, l.c_str(), false, win_w, win_h);
 		draw_string(g_font, l.c_str(), false, x + (w - lw) * 0.5f, baseline,
@@ -3234,8 +3265,8 @@ static void draw(SDL_Window *window) {
 	}
 	if (!g_open && !g_quit_confirm && g_toasts.empty()) return;
 
-	/* Quit-confirm alone still needs resources + window pointer. */
-	if (g_quit_confirm && !g_loaded) {
+	/* Quit-confirm or a notification alone (the settings never opened) still needs resources + window pointer. */
+	if ((g_quit_confirm || !g_toasts.empty()) && !g_loaded) {
 		g_window = window;
 		int ww, hh;
 		SDL_GL_GetDrawableSize(window, &ww, &hh);
@@ -3344,10 +3375,57 @@ static void draw(SDL_Window *window) {
 	if (g_quit_confirm)
 		draw_quit_confirm(win_w, win_h);
 
-	/* Notifications sit above everything, menu open or not. */
+	/* Restore GL state */
+	glMatrixMode(GL_TEXTURE);  glPopMatrix();
+	glMatrixMode(GL_MODELVIEW); glPopMatrix();
+	glMatrixMode(GL_PROJECTION); glPopMatrix();
+	glPopAttrib();
+	glBindFramebuffer(GL_FRAMEBUFFER, prev_fbo);
+	glUseProgram(prev_program);
+	glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
+}
+
+extern "C" void config_screen_draw_toast(SDL_Window *window) {
+	if (g_toasts.empty() || !window) return;
+	if (!g_loaded) {
+		g_window = window;
+		int ww, hh;
+		SDL_GL_GetDrawableSize(window, &ww, &hh);
+		load_resources((float)ww, (float)hh);
+	}
+	int win_wi, win_hi;
+	SDL_GL_GetDrawableSize(window, &win_wi, &win_hi);
+	float win_w = (float)win_wi, win_h = (float)win_hi;
+
+	GLint prev_program = 0, prev_fbo = 0;
+	GLint prev_viewport[4]{};
+	glGetIntegerv(GL_CURRENT_PROGRAM, &prev_program);
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo);
+	glGetIntegerv(GL_VIEWPORT, prev_viewport);
+	glPushAttrib(GL_ALL_ATTRIB_BITS);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glUseProgram(0);
+	glViewport(0, 0, win_wi, win_hi);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_TEXTURE_2D);
+
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix(); glLoadIdentity();
+	glOrtho(0, win_w, win_h, 0, -1, 1);
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix(); glLoadIdentity();
+	glMatrixMode(GL_TEXTURE);
+	glPushMatrix(); glLoadIdentity();
+
 	draw_toast(win_w, win_h);
 
-	/* Restore GL state */
 	glMatrixMode(GL_TEXTURE);  glPopMatrix();
 	glMatrixMode(GL_MODELVIEW); glPopMatrix();
 	glMatrixMode(GL_PROJECTION); glPopMatrix();
@@ -4365,7 +4443,19 @@ void config_screen_handle_event(const SDL_Event *e) {
 	handle_event(e);
 }
 
+extern "C" void pvz2_invite_tick(void);
+
+void config_screen_toast(const char *text) {
+	toast_push(text);
+}
+
+int config_screen_has_toast(void) {
+	pvz2_invite_tick();
+	return g_toasts.empty() ? 0 : 1;
+}
+
 void config_screen_draw(SDL_Window *window) {
+	pvz2_invite_tick(); /* the world map's invite button (social_invite.cpp) */
 	/* Hide settings while the achievements overlay is up; g_open stays true so
 	 * closing achievements restores this screen as it was. */
 	if (achievements_screen_is_open()) return;

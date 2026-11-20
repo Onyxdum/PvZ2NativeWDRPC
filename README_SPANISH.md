@@ -2,7 +2,7 @@
 
 📖 **Español** · [English](README.md)
 
-**Plants vs. Zombies 2 en PC, con sensación de juego de PC.** Es un fork de [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (basado originalmente en [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)), que ejecuta la `libPVZ2.so` real de Android de forma nativa en Windows y Linux. Encima de eso, este fork añade lo que esperarías de una versión de escritorio: **Discord Rich Presence**, **guardado en la nube**, un **modo mando estilo consola con vibración**, **dificultades extra**, **integración con la biblioteca de Steam** y **actualizador automático**, para **v4.5.2** y **v6.6.1** con un único ejecutable.
+**Plants vs. Zombies 2 en PC, con sensación de juego de PC.** Es un fork de [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (basado originalmente en [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)), que ejecuta la `libPVZ2.so` real de Android de forma nativa en Windows y Linux. Encima de eso, este fork añade lo que esperarías de una versión de escritorio: **Discord Rich Presence**, **guardado en la nube**, **Battlez contra otros jugadores de nuevo**, un **modo mando estilo consola con vibración**, **dificultades extra**, **integración con la biblioteca de Steam** y **actualizador automático**, para **v4.5.2** y **v6.6.1** con un único ejecutable.
 
 > [!WARNING]
 > Proyecto experimental. **No incluye el juego**: debes aportar tu propio `libPVZ2.so` y tu propio `.obb`, obtenidos legalmente desde la versión de Android.
@@ -62,6 +62,16 @@ button_label = GitHub
 - Inicio de sesión con Discord para el Cloud por defecto; sincronización opcional al salir.
 - Exportar / importar tu partida como archivo `.json`.
 - Los resultados aparecen como una pequeña notificación arriba de la pantalla.
+
+### 🥊 Vuelve Battlez (v6.6.1)
+Los servidores de Battlez de EA ya no existen; aquí los sustituye el servidor propio de este fork, así que el modo vuelve a funcionar:
+
+- **Juega contra personas reales**: tu rival es la partida grabada de otro jugador en el mismo nivel, y tus partidas pasan a ser el rival de otros. Si aún no hay nadie, juegas contra la IA del propio juego.
+- **Identidad de Discord**: Battlez necesita la cuenta de Discord vinculada para el guardado en la nube. Los nombres y avatares de la clasificación y de las partidas son los nombres y fotos de perfil de Discord de cada jugador.
+- **Torneos semanales** con las ligas, coronas y rachas originales. La clasificación no tiene límite de jugadores.
+- **Recompensa para todos**: al acabar la semana, cada jugador que haya participado recibe la recompensa de su puesto (gemas, monedas), y los primeros suben de liga.
+- **Clasificación global** en la web: [pvz2.onyxdum.eu/battlez](https://pvz2.onyxdum.eu/battlez).
+- Las dificultades extra nunca tocan los niveles de Battlez: los dos jugadores juegan siempre el mismo nivel.
 
 ### 💀 Dificultades extra
 Ajustes → **Dificultad**: elige cualquiera de los ocho niveles de dificultad dinámica del juego, o uno de los modos propios:

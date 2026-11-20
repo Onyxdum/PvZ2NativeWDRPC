@@ -18,6 +18,7 @@ namespace pvz2native {
 struct LevelMods {
     bool potions = false;
     int horde_multiplier = 1; /* each wave zombie appears this many times; 1 leaves waves alone */
+    bool no_mowers = false;   /* drop the level's lawn mower module ("<World>Mowers"): no mowers at all */
 };
 
 /* `level` with `mods` applied, or empty when the file is not a level or nothing applies to it. Vasebreaker,

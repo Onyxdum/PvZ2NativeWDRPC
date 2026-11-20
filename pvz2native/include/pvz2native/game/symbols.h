@@ -300,6 +300,12 @@ struct GameSymbols {
         std::uint32_t zomboss_stage_change_call;
         std::uint32_t company_link_allowed_fn;
         std::uint32_t company_button_skip_branch;
+        /* Main menu: the BNE that skips the news ("Draper") button when the DraperFeaturePlacement switch is
+         * off. Made a plain B, so the company ("P", shown as the cloud) button always takes that slot. */
+        std::uint32_t news_button_branch;
+        /* Main menu: the BL calls to the "Google Play allowed" check (AgeGate switch + age passed) that decide
+         * whether the Google Play (controller) button is built or removed. Replaced by MOV R0,#1. */
+        std::uint32_t play_button_gate_calls[4];
         std::uint32_t dynamic_difficulty_fn;
         std::uint32_t wave_spawn_fn;
         std::uint32_t show_lawn_mowers_fn;
@@ -312,6 +318,19 @@ struct GameSymbols {
         /* Battlez: (32-bit wide string *out, int nameId) -> the text key of a player name ("[JOUST_AVATAR_NAME...]",
          * from JoustConfig AvatarNamePattern). Every Battlez name on screen comes through it. 6.6.1 only. */
         std::uint32_t joust_avatar_name_fn;
+        /* World map social button (WorldMap_SocialButton, the envelope with a "+"): its click handler
+         * (this) -> the Facebook friends dialog. Replaced by the Discord invite (social_invite.h). 4.5.2 only:
+         * 6.6.1 has no such button. */
+        std::uint32_t social_button_click_fn;
+        /* Its visibility check (vtable slot 21, 0x8dcc28 in 4.5.2): the BNE taken when the "Social" switch is
+         * off (made a NOP) and the BL to the AgeGate check (made MOV R0,#1), so the button is always there. */
+        std::uint32_t social_button_switch_branch;
+        std::uint32_t social_button_agegate_call;
+        /* 6.6.1 only: UIWorldMapNewsButton::Draw vtable slot (slot 26) and its original UIWidget::Draw target.
+         * Hooked so the port knows every frame when the WorldMap / PlayModes top HUD bar is visible and draws
+         * a native Friends button next to the News button. */
+        std::uint32_t worldmap_news_draw_vslot;
+        std::uint32_t worldmap_news_draw_fn;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.

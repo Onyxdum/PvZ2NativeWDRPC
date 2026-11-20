@@ -2,7 +2,7 @@
 
 📖 [Español](README_SPANISH.md) · **English**
 
-**Plants vs. Zombies 2 on PC, made to feel like a PC game.** This is a fork of [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (originally based on [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)), which runs the real Android `libPVZ2.so` natively on Windows and Linux. On top of that, this fork adds the things you would expect from a desktop release: **Discord Rich Presence**, **cloud saves**, a **console-style controller mode with rumble**, **extra difficulty modes**, **Steam library integration** and an **auto-updater**, for both **v4.5.2** and **v6.6.1** with a single executable.
+**Plants vs. Zombies 2 on PC, made to feel like a PC game.** This is a fork of [ea192000/PvZ2Native](https://github.com/ea192000/PvZ2Native) (originally based on [OptiJuegos/PvZ2Native](https://github.com/OptiJuegos/PvZ2Native)), which runs the real Android `libPVZ2.so` natively on Windows and Linux. On top of that, this fork adds the things you would expect from a desktop release: **Discord Rich Presence**, **cloud saves**, **Battlez against other players again**, a **console-style controller mode with rumble**, **extra difficulty modes**, **Steam library integration** and an **auto-updater**, for both **v4.5.2** and **v6.6.1** with a single executable.
 
 > [!WARNING]
 > Experimental project. **The game is not included**: you must supply your own `libPVZ2.so` and your own `.obb`, obtained legally from the Android release.
@@ -62,6 +62,16 @@ button_label = GitHub
 - Sign in with Discord for the default cloud; optional sync when you quit.
 - Export / import your save as a `.json` file.
 - Results show up as a small notification at the top of the screen.
+
+### 🥊 Battlez is back (v6.6.1)
+EA's Battlez servers are long gone; here they are replaced by this fork's own server, so the mode works again:
+
+- **Play against real people**: your opponent is the recorded match of another player on the same level; your own matches become other players' opponents. With nobody to face yet, you play the game's own AI.
+- **Discord identity**: Battlez needs the Discord account linked for cloud saves. Names and avatars in the leaderboard and in matches are the players' Discord names and profile pictures.
+- **Weekly tournaments** with the original leagues, crowns and win streaks. The leaderboard has no size limit.
+- **Rewards for everyone**: when the week ends, every player who took part gets the reward of their place (gems, coins), and the top places move up a league.
+- **Global leaderboard** on the web: [pvz2.onyxdum.eu/battlez](https://pvz2.onyxdum.eu/battlez).
+- The extra difficulty modes never touch Battlez levels: both players always face the same level.
 
 ### 💀 Extra difficulty modes
 Settings → **Difficulty**: pick any of the game's eight dynamic difficulty levels, or one of the custom modes:

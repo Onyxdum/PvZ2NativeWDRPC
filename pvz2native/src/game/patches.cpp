@@ -16,6 +16,8 @@
 #include <pvz2native/input/gamepad.h>
 #include <pvz2native/input/input_queue.h>
 #include <pvz2native/credits_screen.h>
+#include <pvz2native/social_invite.h>
+#include <pvz2native/friends_screen.h>
 
 #include <algorithm>
 #include <atomic>
@@ -291,6 +293,25 @@ bool enable_company_link_all_locales(pvz2_elf_image_t *img) {
         write_word(img, branch, kNopMovR0R0); /* NOP the skip branch so the cloud button is always instantiated */
         ok = true;
     }
+    /* The news button comes first and takes the company button's place (6.6.1 has the switch on): make its
+     * skip branch (BNE) unconditional (B) so the menu always goes on to the cloud button. */
+    const std::uint32_t news = sym().patch.news_button_branch;
+    if (news != 0 && in_image(img, news)) {
+        const std::uint32_t w = read_word(img, news);
+        if ((w & 0xFF000000u) == 0x1A000000u)
+            write_word(img, news, (w & 0x00FFFFFFu) | 0xEA000000u);
+        else
+            pvz2_log("[patch] news button branch (0x%x) is not the expected BNE -- skipped", news);
+    }
+    /* The Google Play (controller) button, which opens the port's settings, only exists when the age-gate
+     * check passes: answer it with yes at the menu's call sites. */
+    for (const std::uint32_t call : sym().patch.play_button_gate_calls) {
+        if (call == 0 || !in_image(img, call)) continue;
+        if ((read_word(img, call) & 0xFF000000u) == 0xEB000000u)
+            write_word(img, call, kMovR0One);
+        else
+            pvz2_log("[patch] Google Play button check (0x%x) is not the expected BL -- skipped", call);
+    }
     return ok;
 }
 
@@ -488,7 +509,8 @@ void game_apply_patches(pvz2_elf_image_t *img) {
     }
 
     if (enable_company_link_all_locales(img)) {
-        pvz2_log("[patch] company link check forced to true (shows \"P\" Cloud Save button in all locales including French)");
+        pvz2_log("[patch] main menu port buttons enabled (\"P\" shown as the Cloud Save button in every locale, "
+                 "Google Play button opens the settings)");
     }
 
     /* With the emulated store off the engine is meant to find no store at all,
@@ -634,10 +656,12 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
             if (mode != nullptr && std::strcmp(mode, "point_zero") == 0) {
                 mods.potions = true;
                 mods.horde_multiplier = 4;
+                mods.no_mowers = true;
             } else if (mode != nullptr && std::strcmp(mode, "hard_plus_plus") == 0) {
                 mods.horde_multiplier = 3;
+                mods.no_mowers = true;
             }
-            if ((mods.potions || mods.horde_multiplier > 1) && is_level) {
+            if ((mods.potions || mods.horde_multiplier > 1 || mods.no_mowers) && is_level) {
                 const std::vector<std::uint8_t> level =
                     level_with_mods(std::vector<std::uint8_t>(bytes, bytes + size), mods);
                 const std::uint32_t copy =
@@ -646,8 +670,8 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
                     std::memcpy(call.ptr(copy, (std::uint32_t)level.size()), level.data(), level.size());
                     call.regs[1] = copy;
                     call.regs[2] = (std::uint32_t)level.size();
-                    pvz2_log("[difficulty] %s: level file modified (potions=%d, hordes x%d, %u -> %zu bytes)", mode,
-                             (int)mods.potions, mods.horde_multiplier, size, level.size());
+                    pvz2_log("[difficulty] %s: level file modified (potions=%d, hordes x%d, no mowers=%d, %u -> %zu bytes)",
+                             mode, (int)mods.potions, mods.horde_multiplier, (int)mods.no_mowers, size, level.size());
                 }
             }
             if (std::strcmp(sym().version, "6.6.1") == 0) {
@@ -727,6 +751,49 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
             call.no_return();
             call.regs[15] = call.img->so_base + sym().patch.joust_avatar_name_fn + 4;
         }, "Battlez Discord names");
+    }
+
+    /* World map invite button (the envelope with a "+"): it opened the Facebook friends dialog, which has no
+     * Facebook here. Its click handler now opens the port's own friends list (friends_screen.h), whose
+     * "Invite" button copies the Discord invite link (social_invite.h). */
+    if (sym().patch.social_button_click_fn != 0) {
+        constexpr std::uint32_t kSocialClickPush = 0xe92d4800u; /* push {fp, lr} */
+        install_svc_at(img, sym().patch.social_button_click_fn, kSocialClickPush, "worldmap.social_click",
+                       [](GuestCall &) { friends_screen_request_open(); }, "friends list button");
+        /* The game only shows the button with the "Social" switch on and the age gate passed. */
+        const std::uint32_t br = sym().patch.social_button_switch_branch;
+        const std::uint32_t bl = sym().patch.social_button_agegate_call;
+        if (br != 0 && bl != 0 && in_image(img, bl) && (read_word(img, br) & 0xFF000000u) == 0x1A000000u &&
+            (read_word(img, bl) & 0xFF000000u) == 0xEB000000u) {
+            write_word(img, br, 0xE320F000u); /* NOP */
+            write_word(img, bl, 0xE3A00001u); /* MOV R0,#1 */
+            pvz2_log("[patch] world map invite button always shown");
+        } else if (br != 0) {
+            pvz2_log("[patch] world map invite button visibility check is not the expected code -- skipped");
+        }
+    }
+
+    /* 6.6.1 removed the world-map Facebook/social button. Hook UIWorldMapNewsButton::Draw (vtable slot 26)
+     * so the port knows every frame when the top-left WorldMap / PlayModes HUD bar is visible and draws its
+     * own native Friends button right next to the News button. */
+    if (sym().patch.worldmap_news_draw_vslot != 0 && sym().patch.worldmap_news_draw_fn != 0 &&
+        in_image(img, sym().patch.worldmap_news_draw_vslot)) {
+        const std::uint32_t cur = read_word(img, sym().patch.worldmap_news_draw_vslot);
+        const std::uint32_t expected_rel = img->so_base + sym().patch.worldmap_news_draw_fn;
+        if (cur == expected_rel || cur == sym().patch.worldmap_news_draw_fn) {
+            const std::uint32_t stub = make_guest_callback("worldmap.news_draw", [](GuestCall &call) {
+                friends_screen_note_hud_visible();
+                call.no_return();
+                call.regs[15] = call.img->so_base + sym().patch.worldmap_news_draw_fn;
+            });
+            if (stub != 0) {
+                write_word(img, sym().patch.worldmap_news_draw_vslot, stub);
+                pvz2_log("[patch] hooked UIWorldMapNewsButton::Draw for native Friends HUD button");
+            }
+        } else {
+            pvz2_log("[patch] UIWorldMapNewsButton::Draw vslot (0x%x) has 0x%08x (expected 0x%08x) -- skipped",
+                     sym().patch.worldmap_news_draw_vslot, cur, expected_rel);
+        }
     }
 
     if (sym().patch.zomboss_setup_stage == 0) return;
