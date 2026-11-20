@@ -1040,6 +1040,7 @@ FTex g_tex_btn_grey, g_tex_btn_red;
 FTex g_tex_hud_btn;
 std::atomic<Uint64> g_hud_seen_ms{0};
 bool g_hud_btn_down = false;
+float g_hud_brightness = 1.0f; /* how lit the game's HUD bar is (fades / loading dim) */
 
 unsigned utf8_next(const char **p) {
     const unsigned char c = (unsigned char)**p;
@@ -1943,8 +1944,12 @@ void friends_get_invite_code(char *out, int cap) {
     }
 }
 
+void friends_screen_set_hud_visible(int visible) {
+    g_hud_seen_ms.store(visible ? SDL_GetTicks64() : 0, std::memory_order_relaxed);
+}
+
 void friends_screen_note_hud_visible(void) {
-    g_hud_seen_ms.store(SDL_GetTicks64(), std::memory_order_relaxed);
+    friends_screen_set_hud_visible(1);
 }
 
 static bool hud_button_active(void) {
@@ -1963,7 +1968,7 @@ static void hud_button_rect(float win_h, float *x, float *y, float *w, float *h)
 }
 
 int friends_screen_hud_button_event(const SDL_Event *e, SDL_Window *window) {
-    if (!e || !window || g_open || !hud_button_active()) {
+    if (!e || !window || g_open || !hud_button_active() || g_hud_brightness < 0.7f) {
         g_hud_btn_down = false;
         return 0;
     }
@@ -2053,9 +2058,45 @@ void friends_screen_draw_hud_button(SDL_Window *window) {
     glPushMatrix();
     glLoadIdentity();
 
+    /* Follow the game's own fades / loading dim: sample the News button's white border (the button just left
+     * of ours) in the frame the game composited, and darken ours by the same amount. */
+    float bright = 1.0f;
+    {
+        const float k = (float)wh / 576.0f;
+        int rx = (int)(296.0f * k), ry = (int)(9.0f * k);
+        int rw = std::max(4, (int)(40.0f * k)), rh = std::max(4, (int)(9.0f * k));
+        if (rx + rw > ww) rw = ww - rx;
+        if (rw > 0 && ry + rh <= wh) {
+            std::vector<unsigned char> px((std::size_t)rw * rh * 4);
+            glReadBuffer(GL_BACK);
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            glReadPixels(rx, wh - ry - rh, rw, rh, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+            int mx = 0;
+            for (std::size_t i = 0; i + 3 < px.size(); i += 4) {
+                const int lum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+                if (lum > mx) mx = lum;
+            }
+            bright = std::min(1.0f, (float)mx / 235.0f);
+        }
+    }
+    g_hud_brightness = bright;
+    if (bright < 0.12f) {
+        glMatrixMode(GL_TEXTURE);
+        glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);
+        glPopMatrix();
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix();
+        glPopAttrib();
+        glUseProgram(prev_program);
+        glBindFramebuffer(GL_FRAMEBUFFER, prev_fbo);
+        glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
+        return;
+    }
+
     glBindTexture(GL_TEXTURE_2D, g_tex_hud_btn.id);
-    if (g_hud_btn_down) glColor4f(0.84f, 0.84f, 0.84f, 1.0f);
-    else glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    const float shade = bright * (g_hud_btn_down ? 0.84f : 1.0f);
+    glColor4f(shade, shade, shade, 1.0f);
     glBegin(GL_QUADS);
     glTexCoord2f(0, 0); glVertex2f(bx, by);
     glTexCoord2f(1, 0); glVertex2f(bx + bw, by);
@@ -2067,8 +2108,9 @@ void friends_screen_draw_hud_button(SDL_Window *window) {
         const float r = bh * 0.21f;
         const float cx = bx + bw - r * 0.45f;
         const float cy = by + r * 0.45f;
-        fill_round_rect(cx - r * 1.18f, cy - r * 1.18f, r * 2.36f, r * 2.36f, r * 1.18f, 1.0f, 1.0f, 1.0f, 1.0f);
-        fill_round_rect(cx - r * 0.90f, cy - r * 0.90f, r * 1.80f, r * 1.80f, r * 0.90f, 0.88f, 0.14f, 0.12f, 1.0f);
+        fill_round_rect(cx - r * 1.18f, cy - r * 1.18f, r * 2.36f, r * 2.36f, r * 1.18f, bright, bright, bright, 1.0f);
+        fill_round_rect(cx - r * 0.90f, cy - r * 0.90f, r * 1.80f, r * 1.80f, r * 0.90f, 0.88f * bright,
+                        0.14f * bright, 0.12f * bright, 1.0f);
     }
 
     glMatrixMode(GL_TEXTURE);

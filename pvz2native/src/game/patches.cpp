@@ -475,6 +475,15 @@ bool patch_call_site(pvz2_elf_image_t *img, std::uint32_t call_offset, std::uint
     return true;
 }
 
+std::uint32_t read_guest_lawn_app(GuestCall &c) {
+    if (sym().global.lawn_app_got == 0) return 0;
+    const std::uint32_t got_slot = c.img->so_base + sym().global.lawn_app_got;
+    if (!c.in_bounds(got_slot, 4)) return 0;
+    const std::uint32_t ptr_addr = c.read32(got_slot);
+    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
+    return c.read32(ptr_addr);
+}
+
 }  // namespace
 
 void game_apply_patches(pvz2_elf_image_t *img) {
@@ -773,25 +782,39 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
         }
     }
 
-    /* 6.6.1 removed the world-map Facebook/social button. Hook UIWorldMapNewsButton::Draw (vtable slot 26)
-     * so the port knows every frame when the top-left WorldMap / PlayModes HUD bar is visible and draws its
-     * own native Friends button right next to the News button. */
+    /* 6.6.1 removed the world-map Facebook/social button. Hook UIWorldMapNewsButton::Update (vtable slot 25)
+     * so the port knows every frame when the top-left WorldMap / PlayModes HUD bar is visible (and not
+     * covered by an in-game modal dialog) and draws its own native Friends button right next to News. */
     if (sym().patch.worldmap_news_draw_vslot != 0 && sym().patch.worldmap_news_draw_fn != 0 &&
         in_image(img, sym().patch.worldmap_news_draw_vslot)) {
         const std::uint32_t cur = read_word(img, sym().patch.worldmap_news_draw_vslot);
         const std::uint32_t expected_rel = img->so_base + sym().patch.worldmap_news_draw_fn;
         if (cur == expected_rel || cur == sym().patch.worldmap_news_draw_fn) {
-            const std::uint32_t stub = make_guest_callback("worldmap.news_draw", [](GuestCall &call) {
-                friends_screen_note_hud_visible();
+            const std::uint32_t stub = make_guest_callback("worldmap.news_update", [](GuestCall &call) {
+                const std::uint32_t self = call.arg(0);
+                bool visible =
+                    (self != 0 && call.in_bounds(self + 0x64u, 4) && (call.read32(self + 0x64u) & 1u) != 0);
+                if (visible) {
+                    const std::uint32_t lawn_app = read_guest_lawn_app(call);
+                    if (lawn_app != 0 && call.in_bounds(lawn_app + 0x2d0u, 4)) {
+                        const std::uint32_t widget_mgr = call.read32(lawn_app + 0x2d0u);
+                        if (widget_mgr != 0 && call.in_bounds(widget_mgr + 0xb4u, 4)) {
+                            if (call.read32(widget_mgr + 0x88u) != 0 || call.read32(widget_mgr + 0xb0u) != 0) {
+                                visible = false;
+                            }
+                        }
+                    }
+                }
+                friends_screen_set_hud_visible(visible ? 1 : 0);
                 call.no_return();
                 call.regs[15] = call.img->so_base + sym().patch.worldmap_news_draw_fn;
             });
             if (stub != 0) {
                 write_word(img, sym().patch.worldmap_news_draw_vslot, stub);
-                pvz2_log("[patch] hooked UIWorldMapNewsButton::Draw for native Friends HUD button");
+                pvz2_log("[patch] hooked UIWorldMapNewsButton::Update for native Friends HUD button");
             }
         } else {
-            pvz2_log("[patch] UIWorldMapNewsButton::Draw vslot (0x%x) has 0x%08x (expected 0x%08x) -- skipped",
+            pvz2_log("[patch] UIWorldMapNewsButton::Update vslot (0x%x) has 0x%08x (expected 0x%08x) -- skipped",
                      sym().patch.worldmap_news_draw_vslot, cur, expected_rel);
         }
     }
@@ -1185,15 +1208,6 @@ std::string guest_std_string(GuestCall &c, std::uint32_t p) {
     out.reserve(size);
     for (std::uint32_t i = 0; i < size; ++i) out.push_back((char)c.read8(data + i));
     return out;
-}
-
-std::uint32_t read_guest_lawn_app(GuestCall &c) {
-    if (sym().global.lawn_app_got == 0) return 0;
-    const std::uint32_t got_slot = c.img->so_base + sym().global.lawn_app_got;
-    if (!c.in_bounds(got_slot, 4)) return 0;
-    const std::uint32_t ptr_addr = c.read32(got_slot);
-    if (ptr_addr == 0 || !c.in_bounds(ptr_addr, 4)) return 0;
-    return c.read32(ptr_addr);
 }
 
 std::uint32_t read_guest_gsm(GuestCall &c) {
