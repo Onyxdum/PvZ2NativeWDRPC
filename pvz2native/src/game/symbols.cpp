@@ -350,8 +350,8 @@ const GameSymbols kVersions[] = {
             .rton_open_memory_fn    = 0xc67038,
             .wwise_id_from_string_fn = 0xed5100,
             .joust_avatar_name_fn   = 0x6b155c,
-            .worldmap_news_draw_vslot = 0x12cded8, /* UIWorldMapNewsButton vtable 0x12cde70 slot 26 */
-            .worldmap_news_draw_fn    = 0xa6d1f8,  /* UIWidget::Draw(Graphics*) */
+            .worldmap_news_draw_vslot = 0x12cded4, /* UIWorldMapNewsButton vtable 0x12cde70 slot 25 (Update) */
+            .worldmap_news_draw_fn    = 0xafa220,  /* UIWorldMapBaseSettingsButton::Update() */
         },
         .fingerprint_draw_frame    = 0xE79F0000E59F0004ull, /* LDR R0,[PC,#4]; LDR R0,[PC,R0]     */
         .fingerprint_game_app_init = 0xE28DB01CE92D4FF0ull, /* PUSH {R4-R11,LR}; ADD R11,SP,#0x1C */

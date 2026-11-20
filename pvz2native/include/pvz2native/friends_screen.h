@@ -50,6 +50,7 @@ void friends_get_invite_code(char *out, int cap);
 
 /* Native top-left HUD Friends button (used on 6.6.1 where the game removed its own social button). */
 void friends_screen_note_hud_visible(void);
+void friends_screen_set_hud_visible(int visible);
 int friends_screen_hud_button_event(const SDL_Event *e, SDL_Window *window);
 void friends_screen_draw_hud_button(SDL_Window *window);
 
