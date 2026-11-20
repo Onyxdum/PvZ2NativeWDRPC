@@ -154,6 +154,20 @@ static Tex load_bmp_from_rc(int rc_id) {
     SDL_FreeSurface(bmp);
     if (!surf) return t;
     apply_magenta_colorkey(surf);
+    if (rc_id == kRcAchievementPopup && surf->w == 918 && surf->h == 309) {
+        /* Remove the old half-circle arch above the bar (leave the tombstone intact) and close the top outline. */
+        auto *rows = static_cast<std::uint8_t *>(surf->pixels);
+        for (int y = 0; y < 115; ++y) {
+            std::uint8_t *px = rows + y * surf->pitch;
+            for (int x = 0; x < 670; ++x, px += 4) px[3] = 0;
+        }
+        for (int y = 115; y <= 121; ++y) {
+            std::uint8_t *px = rows + y * surf->pitch + 310 * 4;
+            for (int x = 310; x <= 610; ++x, px += 4) {
+                px[0] = 0; px[1] = 0; px[2] = 0; px[3] = 255;
+            }
+        }
+    }
     glGenTextures(1, &t.id);
     glBindTexture(GL_TEXTURE_2D, t.id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -713,43 +727,43 @@ static void draw_popup(SDL_Window *window) {
     float popup_y = popup_visible_y + t * (ph + margin_bottom);
 
     int cat_idx = g_popup.cat_idx;
-    /* Icon below the popup bg (bg has a circular hole). Offset +2px from top. */
+
+    /* Popup background first, then the full achievement icon on the left side of the bar. */
+    draw_tex(g_tex_popup, popup_x, popup_y, pw, ph);
+
     if (cat_idx >= 0 && cat_idx < kAchievementCount) {
         Tex &icon = get_icon(cat_idx);
         if (icon.id) {
-            float icon_w = sc((float)icon.w, s) * 0.9f;
-            float icon_h = sc((float)icon.h, s) * 0.9f;
-            float icon_x = popup_x + (pw - icon_w) * 0.5f;
-            float icon_y = popup_y + sc(2.0f, s);
+            float icon_w = sc(148.0f, s);
+            float icon_h = sc(148.0f, s);
+            float icon_x = popup_x + sc(86.0f, s);
+            float icon_y = popup_y + sc(138.0f, s);
             draw_tex(icon, icon_x, icon_y, icon_w, icon_h);
         }
     }
-
-    /* Popup background drawn on top of the icon */
-    draw_tex(g_tex_popup, popup_x, popup_y, pw, ph);
 
     if (cat_idx >= 0 && cat_idx < kAchievementCount) {
         AchievementLang lang = current_lang();
         const AchievementDef &def = kAchievements[cat_idx];
 
-        /* Title: 48pt (item bake, font_mul 1), yellow, baseline popup_top+186*s */
+        /* Title: 48pt (item bake, font_mul 1), yellow, baseline popup_top+192*s */
         if (g_font.ok) {
-            float tx = popup_x + sc(105.0f, s);
-            float ty = popup_y + sc(186.0f, s);
+            float tx = popup_x + sc(250.0f, s);
+            float ty = popup_y + sc(192.0f, s);
             draw_string_ach(g_font, def.title[lang], false, tx, ty,
                         0xfd/255.f, 0xdc/255.f, 0x67/255.f,
                         win_w, win_h, true, sc(3,s), sc(3,s), sc(1.5f,s), 0.25f, 1.0f);
         }
 
-        /* Description: 30pt (item bake, font_mul 30/48), white, baseline popup_top+224*s */
+        /* Description: 30pt (item bake, font_mul 30/48), white, baseline popup_top+230*s */
         if (g_font.ok) {
             float desc_font_mul = 30.0f / 48.0f;
-            float tx = popup_x + sc(105.0f, s);
-            float max_w = pw - sc(105.0f, s) - sc(200.0f, s);
+            float tx = popup_x + sc(250.0f, s);
+            float max_w = pw - sc(250.0f, s) - sc(200.0f, s);
             std::vector<std::string> lines = wrap_text(g_font, def.desc[lang], max_w, win_w, win_h, desc_font_mul);
             float line_h = sc(30.0f, s);
             for (int li = 0; li < (int)lines.size() && li < 3; ++li) {
-                float ty = popup_y + sc(224.0f, s) + (float)li * line_h;
+                float ty = popup_y + sc(230.0f, s) + (float)li * line_h;
                 draw_string_ach(g_font, lines[li].c_str(), false, tx, ty,
                             1.0f, 1.0f, 1.0f,
                             win_w, win_h, true, sc(2,s), sc(2,s), 0, 0.3f, 1.0f, desc_font_mul);

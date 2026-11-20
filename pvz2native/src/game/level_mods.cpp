@@ -113,7 +113,7 @@ void append_to_array(std::vector<RtonEdit> &edits, const RtonNode &arr, std::siz
 }  // namespace
 
 std::vector<std::uint8_t> level_with_mods(const std::vector<std::uint8_t> &level, const LevelMods &mods) {
-    if (!mods.potions && mods.horde_multiplier <= 1) return {};
+    if (!mods.potions && mods.horde_multiplier <= 1 && !mods.no_mowers) return {};
     RtonNode root;
     if (!rton_parse(level, root)) return {};
     const RtonNode *objects = root.get("objects");
@@ -144,11 +144,31 @@ std::vector<std::uint8_t> level_with_mods(const std::vector<std::uint8_t> &level
     if (modules == nullptr || modules->kind != RtonNode::Arr) return {};
 
     std::vector<RtonEdit> edits;
+    /* The Modules list may lose its lawn mowers and gain the potions in the same edit, so its element count
+     * is rewritten once with both. */
+    std::size_t modules_removed = 0, modules_added = 0;
+    std::vector<std::uint8_t> modules_appended;
+    if (mods.no_mowers) {
+        /* Every world has its own mower module, referenced as RTID(<World>Mowers@LevelModules)
+         * (FrontLawnMowers, DarkMowers, EgyptMowers...). SaveMowers is a challenge ("don't lose a mower"),
+         * not the mowers, and stays. The RTID's text is plain in the bytes, so it is matched there. */
+        static const std::string kMowers = "Mowers", kSave = "SaveMowers";
+        for (const RtonNode &e : modules->a) {
+            const std::string raw(level.begin() + (std::ptrdiff_t)e.begin, level.begin() + (std::ptrdiff_t)e.end);
+            if (raw.find(kMowers) == std::string::npos || raw.find(kSave) != std::string::npos) continue;
+            edits.push_back({e.begin, e.end, {}});
+            ++modules_removed;
+        }
+    }
     if (mods.potions && !has_potions) {
-        std::vector<std::uint8_t> ref;
-        put_rtid(ref, kPotionAlias, "CurrentLevel");
-        append_to_array(edits, *modules, 1, std::move(ref));
+        put_rtid(modules_appended, kPotionAlias, "CurrentLevel");
+        modules_added = 1;
         append_to_array(edits, *objects, 1, potion_module_object(last_stand ? 0 : kInitialPotions));
+    }
+    if (modules_removed != 0 || modules_added != 0) {
+        edits.push_back({modules->count_begin, modules->count_end,
+                         rton_encode_varint(modules->a.size() - modules_removed + modules_added)});
+        if (modules_added != 0) edits.push_back({modules->end - 1, modules->end - 1, std::move(modules_appended)});
     }
     const int extra = mods.horde_multiplier - 1;
     for (const RtonNode *zombies : extra > 0 ? wave_lists : std::vector<const RtonNode *>{}) {

@@ -83,6 +83,16 @@ void apply_magenta_colorkey(SDL_Surface *surface);
  * Used by the achievements screen open so they share that cue for now. */
 void config_screen_play_exit_sound(void);
 
+/* Show a one-line notification at the top of the window (main thread only). */
+void config_screen_toast(const char *text);
+
+/* Once per frame, main thread: handles a pending invite-button click and returns non-zero while a
+ * notification is on screen, so config_screen_draw() is called even with the settings closed. */
+int config_screen_has_toast(void);
+
+/* Render active toast notifications above all overlays (settings, friends, achievements, credits). */
+void config_screen_draw_toast(SDL_Window *window);
+
 /* Play achievement_unlock.wav (also refreshes SfxVolume/Muted from prefs). */
 void config_screen_play_achievement_unlock_sound(void);
 

@@ -4,6 +4,7 @@
 #include "pvz2native/config.h"
 #include "pvz2native/config_screen.h"
 #include "pvz2native/achievements.h"
+#include "pvz2native/friends_screen.h"
 #include "pvz2native/input/input_queue.h"
 #include "pvz2native/surface.h"
 #include "gamepad_icons.h"
@@ -311,8 +312,8 @@ bool GamepadModule::controller_ready() const {
 }
 
 bool GamepadModule::overlay_open() const {
-    /* Settings and quit-confirm both report open via this flag. */
-    return config_screen_is_open() != 0;
+    /* Settings and quit-confirm both report open via this flag; the friends list has its own. */
+    return config_screen_is_open() != 0 || friends_screen_is_open() != 0;
 }
 
 bool GamepadModule::is_our_controller_instance(SDL_JoystickID instance_id) const {
@@ -901,7 +902,9 @@ void GamepadModule::inject_ui_mouse_down_at_cursor() {
     down.button.clicks = 1;
     down.button.x = cursor_x_;
     down.button.y = cursor_y_;
-    if (achievements_screen_is_open())
+    if (friends_screen_is_open())
+        friends_screen_handle_event(&down);
+    else if (achievements_screen_is_open())
         achievements_screen_handle_event(&down);
     else
         config_screen_handle_event(&down);
@@ -921,7 +924,9 @@ void GamepadModule::inject_ui_mouse_up_at_cursor() {
     up.button.clicks = 1;
     up.button.x = cursor_x_;
     up.button.y = cursor_y_;
-    if (achievements_screen_is_open())
+    if (friends_screen_is_open())
+        friends_screen_handle_event(&up);
+    else if (achievements_screen_is_open())
         achievements_screen_handle_event(&up);
     else
         config_screen_handle_event(&up);
@@ -1048,6 +1053,10 @@ int GamepadModule::handle_controller_button(const SDL_Event *e) {
             return 1;
         }
         if (!down) return 1;
+        if (friends_screen_is_open() && (button == SDL_CONTROLLER_BUTTON_BACK || button == SDL_CONTROLLER_BUTTON_B)) {
+            friends_screen_close();
+            return 1;
+        }
         if (button == SDL_CONTROLLER_BUTTON_BACK) {
             config_screen_request_escape();
             return 1;
@@ -1325,7 +1334,9 @@ void GamepadModule::tick_right_stick_ui(float dt_sec) {
     /* Stick up (negative Y) → wheel +1 → list scrolls toward top (same as mouse). */
     wheel.wheel.y = (sy < 0.0f) ? 1 : -1;
     wheel.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
-    if (achievements_screen_is_open())
+    if (friends_screen_is_open())
+        friends_screen_handle_event(&wheel);
+    else if (achievements_screen_is_open())
         achievements_screen_handle_event(&wheel);
     else
         config_screen_handle_event(&wheel);

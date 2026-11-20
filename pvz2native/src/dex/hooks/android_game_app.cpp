@@ -1010,12 +1010,29 @@ void crashlytics_set_string(DexCall &d) {
     }
 
     const bool presence = pvz2_presence_enabled();
-    if (presence) {
+    /* 6.6.1's travel log holds UI_Event_Panels from open to close, while UI_Quests is unloaded and loaded
+     * again whenever the player switches between its tabs (only the World tab uses it). 4.5.2 has no
+     * UI_Event_Panels and keeps UI_Quests for the whole time. */
+    static bool s_event_panels_loaded = false;
+    bool quests_tab_switch = false;
+    if (key == "Last Force LoadGroups" && val.find("UI_Event_Panels") != std::string::npos) {
+        s_event_panels_loaded = true;
+    } else if (key == "Last DeleteGroups") {
+        if (val.find("UI_Event_Panels") != std::string::npos) {
+            s_event_panels_loaded = false;
+            if (presence) pvz2_presence_note("state", "TravelLog Shown=false");
+        } else if (s_event_panels_loaded && val.find("UI_Quest") != std::string::npos) {
+            quests_tab_switch = true;
+        }
+    }
+    if (presence && quests_tab_switch) {
+        /* Not a close: say nothing, or the presence falls back to the world map. */
+    } else if (presence) {
         if (key == "Last Force LoadGroups") {
             if (val.find("UI_PauseMenu") != std::string::npos) {
                 pvz2_presence_note("state", "Board Paused=true");
             }
-            if (val.find("UI_Quests") != std::string::npos) {
+            if (val.find("UI_Quests") != std::string::npos || val.find("UI_Event_Panels") != std::string::npos) {
                 pvz2_presence_note("state", "TravelLog Shown=true");
             }
             if (val.find("PinataRewards") != std::string::npos ||

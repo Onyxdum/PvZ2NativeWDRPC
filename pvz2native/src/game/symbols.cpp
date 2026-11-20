@@ -250,11 +250,16 @@ const GameSymbols kVersions[] = {
             .zomboss_stage_change_call = 0xa57444,
             .company_link_allowed_fn   = 0x3e9390,
             .company_button_skip_branch = 0x451c80,
+            .news_button_branch        = 0x451bec, /* the switch is already off here */
             .dynamic_difficulty_fn     = 0x8888d8,
             .wave_spawn_fn             = 0,
             .show_lawn_mowers_fn       = 0x403424,
             .rton_open_memory_fn       = 0xb9edd8,
             .wwise_id_from_string_fn   = 0xec6408,
+            .joust_avatar_name_fn      = 0,
+            .social_button_click_fn    = 0x8dcca4, /* vtable 0x10e3ed0 slot 46 */
+            .social_button_switch_branch = 0x8dcc74,
+            .social_button_agegate_call  = 0x8dcc7c,
         },
         /* probe: the frame-gate field offsets are 9.6.1's; reading a 4.5.2 driver
          * at them printed plausible garbage, which is worse than printing
@@ -332,12 +337,21 @@ const GameSymbols kVersions[] = {
             .zomboss_setup_stage    = 0xa57c50,
             .zomboss_stage_init_call = 0xa566dc,
             .zomboss_stage_change_call = 0xa5681c,
+            /* MainMenu button builder (sub_74FD..): news if DraperFeaturePlacement, else the company button
+             * if sub_6C320C (locale check) && LinkToPopcapWebsite. */
+            .company_link_allowed_fn = 0x6c320c,
+            .company_button_skip_branch = 0x750294,
+            .news_button_branch     = 0x750220,
+            /* BL sub_1F33C8 (AgeGate) at the build, re-check and remove sites of the Google Play button. */
+            .play_button_gate_calls = { 0x75096c, 0x74f56c, 0x74f72c, 0x74f98c },
             .dynamic_difficulty_fn  = 0xaa9c20,
             .wave_spawn_fn          = 0,
             .show_lawn_mowers_fn    = 0x6e84cc,
             .rton_open_memory_fn    = 0xc67038,
             .wwise_id_from_string_fn = 0xed5100,
             .joust_avatar_name_fn   = 0x6b155c,
+            .worldmap_news_draw_vslot = 0x12cded8, /* UIWorldMapNewsButton vtable 0x12cde70 slot 26 */
+            .worldmap_news_draw_fn    = 0xa6d1f8,  /* UIWidget::Draw(Graphics*) */
         },
         .fingerprint_draw_frame    = 0xE79F0000E59F0004ull, /* LDR R0,[PC,#4]; LDR R0,[PC,R0]     */
         .fingerprint_game_app_init = 0xE28DB01CE92D4FF0ull, /* PUSH {R4-R11,LR}; ADD R11,SP,#0x1C */

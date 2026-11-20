@@ -141,6 +141,7 @@ const RcAsset kRcAssets[] = {
     {316, "achievements/achievement_present_perfect.bmp"},
     {317, "config/achievement_unlock.wav"},
     {318, "config/zombie_time.ogg"},
+    {320, "config/btn_friends_hud.bmp"},
     {350, "steam/Grid.png"},
     {351, "steam/Hero.png"},
     {352, "steam/Logo.png"},
