@@ -476,9 +476,20 @@ std::int64_t steady_now_ms() {
         .count();
 }
 
-bool live_is_es() {
+int live_lang() {
     const pvz2_config_t *c = pvz2_config();
-    return c && std::strncmp(c->user_locale, "es", 2) == 0;
+    const char *loc = c ? c->user_locale : "";
+    if (std::strncmp(loc, "es", 2) == 0) return 1;
+    if (std::strncmp(loc, "fr", 2) == 0) return 2;
+    if (std::strncmp(loc, "de", 2) == 0) return 3;
+    if (std::strncmp(loc, "pt", 2) == 0) return 4;
+    if (std::strncmp(loc, "it", 2) == 0) return 5;
+    return 0;
+}
+
+const char *L6(const char *en, const char *es, const char *fr, const char *de, const char *pt, const char *it) {
+    const char *t[6] = {en, es, fr, de, pt, it};
+    return t[live_lang()];
 }
 
 void live_worker_loop(std::string match_id, std::string base, std::string did, std::string token) {
@@ -570,9 +581,16 @@ void joust_live_begin(const std::string &match_id, const std::string &rival_name
         std::lock_guard<std::mutex> lk(g_live.mu);
         g_live.match_id = match_id;
         g_live.rival_name = rival_name;
-        const std::string who = rival_name.empty() ? (live_is_es() ? "un rival" : "an opponent") : rival_name;
-        g_live.pending_toast = live_is_es() ? ("¡Partida en vivo contra " + who + "!")
-                                            : ("Live Battlez match vs " + who + "!");
+        const std::string who = rival_name.empty()
+            ? std::string(L6("an opponent", "un rival", "un adversaire", "einen Gegner", "um oponente", "un avversario"))
+            : rival_name;
+        char tbuf[192];
+        std::snprintf(tbuf, sizeof(tbuf),
+                      L6("Live Battlez match vs %s!", "¡Partida en vivo contra %s!",
+                         "Match Battlez en direct contre %s !", "Live-Battlez gegen %s!",
+                         "Partida ao vivo contra %s!", "Partita Battlez dal vivo contro %s!"),
+                      who.c_str());
+        g_live.pending_toast = tbuf;
         g_live.worker = std::thread(live_worker_loop, match_id, base, std::string(cloud->auth_discord_id),
                                     std::string(cloud->auth_discord_token));
     }
@@ -845,14 +863,17 @@ extern "C" int pvz2_joust_live_waiting_banner(char *out, int cap) {
         rival = g_live.rival_name;
     }
     if (out && cap > 0) {
-        const std::string who = rival.empty() ? (live_is_es() ? "tu rival" : "your opponent") : rival;
-        if (live_is_es()) {
-            std::snprintf(out, (std::size_t)cap, "Esperando a que %s termine de elegir plantas... (%ds)",
-                          who.c_str(), left);
-        } else {
-            std::snprintf(out, (std::size_t)cap, "Waiting for %s to finish picking plants... (%ds)",
-                          who.c_str(), left);
-        }
+        const std::string who = rival.empty()
+            ? std::string(L6("your opponent", "tu rival", "ton adversaire", "deinen Gegner", "seu oponente", "il tuo avversario"))
+            : rival;
+        std::snprintf(out, (std::size_t)cap,
+                      L6("Waiting for %s to finish picking plants... (%ds)",
+                         "Esperando a que %s termine de elegir plantas... (%ds)",
+                         "En attente de %s pour choisir ses plantes... (%ds)",
+                         "Warte auf %s bei der Pflanzenauswahl... (%ds)",
+                         "Aguardando %s escolher as plantas... (%ds)",
+                         "In attesa che %s scelga le piante... (%ds)"),
+                      who.c_str(), left);
     }
     return 1;
 }

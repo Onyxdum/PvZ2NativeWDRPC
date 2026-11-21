@@ -120,6 +120,22 @@ bool g_worker_started = false;
 std::thread &g_listener = *new std::thread;
 bool g_listener_started = false;
 
+int lang_idx() {
+    const pvz2_config_t *cfg = pvz2_config();
+    const char *loc = cfg ? cfg->user_locale : "";
+    if (std::strncmp(loc, "es", 2) == 0) return 1;
+    if (std::strncmp(loc, "fr", 2) == 0) return 2;
+    if (std::strncmp(loc, "de", 2) == 0) return 3;
+    if (std::strncmp(loc, "pt", 2) == 0) return 4;
+    if (std::strncmp(loc, "it", 2) == 0) return 5;
+    return 0;
+}
+
+const char *L6(const char *en, const char *es, const char *fr, const char *de, const char *pt, const char *it) {
+    const char *t[6] = {en, es, fr, de, pt, it};
+    return t[lang_idx()];
+}
+
 #ifdef _WIN32
 int run_hidden(const std::string &cmd) {
     STARTUPINFOA si{};
@@ -390,13 +406,15 @@ void sync_once() {
         }
         for (const Friend &fr : list) merged.push_back(fr);
         /* Announce brand-new incoming requests once via toast. */
-        const bool is_spanish = pvz2_config() && std::strncmp(pvz2_config()->user_locale, "es", 2) == 0;
         for (const Friend &fr : merged) {
             if (fr.is_request && g_seen_requests.insert(fr.id).second) {
                 char msg[192];
                 std::snprintf(msg, sizeof(msg),
-                              is_spanish ? "Solicitud de amistad de %s" : "Friend request from %s",
-                              fr.name.empty() ? (is_spanish ? "un jugador" : "a player") : fr.name.c_str());
+                              L6("Friend request from %s", "Solicitud de amistad de %s",
+                                 "Demande d'ami de %s", "Freundschaftsanfrage von %s",
+                                 "Pedido de amizade de %s", "Richiesta di amicizia da %s"),
+                              fr.name.empty() ? L6("a player", "un jugador", "un joueur", "einem Spieler", "um jogador", "un giocatore")
+                                              : fr.name.c_str());
                 g_pending_toasts.push_back(msg);
             }
         }
@@ -480,15 +498,26 @@ void process_queued_actions() {
                         g_friends.end());
         if (status == 200) {
             char msg[192];
-            const char *who = a.name.empty() ? (is_spanish ? "tu amigo" : "your friend") : a.name.c_str();
+            const char *who = a.name.empty()
+                ? L6("your friend", "tu amigo", "ton ami", "deinen Freund", "seu amigo", "il tuo amico")
+                : a.name.c_str();
             if (a.kind == ActionKind::Accept) {
                 std::snprintf(msg, sizeof(msg),
-                              is_spanish ? "¡Ahora eres amigo de %s!" : "Now friends with %s!", who);
+                              L6("Now friends with %s!", "¡Ahora eres amigo de %s!",
+                                 "Tu es maintenant ami avec %s !", "Jetzt mit %s befreundet!",
+                                 "Agora você é amigo de %s!", "Ora sei amico di %s!"),
+                              who);
             } else if (a.kind == ActionKind::Reject) {
-                std::snprintf(msg, sizeof(msg), "%s", is_spanish ? "Invitación rechazada" : "Invite rejected");
+                std::snprintf(msg, sizeof(msg), "%s",
+                              L6("Invite rejected", "Invitación rechazada",
+                                 "Invitation refusée", "Einladung abgelehnt",
+                                 "Convite recusado", "Invito rifiutato"));
             } else {
                 std::snprintf(msg, sizeof(msg),
-                              is_spanish ? "%s eliminado de amigos" : "Removed %s from friends", who);
+                              L6("Removed %s from friends", "%s eliminado de amigos",
+                                 "%s retiré de tes amis", "%s aus Freunden entfernt",
+                                 "%s removido dos amigos", "%s rimosso dagli amici"),
+                              who);
             }
             g_pending_toasts.push_back(msg);
         }
@@ -653,10 +682,11 @@ void queue_local_invite(const std::string &from_id, const std::string &name, con
         if (!in_list) g_friends.insert(g_friends.begin(), fr);
         if (g_state == ListState::Loading || g_state == ListState::Error) g_state = ListState::Ready;
         g_seen_requests.insert(from_id);
-        const bool is_spanish = pvz2_config() && std::strncmp(pvz2_config()->user_locale, "es", 2) == 0;
         char msg[192];
         std::snprintf(msg, sizeof(msg),
-                      is_spanish ? "Invitación de amistad de %s" : "Friend invite from %s",
+                      L6("Friend invite from %s", "Invitación de amistad de %s",
+                         "Invitation d'ami de %s", "Freundeseinladung von %s",
+                         "Convite de amizade de %s", "Invito di amicizia da %s"),
                       fr.name.c_str());
         g_pending_toasts.push_back(msg);
     }
@@ -823,41 +853,50 @@ bool add_to_save(long long coins, long long gems) {
 /* =========================================================================
  * Text
  * ========================================================================= */
-bool is_es() {
-    const pvz2_config_t *cfg = pvz2_config();
-    return cfg && std::strncmp(cfg->user_locale, "es", 2) == 0;
-}
-
-const char *T(const char *es, const char *en) { return is_es() ? es : en; }
-
 /* "beach3" -> "Gran Ola Playa 3" */
 std::string level_label(const std::string &level) {
-    static const struct { const char *key, *es, *en; } kWorlds[] = {
-        {"tutorial", "Tutorial", "Tutorial"},       {"modern", "Día moderno", "Modern Day"},
-        {"egypt", "Antiguo Egipto", "Ancient Egypt"}, {"pirate", "Mares piratas", "Pirate Seas"},
-        {"cowboy", "Salvaje Oeste", "Wild West"},    {"future", "Futuro lejano", "Far Future"},
-        {"dark", "Edad Oscura", "Dark Ages"},        {"beach", "Gran Ola Playa", "Big Wave Beach"},
-        {"iceage", "Cuevas congeladas", "Frostbite Caves"}, {"lostcity", "Ciudad perdida", "Lost City"},
-        {"eighties", "Neon Mixtape Tour", "Neon Mixtape Tour"}, {"dino", "Jurásico pantanoso", "Jurassic Marsh"},
+    static const struct { const char *key, *n[6]; } kWorlds[] = {
+        {"tutorial", {"Tutorial", "Tutorial", "Didacticiel", "Tutorial", "Tutorial", "Tutorial"}},
+        {"modern", {"Modern Day", "Día moderno", "Temps modernes", "Neuzeit", "Tempos Modernos", "Tempi moderni"}},
+        {"egypt", {"Ancient Egypt", "Antiguo Egipto", "Égypte antique", "Altes Ägypten", "Egito Antigo", "Antico Egitto"}},
+        {"pirate", {"Pirate Seas", "Mares piratas", "Mers pirates", "Piratenseen", "Mares Piratas", "Mari dei pirati"}},
+        {"cowboy", {"Wild West", "Salvaje Oeste", "Far West", "Wilder Westen", "Velho Oeste", "Selvaggio West"}},
+        {"future", {"Far Future", "Futuro lejano", "Futur lointain", "Ferne Zukunft", "Futuro Distante", "Futuro lontano"}},
+        {"dark", {"Dark Ages", "Edad Oscura", "Âge des ténèbres", "Finsteres Mittelalter", "Idade das Trevas", "Medioevo"}},
+        {"beach", {"Big Wave Beach", "Gran Ola Playa", "Plage des déferlantes", "Strand der großen Welle", "Praia da Boa Onda", "Spiaggia delle grandi onde"}},
+        {"iceage", {"Frostbite Caves", "Cuevas congeladas", "Grottes glaciaires", "Frostbeulenhöhlen", "Cavernas Congeladas", "Grotte congelate"}},
+        {"lostcity", {"Lost City", "Ciudad perdida", "Cité perdue", "Verlorene Stadt", "Cidade Perdida", "Città perduta"}},
+        {"eighties", {"Neon Mixtape Tour", "Neon Mixtape Tour", "Tournée Fluo Mixtape", "Neon-Mixtape-Tour", "Turnê Neon Mixtape", "Tour Neon Mixtape"}},
+        {"dino", {"Jurassic Marsh", "Jurásico pantanoso", "Marais jurassique", "Juramoor", "Pântano Jurássico", "Palude giurassica"}},
     };
     std::string lv = level;
     for (char &ch : lv) ch = (char)std::tolower((unsigned char)ch);
     std::size_t digits = lv.size();
     while (digits > 0 && std::isdigit((unsigned char)lv[digits - 1])) --digits;
     const std::string world = lv.substr(0, digits), number = lv.substr(digits);
+    const int li = lang_idx();
     for (const auto &w : kWorlds)
-        if (world == w.key) return std::string(is_es() ? w.es : w.en) + (number.empty() ? "" : " " + number);
+        if (world == w.key) return std::string(w.n[li]) + (number.empty() ? "" : " " + number);
     return level;
 }
 
 std::string ago_label(long s) {
     char buf[64];
     if (s < 3600)
-        std::snprintf(buf, sizeof(buf), T("Visto hace %ld min", "Seen %ld min ago"), std::max(1L, s / 60));
+        std::snprintf(buf, sizeof(buf),
+                      L6("Seen %ld min ago", "Visto hace %ld min", "Vu il y a %ld min",
+                         "Vor %ld Min. gesehen", "Visto há %ld min", "Visto %ld min fa"),
+                      std::max(1L, s / 60));
     else if (s < 86400)
-        std::snprintf(buf, sizeof(buf), T("Visto hace %ld h", "Seen %ld h ago"), s / 3600);
+        std::snprintf(buf, sizeof(buf),
+                      L6("Seen %ld h ago", "Visto hace %ld h", "Vu il y a %ld h",
+                         "Vor %ld Std. gesehen", "Visto há %ld h", "Visto %ld h fa"),
+                      s / 3600);
     else
-        std::snprintf(buf, sizeof(buf), T("Visto hace %ld días", "Seen %ld days ago"), s / 86400);
+        std::snprintf(buf, sizeof(buf),
+                      L6("Seen %ld days ago", "Visto hace %ld días", "Vu il y a %ld j",
+                         "Vor %ld Tagen gesehen", "Visto há %ld dias", "Visto %ld giorni fa"),
+                      s / 86400);
     return buf;
 }
 
@@ -1319,7 +1358,7 @@ void draw_screen(float win_w, float win_h) {
     draw_tex(g_tex_menu, L.mx, L.my + 2 * s, L.mw, L.mh, 0.35f);
     draw_tex(g_tex_menu, L.mx, L.my, L.mw, L.mh);
 
-    const char *title = T("Amigos", "Friends");
+    const char *title = L6("Friends", "Amigos", "Amis", "Freunde", "Amigos", "Amici");
     draw_text(title, true, L.mx + (L.mw - text_width(title, true, s)) * 0.5f, L.my + 126 * s, s, 0xfd / 255.f,
               0xdc / 255.f, 0x67 / 255.f);
 
@@ -1333,7 +1372,9 @@ void draw_screen(float win_w, float win_h) {
         fill_round_rect(L.bx, L.by, L.bw, L.bh, 22 * s, copied ? 0.30f : 0.23f, copied ? 0.62f : 0.56f, 0.16f, 1.0f);
     }
     {
-        const char *label = copied ? T("¡Enlace copiado!", "Link copied!") : T("Invitar a un amigo", "Invite a friend");
+        const char *label = copied
+            ? L6("Link copied!", "¡Enlace copiado!", "Lien copié !", "Link kopiert!", "Link copiado!", "Link copiato!")
+            : L6("Invite a friend", "Invitar a un amigo", "Inviter un ami", "Freund einladen", "Convidar um amigo", "Invita un amico");
         const float fs = s * 0.78f;
         const float press_y = g_invite_down ? 2.0f * s : 0.0f;
         draw_text(label, false, L.bx + (L.bw - text_width(label, false, fs)) * 0.5f,
@@ -1356,15 +1397,25 @@ void draw_screen(float win_w, float win_h) {
                   list_top + L.lh * 0.4f, fs, 1, 1, 1);
     };
     if (state == ListState::NotLinked) {
-        centre_message(T("Vincula Discord en Guardado en la nube para ver a tus amigos",
-                         "Link Discord in Cloud Save to see your friends"));
+        centre_message(L6("Link Discord in Cloud Save to see your friends",
+                          "Vincula Discord en Guardado en la nube para ver a tus amigos",
+                          "Lie Discord dans Sauvegarde Cloud pour voir tes amis",
+                          "Verknüpfe Discord im Cloud-Speicher, um Freunde zu sehen",
+                          "Vincule o Discord no Salvamento na Nuvem para ver seus amigos",
+                          "Collega Discord nel Salvataggio Cloud per vedere i tuoi amici"));
         return;
     }
     if (rows.empty()) {
-        centre_message(state == ListState::Loading ? T("Cargando...", "Loading...")
-                       : state == ListState::Error ? T("No se pudo conectar con el servidor", "Could not reach the server")
-                                                   : T("Aún no hay nadie más. ¡Invita a un amigo!",
-                                                       "Nobody else yet. Invite a friend!"));
+        centre_message(state == ListState::Loading
+                           ? L6("Loading...", "Cargando...", "Chargement...", "Lädt...", "Carregando...", "Caricamento...")
+                       : state == ListState::Error
+                           ? L6("Could not reach the server", "No se pudo conectar con el servidor",
+                                "Impossible de joindre le serveur", "Server nicht erreichbar",
+                                "Não foi possível conectar ao servidor", "Impossibile raggiungere il server")
+                           : L6("Nobody else yet. Invite a friend!", "Aún no hay nadie más. ¡Invita a un amigo!",
+                                "Personne d'autre pour l'instant. Invite un ami !",
+                                "Noch niemand sonst hier. Lade einen Freund ein!",
+                                "Ninguém ainda. Convide um amigo!", "Ancora nessuno. Invita un amico!"));
         return;
     }
 
@@ -1423,24 +1474,24 @@ void draw_screen(float win_w, float win_h) {
                 const FTex &at = (acc_down && g_tex_btn_green_down.id) ? g_tex_btn_green_down : g_tex_btn_green_up;
                 if (at.id) draw_button_tex(at, rr.ax, rr.ay, rr.aw, rr.ah);
                 else fill_round_rect(rr.ax, rr.ay, rr.aw, rr.ah, 16 * s, 0.23f, 0.56f, 0.16f, 1);
-                const char *albl = T("Aceptar", "Accept");
+                const char *albl = L6("Accept", "Aceptar", "Accepter", "Annehmen", "Aceitar", "Accetta");
                 const float bs = s * 0.54f;
                 draw_text(albl, false, rr.ax + (rr.aw - text_width(albl, false, bs)) * 0.5f,
                           rr.ay + rr.ah * 0.5f + 12 * bs + (acc_down ? 2.0f * s : 0.0f), bs, 1, 1, 1);
 
                 if (g_tex_btn_red.id) draw_button_tex(g_tex_btn_red, rr.rx, rr.ry, rr.rw, rr.rh);
                 else fill_round_rect(rr.rx, rr.ry, rr.rw, rr.rh, 16 * s, 0.70f, 0.20f, 0.18f, 1);
-                const char *rlbl = T("Rechazar", "Reject");
+                const char *rlbl = L6("Reject", "Rechazar", "Refuser", "Ablehnen", "Recusar", "Rifiuta");
                 draw_text(rlbl, false, rr.rx + (rr.rw - text_width(rlbl, false, bs)) * 0.5f,
                           rr.ry + rr.rh * 0.5f + 12 * bs + (rej_down ? 2.0f * s : 0.0f), bs, 1, 1, 1);
             }
         } else {
             /* Gift button: 1000 coins + 5 gems, once a day per friend, delivered when their game next starts. */
             const int st = gift_button_state(fr);
-            const char *label = st == 0 ? T("Regalar", "Send gift")
+            const char *label = st == 0 ? L6("Send gift", "Regalar", "Offrir", "Schenken", "Presentear", "Regala")
                               : st == 1 ? "..."
-                              : st == 2 ? T("Enviado hoy", "Sent today")
-                                        : T("Error", "Error");
+                              : st == 2 ? L6("Sent today", "Enviado hoy", "Envoyé", "Gesendet", "Enviado", "Inviato")
+                                        : L6("Error", "Error", "Erreur", "Fehler", "Erro", "Errore");
             if (rr.gy >= list_top && rr.gy + rr.gh <= list_bot) {
                 const bool pressed = (st == 0 && g_gift_down_id == fr.id);
                 const FTex &gt = (st == 0) ? (pressed && g_tex_btn_orange_down.id ? g_tex_btn_orange_down : g_tex_btn_orange_up)
@@ -1479,18 +1530,26 @@ void draw_screen(float win_w, float win_h) {
 
         const float fs = s * 0.62f;
         if (fr.is_request) {
-            const std::string req_lbl = fit(T("Quiere ser tu amigo", "Wants to be your friend"), false, fs, max_w);
+            const std::string req_lbl = fit(
+                L6("Wants to be your friend", "Quiere ser tu amigo", "Veut être ton ami",
+                   "Möchte dein Freund sein", "Quer ser seu amigo", "Vuole essere tuo amico"),
+                false, fs, max_w);
             draw_text(req_lbl.c_str(), false, tx, iy + 104 * s, fs, 0.95f, 0.92f, 0.70f, list_top, list_bot);
         } else {
             std::string where;
             if (fr.online && fr.where == "level")
-                where = std::string(T("Jugando: ", "Playing: ")) + (fr.level.empty() ? T("un nivel", "a level") : level_label(fr.level));
+                where = std::string(L6("Playing: ", "Jugando: ", "Joue à : ", "Spielt: ", "Jogando: ", "Gioca a: ")) +
+                        (fr.level.empty()
+                             ? L6("a level", "un nivel", "un niveau", "ein Level", "uma fase", "un livello")
+                             : level_label(fr.level));
             else if (fr.online && fr.where == "map")
-                where = std::string(T("En el mapa", "On the world map")) + (fr.world.empty() ? "" : ": " + level_label(fr.world));
+                where = std::string(L6("On the world map", "En el mapa", "Sur la carte", "Auf der Weltkarte",
+                                       "No mapa", "Sulla mappa")) +
+                        (fr.world.empty() ? "" : ": " + level_label(fr.world));
             else if (fr.online && fr.where == "menu")
-                where = T("En el menú", "In the menus");
+                where = L6("In the menus", "En el menú", "Dans les menus", "In den Menüs", "Nos menus", "Nei menu");
             else if (fr.online)
-                where = T("Jugando ahora", "Playing now");
+                where = L6("Playing now", "Jugando ahora", "En ligne", "Spielt gerade", "Jogando agora", "Sta giocando");
             else
                 where = ago_label(fr.ago);
             if (!fr.version.empty()) where += "  (v" + fr.version + ")";
@@ -1501,7 +1560,13 @@ void draw_screen(float win_w, float win_h) {
                 draw_text(where.c_str(), false, tx, iy + 100 * s, fs, 0.85f, 0.85f, 0.85f, list_top, list_bot);
 
             char progress[160];
-            std::snprintf(progress, sizeof(progress), T("%d plantas  -  %d mundos  -  %d niveles", "%d plants  -  %d worlds  -  %d levels"),
+            std::snprintf(progress, sizeof(progress),
+                          L6("%d plants  -  %d worlds  -  %d levels",
+                             "%d plantas  -  %d mundos  -  %d niveles",
+                             "%d plantes  -  %d mondes  -  %d niveaux",
+                             "%d Pflanzen  -  %d Welten  -  %d Level",
+                             "%d plantas  -  %d mundos  -  %d fases",
+                             "%d piante  -  %d mondi  -  %d livelli"),
                           fr.plants, fr.worlds, fr.levels);
             const std::string prog = fit(progress, false, fs, max_w);
             draw_text(prog.c_str(), false, tx, iy + 136 * s, fs, 1, 1, 1, list_top, list_bot);
@@ -1698,7 +1763,9 @@ void friends_screen_handle_event(const SDL_Event *e) {
                         g_remove_confirm_ms = now;
                         char msg[192];
                         std::snprintf(msg, sizeof(msg),
-                                      T("Pulsa de nuevo para eliminar a %s", "Click again to remove %s"),
+                                      L6("Click again to remove %s", "Pulsa de nuevo para eliminar a %s",
+                                         "Clique encore pour retirer %s", "Erneut klicken, um %s zu entfernen",
+                                         "Clique de novo para remover %s", "Clicca di nuovo per rimuovere %s"),
                                       list[i].name.c_str());
                         config_screen_toast(msg);
                     }
@@ -1817,7 +1884,12 @@ void friends_claim_gifts_at_boot(void) {
         if (names.size() > 3) who += "...";
         char msg[256];
         std::snprintf(msg, sizeof(msg),
-                      T("Regalo de %s: %lld monedas y %lld gemas", "Gift from %s: %lld coins and %lld gems"),
+                      L6("Gift from %s: %lld coins and %lld gems",
+                         "Regalo de %s: %lld monedas y %lld gemas",
+                         "Cadeau de %s : %lld pièces et %lld gemmes",
+                         "Geschenk von %s: %lld Münzen und %lld Juwelen",
+                         "Presente de %s: %lld moedas e %lld joias",
+                         "Regalo da %s: %lld monete e %lld gemme"),
                       who.c_str(), coins, gems);
         g_gift_notice = msg;
         pvz2_log("[friends] %zu gift(s) added to the save: +%lld coins, +%lld gems", fresh.size(), coins, gems);
