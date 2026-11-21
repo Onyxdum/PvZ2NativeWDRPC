@@ -331,6 +331,13 @@ struct GameSymbols {
          * a native Friends button next to the News button. */
         std::uint32_t worldmap_news_draw_vslot;
         std::uint32_t worldmap_news_draw_fn;
+        /* 6.6.1 only: Live Battlez hooks (score sync, start sync, final opponent score). */
+        std::uint32_t joust_hud_set_left_score_fn;
+        std::uint32_t joust_hud_set_right_score_fn;
+        std::uint32_t joust_hud_set_timer_fn;
+        std::uint32_t joust_get_opponent_score_fn;
+        std::uint32_t joust_level_start_fn;
+        std::uint32_t joust_finish_match_fn;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.

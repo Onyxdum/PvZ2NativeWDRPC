@@ -819,6 +819,104 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
         }
     }
 
+    /* Live Battlez (6.6.1): sync local score out, inject real-time rival score into the HUD meter & results
+     * screen, and synchronize match start after plant selection. */
+    static std::atomic<int> g_live_last_pushed_rival{-1};
+    if (sym().patch.joust_hud_set_left_score_fn != 0) {
+        install_svc_at(img, sym().patch.joust_hud_set_left_score_fn, 0xe92d4830u, "joust.set_left_score",
+                       [](GuestCall &call) {
+                           dex::joust_live_on_local_score((int)call.arg(1));
+                           emulate_push(call, {4, 5, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_hud_set_left_score_fn + 4;
+                       },
+                       "Live Battlez local score");
+    }
+    if (sym().patch.joust_hud_set_right_score_fn != 0) {
+        install_svc_at(img, sym().patch.joust_hud_set_right_score_fn, 0xe92d48f0u, "joust.set_right_score",
+                       [](GuestCall &call) {
+                           if (dex::joust_live_is_active()) {
+                               const int rscore = dex::joust_live_rival_score();
+                               call.regs[1] = (std::uint32_t)rscore;
+                               g_live_last_pushed_rival.store(rscore, std::memory_order_relaxed);
+                           }
+                           emulate_push(call, {4, 5, 6, 7, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_hud_set_right_score_fn + 4;
+                       },
+                       "Live Battlez rival score");
+    }
+    if (sym().patch.joust_hud_set_timer_fn != 0) {
+        install_svc_at(img, sym().patch.joust_hud_set_timer_fn, 0xe92d48f0u, "joust.set_timer",
+                       [](GuestCall &call) {
+                           if (dex::joust_live_is_active() && sym().patch.joust_hud_set_right_score_fn != 0) {
+                               const int rscore = dex::joust_live_rival_score();
+                               const std::uint32_t hud = call.arg(0);
+                               if (hud != 0 && rscore != g_live_last_pushed_rival.load(std::memory_order_relaxed)) {
+                                   g_live_last_pushed_rival.store(rscore, std::memory_order_relaxed);
+                                   const std::uint32_t saved_r0 = call.regs[0];
+                                   const std::uint32_t saved_r1 = call.regs[1];
+                                   const std::uint32_t saved_r2 = call.regs[2];
+                                   const std::uint32_t saved_r3 = call.regs[3];
+                                   const std::uint32_t args[2] = {hud, (std::uint32_t)rscore};
+                                   call.call_guest(call.img->so_base + sym().patch.joust_hud_set_right_score_fn,
+                                                   args, 2);
+                                   call.regs[0] = saved_r0;
+                                   call.regs[1] = saved_r1;
+                                   call.regs[2] = saved_r2;
+                                   call.regs[3] = saved_r3;
+                               }
+                           }
+                           emulate_push(call, {4, 5, 6, 7, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_hud_set_timer_fn + 4;
+                       },
+                       "Live Battlez HUD tick");
+    }
+    if (sym().patch.joust_get_opponent_score_fn != 0) {
+        install_svc_at(img, sym().patch.joust_get_opponent_score_fn, 0xe92d4c10u, "joust.get_opp_score",
+                       [](GuestCall &call) {
+                           if (dex::joust_live_is_active()) {
+                               call.set_result((std::uint32_t)dex::joust_live_rival_score());
+                               return;
+                           }
+                           emulate_push(call, {4, 10, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_get_opponent_score_fn + 4;
+                       },
+                       "Live Battlez results score");
+    }
+    if (sym().patch.joust_level_start_fn != 0) {
+        install_svc_at(img, sym().patch.joust_level_start_fn, 0xe92d4830u, "joust.level_start",
+                       [](GuestCall &call) {
+                           g_live_last_pushed_rival.store(-1, std::memory_order_relaxed);
+                           dex::joust_live_on_local_ready();
+                           emulate_push(call, {4, 5, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_level_start_fn + 4;
+                       },
+                       "Live Battlez start sync");
+    }
+    if (sym().patch.joust_finish_match_fn != 0) {
+        install_svc_at(img, sym().patch.joust_finish_match_fn, 0xe92d4c10u, "joust.finish_match",
+                       [](GuestCall &call) {
+                           if (dex::joust_live_is_active()) {
+                               dex::joust_live_on_local_finished();
+                               const std::uint32_t mod = call.arg(0);
+                               if (mod != 0 && call.in_bounds(mod + 0x18u, 4)) {
+                                   const std::uint32_t hud = call.read32(mod + 0x18u);
+                                   if (hud != 0 && call.in_bounds(hud + 0xa4u, 4)) {
+                                       call.write32(hud + 0xa4u, (std::uint32_t)dex::joust_live_rival_score());
+                                   }
+                               }
+                           }
+                           emulate_push(call, {4, 10, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_finish_match_fn + 4;
+                       },
+                       "Live Battlez match finish");
+    }
+
     if (sym().patch.zomboss_setup_stage == 0) return;
 
     /* Hook ZombieZombossMech::SetupStage directly at its entry point */

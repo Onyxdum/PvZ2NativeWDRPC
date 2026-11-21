@@ -135,7 +135,16 @@ JOUST_MAX_REPLAYS = 500
 JOUST_MAX_REPLAY_CHARS = 64 * 1024
 JOUST_CROWNS_WIN = 5   # CrownSet_Normal
 JOUST_CROWNS_LOSS = 1
-JOUST_RATE_MAX_REQ = 120
+JOUST_RATE_MAX_REQ = 600
+JOUST_LIVE_WAIT_SECS = 15.0
+JOUST_LIVE_MAX_QUEUE = 100
+JOUST_LIVE_MAX_ROOMS = 200
+JOUST_MAX_SCORE = 25_000_000
+JOUST_MAX_SCORE_PER_SEC = 1_500_000
+JOUST_MIN_MATCH_SECS = 20.0
+JOUST_LIVE_LOCK = threading.Lock()
+JOUST_LIVE_QUEUE = []   # list of dicts: {did, name, league, seed, ts, event, room_id, side, opp_did}
+JOUST_LIVE_ROOMS = {}   # room_id -> {levelSeed, created, players: {did: {score, score_ts, ready, finished, last_seen, name}}}
 # League rules of Leaderboard_Normal (joust_leaderboards in the OBB); leagues 1..8 = Soil..Jade.
 JOUST_PROMOTION_COUNT = 5
 JOUST_DEMOTION_COUNT = 3
@@ -262,10 +271,132 @@ def joust_dashboard(discord_id, p, people):
             "position": position, "state": state, "leaderboard": board}
 
 
-def joust_match(discord_id, p, people):
-    """An opponent: the replay of another player on this week's level, else the game's own AI."""
+def joust_live_matchmake(discord_id, name, league, seed):
+    """Try to pair `discord_id` with another live player searching on `seed` (wait up to JOUST_LIVE_WAIT_SECS).
+    Returns (room_id, side, opponent_did) on match, or (None, None, None) on timeout."""
+    now = time.time()
+    entry = None
+    with JOUST_LIVE_LOCK:
+        # Cancel any previous waiter for this same account (prevents thread-exhaustion DoS) and prune stale ones.
+        kept = []
+        for q in JOUST_LIVE_QUEUE:
+            if q["did"] == discord_id or (now - q["ts"] >= JOUST_LIVE_WAIT_SECS + 10.0):
+                q["event"].set()
+            else:
+                kept.append(q)
+        JOUST_LIVE_QUEUE[:] = kept
+        for rid in [k for k, v in JOUST_LIVE_ROOMS.items() if now - v["created"] > 600.0]:
+            del JOUST_LIVE_ROOMS[rid]
+        if len(JOUST_LIVE_ROOMS) >= JOUST_LIVE_MAX_ROOMS:
+            return None, None, None
+        # Prefer same league, otherwise any waiting player on this week's level.
+        partner_idx = None
+        for i, q in enumerate(JOUST_LIVE_QUEUE):
+            if q["seed"] == seed and q["did"] != discord_id:
+                if q["league"] == league:
+                    partner_idx = i
+                    break
+                if partner_idx is None:
+                    partner_idx = i
+        if partner_idx is not None:
+            partner = JOUST_LIVE_QUEUE.pop(partner_idx)
+            room_id = "live-%d-%s" % (int(now * 1000), secrets.token_hex(4))
+            JOUST_LIVE_ROOMS[room_id] = {
+                "levelSeed": seed,
+                "created": now,
+                "players": {
+                    partner["did"]: {"score": 0, "score_ts": now, "ready": False, "finished": False, "last_seen": now, "name": partner["name"]},
+                    discord_id: {"score": 0, "score_ts": now, "ready": False, "finished": False, "last_seen": now, "name": name},
+                },
+            }
+            partner["room_id"] = room_id
+            partner["side"] = "a"
+            partner["opp_did"] = discord_id
+            partner["event"].set()
+            return room_id, "b", partner["did"]
+        if len(JOUST_LIVE_QUEUE) >= JOUST_LIVE_MAX_QUEUE:
+            return None, None, None
+        entry = {
+            "did": discord_id,
+            "name": name,
+            "league": league,
+            "seed": seed,
+            "ts": now,
+            "event": threading.Event(),
+            "room_id": None,
+            "side": None,
+            "opp_did": None,
+        }
+        JOUST_LIVE_QUEUE.append(entry)
+    # Wait outside any locks so other players can join and pair immediately.
+    matched = entry["event"].wait(timeout=JOUST_LIVE_WAIT_SECS)
+    with JOUST_LIVE_LOCK:
+        if entry in JOUST_LIVE_QUEUE:
+            JOUST_LIVE_QUEUE.remove(entry)
+        if matched and entry["room_id"]:
+            return entry["room_id"], entry["side"], entry["opp_did"]
+    return None, None, None
+
+
+def joust_live_sync(discord_id, body):
+    """Real-time score & ready-state sync for an active live Battlez room."""
+    raw_mid = str(body.get("matchId") or "")
+    room_id = raw_mid.split(":", 1)[0]
+    now = time.time()
+    with JOUST_LIVE_LOCK:
+        room = JOUST_LIVE_ROOMS.get(room_id)
+        if not room or discord_id not in room["players"]:
+            return 404, {"ok": False, "error": "room_not_found"}
+        me = room["players"][discord_id]
+        if body.get("ready") and not me["ready"]:
+            me["ready"] = True
+            me["score_ts"] = now
+        try:
+            sc = int(body.get("score") or 0)
+        except Exception:
+            sc = 0
+        sc = max(0, min(sc, JOUST_MAX_SCORE))
+        # Only accept score progress while the match is running (after ready, before finished)
+        # and clamp impossible single-tick jumps.
+        if me["ready"] and not me["finished"] and sc > me["score"]:
+            dt = max(0.25, now - me.get("score_ts", now))
+            max_step = max(250_000, int(dt * JOUST_MAX_SCORE_PER_SEC))
+            me["score"] = min(sc, me["score"] + max_step)
+            me["score_ts"] = now
+        if body.get("finished"):
+            me["finished"] = True
+        me["last_seen"] = now
+        rival_did = next((d for d in room["players"] if d != discord_id), None)
+        rival = room["players"].get(rival_did) if rival_did else None
+        if rival is None:
+            return 200, {"ok": True, "rivalScore": 0, "rivalReady": True, "rivalFinished": True,
+                         "bothReady": True, "rivalOnline": False, "rivalName": ""}
+        rival_online = (now - rival["last_seen"]) <= 12.0
+        both_ready = bool(me["ready"] and (rival["ready"] or not rival_online))
+        return 200, {
+            "ok": True,
+            "rivalScore": rival["score"],
+            "rivalReady": rival["ready"],
+            "rivalFinished": rival["finished"],
+            "bothReady": both_ready,
+            "rivalOnline": rival_online,
+            "rivalName": rival["name"],
+        }
+
+
+def joust_match(discord_id, p, people, live_pair=None):
+    """An opponent: a live matched player if `live_pair` is set, else a replay on this week's level, else AI."""
     people.icon(p)
     seed = joust_level_seed(joust_week())
+    if live_pair and live_pair[0]:
+        room_id, side, opp_did = live_pair
+        match_id = "%s:%s" % (room_id, side)
+        q = JOUST["players"].get(opp_did) or {}
+        opp = {"opponentId": opp_did, "name": q.get("nameId", 0), "icon": people.icon(q),
+               "league": q.get("league", p["league"]), "levelSeed": seed, "score": 0, "replay": ""}
+        JOUST["matches"][match_id] = {"player": discord_id, "opponentId": opp_did, "levelSeed": seed,
+                                      "liveRoom": room_id, "ts": int(time.time())}
+        return {"matchId": match_id, "live": True, "rivalName": q.get("name", ""), "opponents": [opp]}
     # A match left at once scores 0 and replays nothing: never an opponent.
     pool = [r for r in JOUST["replays"]
             if r["levelSeed"] == seed and r["player"] != discord_id and r.get("score", 0) > 0]
@@ -288,15 +419,40 @@ def joust_match(discord_id, p, people):
     cutoff = time.time() - 86400
     for mid in [m for m, v in JOUST["matches"].items() if v.get("ts", 0) < cutoff]:
         del JOUST["matches"][mid]
-    return {"matchId": match_id, "opponents": [opp]}
+    return {"matchId": match_id, "live": False, "opponents": [opp]}
 
 
 def joust_complete(discord_id, p, body, people):
     r = body.get("r") or {}
     match = JOUST["matches"].get(str(body.get("matchId", "")))
-    if match is None or match.get("player") != discord_id:
+    if match is None or match.get("player") != discord_id or match.get("done"):
         return 400, {"ErrorCode": "INVALID_MATCH_ID"}
+    now = time.time()
+    elapsed = now - float(match.get("ts") or 0)
+    try:
+        my_score = max(0, min(int(r.get("score") or 0), JOUST_MAX_SCORE))
+    except Exception:
+        my_score = 0
     win = float(body.get("winRatio") or 0) > 1.0
+    if match.get("liveRoom"):
+        with JOUST_LIVE_LOCK:
+            room = JOUST_LIVE_ROOMS.get(match["liveRoom"])
+            if room and discord_id in room["players"]:
+                me = room["players"][discord_id]
+                # Prevent claiming a sudden huge jump at completeMatch that wasn't earned during live sync.
+                if not me["finished"] and my_score > me["score"]:
+                    me["score"] = min(my_score, me["score"] + JOUST_MAX_SCORE_PER_SEC)
+                me["finished"] = True
+                me["last_seen"] = now
+                rival_did = next((d for d in room["players"] if d != discord_id), None)
+                if rival_did:
+                    r_score = room["players"][rival_did]["score"]
+                    if me["score"] != r_score:
+                        win = me["score"] > r_score
+    # Reject instant scripted crown farming (< JOUST_MIN_MATCH_SECS since match creation).
+    if elapsed < JOUST_MIN_MATCH_SECS:
+        match["done"] = True
+        return 200, {"grantedRewards": {"crowns": 0}, "state": joust_state(p, people)}
     granted = JOUST_CROWNS_WIN if win else JOUST_CROWNS_LOSS
     p["crowns"] += granted
     if win:
@@ -363,8 +519,19 @@ def joust_close_finished_weeks():
                 q["closedWeek"] = week
 
 
-def joust_handle(route, discord_id, name, body):
+def joust_handle(route, discord_id, name, body, battlez_mode="live"):
     """(status, payload) for one Battlez request from an authenticated Discord account."""
+    if route == "live/sync":
+        return joust_live_sync(discord_id, body)
+    live_pair = None
+    if route == "match" and battlez_mode != "replay":
+        with JOUST_LOCK:
+            joust_close_finished_weeks()
+            p_pre = joust_player(discord_id, name)
+            league_pre = p_pre["league"]
+            seed_pre = joust_level_seed(joust_week())
+            joust_save()
+        live_pair = joust_live_matchmake(discord_id, name, league_pre, seed_pre)
     with JOUST_LOCK:
         joust_close_finished_weeks()
         p = joust_player(discord_id, name)
@@ -381,7 +548,7 @@ def joust_handle(route, discord_id, name, body):
                     # dashboard, as it does at a real week's end: a preview reports a one-off id.
                     out["tournament"]["tournamentId"] = 100000 + joust_week()
         elif route == "match":
-            code, out = 200, joust_match(discord_id, p, people)
+            code, out = 200, joust_match(discord_id, p, people, live_pair=live_pair)
         elif route == "completeMatch":
             code, out = joust_complete(discord_id, p, body, people)
         elif route == "finalizeMatch":
@@ -1237,7 +1404,8 @@ class SaveHandler(BaseHTTPRequestHandler):
             except Exception:
                 self._send_json(400, {"error": "invalid_json"})
                 return
-        code, out = joust_handle(route, discord_id, name, body)
+        battlez_mode = self.headers.get("X-Battlez-Mode", "live").strip().lower()
+        code, out = joust_handle(route, discord_id, name, body, battlez_mode=battlez_mode)
         self._send_json(code, out)
 
     def _friends(self, method):

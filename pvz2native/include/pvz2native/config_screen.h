@@ -93,6 +93,14 @@ int config_screen_has_toast(void);
 /* Render active toast notifications above all overlays (settings, friends, achievements, credits). */
 void config_screen_draw_toast(SDL_Window *window);
 
+/* Draw a centered PvZ2-styled waiting banner (used for Live Battlez start sync). */
+void config_screen_draw_live_banner(SDL_Window *window, const char *text);
+
+/* Blocking modal prompt (called from Battlez worker thread when 15s live search finds nobody):
+ * asks whether to play against a random replay. Returns 1 = Yes (play replay), 0 = Cancel. */
+int config_screen_ask_battlez_replay(void);
+void config_screen_cancel_battlez_replay_prompt(void);
+
 /* Play achievement_unlock.wav (also refreshes SfxVolume/Muted from prefs). */
 void config_screen_play_achievement_unlock_sound(void);
 
