@@ -2221,9 +2221,14 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
     } else if (screen == Screen::Events) {
         items.push_back({str->events_enable, false, false, g_edit.use_cdn != 0, ""});
         items.push_back({str->events_force_local, false, false, g_edit.rewrite_cdn != 0, ""});
-        const bool es = (pvz2_config() && strncmp(pvz2_config()->user_locale, "es", 2) == 0);
-        items.push_back({es ? "Batallaz en vivo (multijugador)" : "Live Battlez (multiplayer)",
-                         false, false, g_edit.battlez_live != 0, ""});
+        const char *loc = pvz2_config() ? pvz2_config()->user_locale : "en";
+        const char *bz_lbl = "Live Battlez (multiplayer)";
+        if (strncmp(loc, "es", 2) == 0) bz_lbl = "Batallaz en vivo (multijugador)";
+        else if (strncmp(loc, "fr", 2) == 0) bz_lbl = "Battlez en direct (multijoueur)";
+        else if (strncmp(loc, "de", 2) == 0) bz_lbl = "Battlez Live (Mehrspieler)";
+        else if (strncmp(loc, "pt", 2) == 0) bz_lbl = "Battlez ao vivo (multijogador)";
+        else if (strncmp(loc, "it", 2) == 0) bz_lbl = "Battlez dal vivo (multigiocatore)";
+        items.push_back({bz_lbl, false, false, g_edit.battlez_live != 0, ""});
     } else if (screen == Screen::DisplayPick) {
         const int effective = g_edit.video_display;
         std::vector<DetectedDisplay> displays = list_detected_displays();
@@ -2764,12 +2769,43 @@ static void resolve_replay_prompt(int choice) {
 
 static void draw_replay_prompt(float win_w, float win_h) {
 	if (!g_tex_panel_exit.id) return;
-	const bool es = (strncmp(ui_locale(), "es", 2) == 0);
-	const char *title = es ? "Batallaz en vivo" : "Live Battlez";
-	const char *msg1 = es ? "No se encontró ningún rival conectado." : "No live opponent was found.";
-	const char *msg2 = es ? "¿Jugar contra un replay aleatorio?" : "Play against a random replay?";
-	const char *yes_lbl = es ? "Sí, Replay" : "Yes, Replay";
-	const char *no_lbl = es ? "Cancelar" : "Cancel";
+	const char *loc = ui_locale();
+	const char *title = "Live Battlez";
+	const char *msg1 = "No live opponent was found.";
+	const char *msg2 = "Play against a random replay?";
+	const char *yes_lbl = "Yes, Replay";
+	const char *no_lbl = "Cancel";
+	if (strncmp(loc, "es", 2) == 0) {
+		title = "Batallaz en vivo";
+		msg1 = "No se encontró ningún rival conectado.";
+		msg2 = "¿Jugar contra un replay aleatorio?";
+		yes_lbl = "Sí, Replay";
+		no_lbl = "Cancelar";
+	} else if (strncmp(loc, "fr", 2) == 0) {
+		title = "Battlez en direct";
+		msg1 = "Aucun adversaire en ligne trouvé.";
+		msg2 = "Jouer contre un replay aléatoire ?";
+		yes_lbl = "Oui, Replay";
+		no_lbl = "Annuler";
+	} else if (strncmp(loc, "de", 2) == 0) {
+		title = "Battlez Live";
+		msg1 = "Kein Online-Gegner gefunden.";
+		msg2 = "Gegen ein zufälliges Replay spielen?";
+		yes_lbl = "Ja, Replay";
+		no_lbl = "Abbrechen";
+	} else if (strncmp(loc, "pt", 2) == 0) {
+		title = "Battlez ao vivo";
+		msg1 = "Nenhum oponente online encontrado.";
+		msg2 = "Jogar contra um replay aleatório?";
+		yes_lbl = "Sim, Replay";
+		no_lbl = "Cancelar";
+	} else if (strncmp(loc, "it", 2) == 0) {
+		title = "Battlez dal vivo";
+		msg1 = "Nessun avversario online trovato.";
+		msg2 = "Giocare contro un replay casuale?";
+		yes_lbl = "Sì, Replay";
+		no_lbl = "Annulla";
+	}
 
 	float s = ui_scale(win_w, win_h);
 	float px, py, pw, ph;
