@@ -125,6 +125,9 @@ typedef struct pvz2_config {
     /* [game] difficulty_minigames: 1 = the difficulty modes also change minigame levels (cannons, Mummy
      * Memory, bowling...). 0 (default) = minigames are played as the game made them. */
     int difficulty_minigames;
+    /* [game] battlez_live: 1 (default) = matchmake live against connected players in Battlez (falls back to
+     * replay if nobody is searching). 0 = always play against recorded replays / AI. */
+    int battlez_live;
 
     /* [video] -- how the window and the guest surface are sized.
      *
@@ -335,6 +338,8 @@ const char *pvz2_config_get_difficulty(void);
 void pvz2_config_set_difficulty(const char *mode);
 int pvz2_config_get_difficulty_minigames(void);
 void pvz2_config_set_difficulty_minigames(int on);
+int pvz2_config_get_battlez_live(void);
+void pvz2_config_set_battlez_live(int on);
 
 #ifdef __cplusplus
 }  /* extern "C" */

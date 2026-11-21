@@ -26,6 +26,9 @@
 #include <pvz2native/achievements.h>
 #include <pvz2native/credits_screen.h>
 #include <pvz2native/friends_screen.h>
+
+extern int pvz2_joust_live_waiting_banner(char *out, int cap);
+extern void pvz2_joust_live_shutdown(void);
 #include <pvz2native/host_assets.h>
 #include <pvz2native/host_paths.h>
 #include <pvz2native/input/gamepad.h>
@@ -2242,7 +2245,13 @@ int main(int argc, char **argv) {
             /* The guest issues its GL calls into the context made current on
              * this thread, so the frame has to run here, between the pump and
              * the swap -- not on a worker. */
-            if (!pvz2_session_frame(session)) break;
+            char live_wait_msg[256] = {0};
+            const int live_waiting = pvz2_joust_live_waiting_banner(live_wait_msg, (int)sizeof(live_wait_msg));
+            if (!live_waiting) {
+                if (!pvz2_session_frame(session)) break;
+            } else {
+                SDL_Delay(16);
+            }
             maybe_finish_pending_keyboard_hide();
             credits_update_frame();
             if (credits_screen_consume_open_request()) {
@@ -2264,6 +2273,8 @@ int main(int argc, char **argv) {
             friends_screen_draw(window);
             /* Credits roll overlay on top of everything */
             if (credits_screen_is_open()) credits_screen_draw(window);
+            /* Live Battlez start-sync waiting banner */
+            if (live_waiting) config_screen_draw_live_banner(window, live_wait_msg);
             /* Notifications always sit on top of all panels (settings, friends, achievements, credits) */
             if (config_screen_has_toast()) config_screen_draw_toast(window);
             SDL_GL_SwapWindow(window);
@@ -2277,6 +2288,7 @@ int main(int argc, char **argv) {
     pvz2_presence_stop();
 
     pvz2_gamepad_shutdown();
+    pvz2_joust_live_shutdown();
     credits_screen_shutdown();
     friends_screen_shutdown();
     achievements_shutdown();

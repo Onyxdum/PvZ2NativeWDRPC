@@ -271,6 +271,10 @@ const Setting kSettings[] = {
      "Wall-nut bowling, Beghouled...). 0 = off (default): minigames are played as the\n"
      "game made them. 1 = on.",
      nullptr, "0"},
+    {"game", "battlez_live", nullptr, Kind::kBool, offsetof(pvz2_config_t, battlez_live), 0,
+     "Live multiplayer matchmaking in Battlez (6.6.1). 1 = on (default, falls back to\n"
+     "replay if no live opponent is searching). 0 = replay / AI only.",
+     nullptr, "1"},
 
     {"game", "package_name", nullptr, Kind::kString, offsetof(pvz2_config_t, package_name),
      sizeof(g_config.package_name),
@@ -1682,6 +1686,7 @@ extern "C" void pvz2_config_load(const char *ini_path, const char *base_dir) {
     g_base_dir = base_with_sep(base_dir);
     g_config = pvz2_config_t{}; /* reset to all-zero before (re)reading */
     g_config.emulate_iap = 0;
+    g_config.battlez_live = 1;
     g_config.check_updates = 1;
     g_config.use_cdn = 1;
     g_config.allow_repeat_quests = 1;
@@ -2303,6 +2308,10 @@ const char *pvz2_config_get_difficulty(void) {
 int pvz2_config_get_difficulty_minigames(void) { return g_config.difficulty_minigames != 0 ? 1 : 0; }
 
 void pvz2_config_set_difficulty_minigames(int on) { g_config.difficulty_minigames = on ? 1 : 0; }
+
+int pvz2_config_get_battlez_live(void) { return g_config.battlez_live != 0 ? 1 : 0; }
+
+void pvz2_config_set_battlez_live(int on) { g_config.battlez_live = on ? 1 : 0; }
 
 void pvz2_config_set_difficulty(const char *mode) {
     if (!mode || mode[0] == '\0') mode = "auto";

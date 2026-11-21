@@ -227,6 +227,13 @@ JoustReply joust_request(const std::string &method, const std::string &url, cons
  * Called once per frame between top-level guest calls -- see hooks/android_http.cpp. */
 void joust_deliver_pending(pvz2_elf_image_t *img, GuestRuntime *rt);
 
+/* Live Battlez (real-time multiplayer) hooks called from patches.cpp. */
+bool joust_live_is_active();
+void joust_live_on_local_score(int score);
+int joust_live_rival_score();
+void joust_live_on_local_ready();
+void joust_live_on_local_finished();
+
 void register_framework_activity(HookTable &t);
 void register_google_play(HookTable &t);
 void register_facebook(HookTable &t);

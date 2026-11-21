@@ -352,6 +352,12 @@ const GameSymbols kVersions[] = {
             .joust_avatar_name_fn   = 0x6b155c,
             .worldmap_news_draw_vslot = 0x12cded4, /* UIWorldMapNewsButton vtable 0x12cde70 slot 25 (Update) */
             .worldmap_news_draw_fn    = 0xafa220,  /* UIWorldMapBaseSettingsButton::Update() */
+            .joust_hud_set_left_score_fn  = 0x1d63b0, /* AdaptorJoustPlayMeterHUD::SetLeftScore(hud, score) */
+            .joust_hud_set_right_score_fn = 0x1d6534, /* AdaptorJoustPlayMeterHUD::SetRightScore(hud, score) */
+            .joust_hud_set_timer_fn       = 0x1d695c, /* AdaptorJoustPlayMeterHUD::SetTimer(hud, seconds) */
+            .joust_get_opponent_score_fn  = 0x6b105c, /* Joust::GetOpponentScore() */
+            .joust_level_start_fn         = 0x6a06d4, /* JoustGameModule::OnLevelStart() */
+            .joust_finish_match_fn        = 0x6a0644, /* JoustGameModule::FinishMatch() */
         },
         .fingerprint_draw_frame    = 0xE79F0000E59F0004ull, /* LDR R0,[PC,#4]; LDR R0,[PC,R0]     */
         .fingerprint_game_app_init = 0xE28DB01CE92D4FF0ull, /* PUSH {R4-R11,LR}; ADD R11,SP,#0x1C */

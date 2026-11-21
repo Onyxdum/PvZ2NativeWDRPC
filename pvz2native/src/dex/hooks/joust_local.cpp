@@ -29,6 +29,8 @@
  * userdata/joust_local.txt. */
 
 #include <pvz2native/cloud_save.h>
+#include <pvz2native/config.h>
+#include <pvz2native/config_screen.h>
 #include <pvz2native/dex/dex.h>
 #include <pvz2native/gfx/joust_avatars.h>
 #include <pvz2native/host_files.h>
@@ -36,6 +38,7 @@
 
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -46,6 +49,7 @@
 #include <mutex>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if defined(_WIN32)
@@ -420,7 +424,7 @@ void register_names(const std::string &json) {
 }
 
 #if defined(_WIN32)
-int run_hidden(const std::string &cmd) {
+int run_hidden(const std::string &cmd, unsigned timeout_ms = 20000) {
     STARTUPINFOA si{};
     PROCESS_INFORMATION pi{};
     si.cb = sizeof(si);
@@ -432,7 +436,7 @@ int run_hidden(const std::string &cmd) {
     if (!CreateProcessA(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si,
                         &pi))
         return -1;
-    WaitForSingleObject(pi.hProcess, 20000);
+    WaitForSingleObject(pi.hProcess, timeout_ms);
     DWORD code = 1;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess);
@@ -440,8 +444,140 @@ int run_hidden(const std::string &cmd) {
     return (int)code;
 }
 #else
-int run_hidden(const std::string &cmd) { return std::system((cmd + " >/dev/null 2>&1").c_str()); }
+int run_hidden(const std::string &cmd, unsigned timeout_ms = 20000) {
+    (void)timeout_ms;
+    return std::system((cmd + " >/dev/null 2>&1").c_str());
+}
 #endif
+
+/* --- Live Battlez session & background sync worker ------------------------ */
+
+struct LiveSession {
+    std::mutex mu;
+    std::atomic<bool> active{false};
+    std::atomic<bool> stop{false};
+    std::atomic<int> local_score{0};
+    std::atomic<int> rival_score{0};
+    std::atomic<bool> local_ready{false};
+    std::atomic<bool> both_ready{false};
+    std::atomic<bool> local_finished{false};
+    std::atomic<std::int64_t> ready_since_ms{0};
+    std::string match_id;
+    std::string rival_name;
+    std::string pending_toast;
+    std::thread worker;
+};
+
+LiveSession g_live;
+
+std::int64_t steady_now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+bool live_is_es() {
+    const pvz2_config_t *c = pvz2_config();
+    return c && std::strncmp(c->user_locale, "es", 2) == 0;
+}
+
+void live_worker_loop(std::string match_id, std::string base, std::string did, std::string token) {
+    static std::atomic<unsigned> s_sync_seq{0};
+    const std::filesystem::path dir = std::filesystem::temp_directory_path();
+    while (!g_live.stop.load(std::memory_order_relaxed)) {
+        const int sc = g_live.local_score.load(std::memory_order_relaxed);
+        const bool rdy = g_live.local_ready.load(std::memory_order_relaxed);
+        const bool fin = g_live.local_finished.load(std::memory_order_relaxed);
+
+        char payload[256];
+        std::snprintf(payload, sizeof(payload),
+                      "{\"matchId\":\"%s\",\"score\":%d,\"ready\":%s,\"finished\":%s}",
+                      json_escape(match_id).c_str(), sc, rdy ? "true" : "false", fin ? "true" : "false");
+
+        const std::string tag = "pvz2_jlive_" + std::to_string(s_sync_seq.fetch_add(1)) + "_";
+        const std::filesystem::path in_f = dir / (tag + "in.json");
+        const std::filesystem::path out_f = dir / (tag + "out.json");
+        host_files::write(in_f.string(), std::vector<std::uint8_t>(payload, payload + std::strlen(payload)));
+        std::string cmd = "curl -sS -m 4 -X POST -H \"Content-Type: application/json\""
+                          " -H \"X-Client-Version: 6.6.1\""
+                          " -H \"X-Discord-Id: " + did + "\""
+                          " -H \"Authorization: Bearer " + token + "\""
+                          " --data-binary @\"" + in_f.string() + "\""
+                          " -o \"" + out_f.string() + "\" \"" + base + "/joust/v1/live/sync\"";
+        const int rc = run_hidden(cmd, 5000);
+        const std::vector<std::uint8_t> raw = host_files::read(out_f.string());
+        std::error_code ec;
+        std::filesystem::remove(in_f, ec);
+        std::filesystem::remove(out_f, ec);
+
+        if (rc == 0 && !raw.empty()) {
+            const std::string resp(raw.begin(), raw.end());
+            const int r_score = (int)field_int(resp, "rivalScore", -1);
+            if (r_score >= 0) {
+                int prev = g_live.rival_score.load(std::memory_order_relaxed);
+                while (r_score > prev &&
+                       !g_live.rival_score.compare_exchange_weak(prev, r_score, std::memory_order_relaxed)) {}
+            }
+            if (field(resp, "bothReady") == "true") {
+                g_live.both_ready.store(true, std::memory_order_relaxed);
+            }
+            const std::string rname = field(resp, "rivalName");
+            if (!rname.empty()) {
+                std::lock_guard<std::mutex> lk(g_live.mu);
+                if (g_live.rival_name.empty()) g_live.rival_name = rname;
+            }
+        }
+
+        for (int i = 0; i < 8 && !g_live.stop.load(std::memory_order_relaxed); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+}
+
+void joust_live_end() {
+    g_live.stop.store(true, std::memory_order_relaxed);
+    g_live.active.store(false, std::memory_order_relaxed);
+    g_live.local_ready.store(false, std::memory_order_relaxed);
+    g_live.both_ready.store(false, std::memory_order_relaxed);
+    g_live.local_finished.store(false, std::memory_order_relaxed);
+    g_live.ready_since_ms.store(0, std::memory_order_relaxed);
+    std::thread old;
+    {
+        std::lock_guard<std::mutex> lk(g_live.mu);
+        g_live.match_id.clear();
+        g_live.rival_name.clear();
+        old = std::move(g_live.worker);
+    }
+    if (old.joinable()) old.detach();
+}
+
+void joust_live_begin(const std::string &match_id, const std::string &rival_name) {
+    joust_live_end();
+    const Pvz2CloudConfig *cloud = pvz2_cloud_config();
+    if (!cloud || !cloud->auth_discord_id[0] || !cloud->auth_discord_token[0]) return;
+    std::string base = cloud->nas_server_url[0] ? cloud->nas_server_url : PVZ2_DEFAULT_NAS_SERVER_URL;
+    while (!base.empty() && base.back() == '/') base.pop_back();
+
+    g_live.stop.store(false, std::memory_order_relaxed);
+    g_live.local_score.store(0, std::memory_order_relaxed);
+    g_live.rival_score.store(0, std::memory_order_relaxed);
+    g_live.local_ready.store(false, std::memory_order_relaxed);
+    g_live.both_ready.store(false, std::memory_order_relaxed);
+    g_live.local_finished.store(false, std::memory_order_relaxed);
+    g_live.ready_since_ms.store(0, std::memory_order_relaxed);
+    g_live.active.store(true, std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> lk(g_live.mu);
+        g_live.match_id = match_id;
+        g_live.rival_name = rival_name;
+        const std::string who = rival_name.empty() ? (live_is_es() ? "un rival" : "an opponent") : rival_name;
+        g_live.pending_toast = live_is_es() ? ("¡Partida en vivo contra " + who + "!")
+                                            : ("Live Battlez match vs " + who + "!");
+        g_live.worker = std::thread(live_worker_loop, match_id, base, std::string(cloud->auth_discord_id),
+                                    std::string(cloud->auth_discord_token));
+    }
+    pvz2_log("[joust-live] started live match %s vs '%s'", match_id.c_str(), rival_name.c_str());
+}
 
 }  // namespace
 
@@ -470,6 +606,9 @@ JoustReply joust_request(const std::string &method, const std::string &url, cons
     const bool linked = cloud && cloud->auth_discord_id[0] && cloud->auth_discord_token[0];
     if (v1 != std::string::npos && linked) {
         const std::string target = base + url.substr(v1);
+        const std::string route = route_of(url);
+        const bool is_match = (route == "match");
+        const char *mode_hdr = pvz2_config_get_battlez_live() ? "live" : "replay";
         /* One temp file set per request: several may be in flight. */
         static std::atomic<unsigned> s_seq{0};
         const std::filesystem::path dir = std::filesystem::temp_directory_path();
@@ -477,8 +616,10 @@ JoustReply joust_request(const std::string &method, const std::string &url, cons
         const std::filesystem::path in_file = dir / (tag + "in.json");
         const std::filesystem::path out_file = dir / (tag + "out.json");
         const std::filesystem::path code_file = dir / (tag + "code.txt");
-        std::string cmd = "curl -sS -m 12 -X " + (method.empty() ? std::string("GET") : method) +
+        std::string cmd = "curl -sS -m " + std::string(is_match ? "25" : "12") + " -X " +
+                          (method.empty() ? std::string("GET") : method) +
                           " -H \"Content-Type: application/json\" -H \"X-Client-Version: 6.6.1\""
+                          " -H \"X-Battlez-Mode: " + std::string(mode_hdr) + "\""
                           " -H \"X-Discord-Id: " + std::string(cloud->auth_discord_id) + "\""
                           " -H \"Authorization: Bearer " + std::string(cloud->auth_discord_token) + "\"";
         /* The name shown to other players, percent-encoded (any UTF-8, and nothing cmd.exe or the
@@ -510,7 +651,7 @@ JoustReply joust_request(const std::string &method, const std::string &url, cons
         }
         cmd += " -o \"" + out_file.string() + "\" -w \"%{http_code}\" \"" + target + "\" > \"" +
                code_file.string() + "\"";
-        const int rc = run_hidden(cmd);
+        const int rc = run_hidden(cmd, is_match ? 28000u : 20000u);
         const std::vector<std::uint8_t> out = host_files::read(out_file.string());
         const std::vector<std::uint8_t> code = host_files::read(code_file.string());
         std::error_code ec;
@@ -524,6 +665,29 @@ JoustReply joust_request(const std::string &method, const std::string &url, cons
             reply.body.assign(out.begin(), out.end());
             reply.from_server = true;
             register_names(reply.body);
+            if (status == 200) {
+                if (is_match) {
+                    if (field(reply.body, "live") == "true") {
+                        joust_live_begin(field(reply.body, "matchId"), field(reply.body, "rivalName"));
+                    } else {
+                        joust_live_end();
+                        if (pvz2_config_get_battlez_live()) {
+                            pvz2_log("[joust-live] no live opponent after 15s -- asking user whether to play replay");
+                            const int play_replay = config_screen_ask_battlez_replay();
+                            if (!play_replay) {
+                                pvz2_log("[joust-live] user declined replay fallback -- cancelling matchmaking");
+                                reply.status = 503;
+                                reply.body = "{}";
+                                return reply;
+                            }
+                        }
+                    }
+                } else if (route == "completeMatch") {
+                    g_live.local_finished.store(true, std::memory_order_relaxed);
+                } else if (route == "finalizeMatch" || route == "dashboard") {
+                    joust_live_end();
+                }
+            }
             pvz2_log("[joust] %s %s -> %s: HTTP %d", method.c_str(), url.c_str(), target.c_str(), status);
             if (!body.empty()) pvz2_log("[joust]   request body (%zu bytes): %.600s", body.size(), body.c_str());
             pvz2_log("[joust]   response: %.1500s", reply.body.c_str());
@@ -618,5 +782,82 @@ std::vector<std::uint8_t> joust_schedule_rton() {
     return r.b;
 }
 
+bool joust_live_is_active() {
+    return g_live.active.load(std::memory_order_relaxed);
+}
+
+void joust_live_on_local_score(int score) {
+    if (!g_live.active.load(std::memory_order_relaxed) || score < 0) return;
+    int prev = g_live.local_score.load(std::memory_order_relaxed);
+    while (score > prev &&
+           !g_live.local_score.compare_exchange_weak(prev, score, std::memory_order_relaxed)) {}
+}
+
+int joust_live_rival_score() {
+    return g_live.rival_score.load(std::memory_order_relaxed);
+}
+
+void joust_live_on_local_ready() {
+    if (!g_live.active.load(std::memory_order_relaxed)) return;
+    if (!g_live.local_ready.exchange(true, std::memory_order_relaxed)) {
+        g_live.ready_since_ms.store(steady_now_ms(), std::memory_order_relaxed);
+        pvz2_log("[joust-live] local player ready (waiting for rival sync)");
+    }
+}
+
+void joust_live_on_local_finished() {
+    if (!g_live.active.load(std::memory_order_relaxed)) return;
+    g_live.local_finished.store(true, std::memory_order_relaxed);
+    pvz2_log("[joust-live] match finished: local=%d rival=%d",
+             g_live.local_score.load(std::memory_order_relaxed),
+             g_live.rival_score.load(std::memory_order_relaxed));
+}
+
 }  // namespace dex
 }  // namespace pvz2native
+
+extern "C" int pvz2_joust_live_waiting_banner(char *out, int cap) {
+    using namespace pvz2native::dex;
+    {
+        std::string toast;
+        {
+            std::lock_guard<std::mutex> lk(g_live.mu);
+            if (!g_live.pending_toast.empty()) toast.swap(g_live.pending_toast);
+        }
+        if (!toast.empty()) config_screen_toast(toast.c_str());
+    }
+    if (!g_live.active.load(std::memory_order_relaxed) ||
+        !g_live.local_ready.load(std::memory_order_relaxed) ||
+        g_live.both_ready.load(std::memory_order_relaxed)) {
+        return 0;
+    }
+    const std::int64_t since = g_live.ready_since_ms.load(std::memory_order_relaxed);
+    const std::int64_t elapsed = steady_now_ms() - since;
+    constexpr std::int64_t kMaxWaitMs = 20000;
+    if (elapsed >= kMaxWaitMs) {
+        g_live.both_ready.store(true, std::memory_order_relaxed);
+        return 0;
+    }
+    const int left = (int)((kMaxWaitMs - elapsed + 999) / 1000);
+    std::string rival;
+    {
+        std::lock_guard<std::mutex> lk(g_live.mu);
+        rival = g_live.rival_name;
+    }
+    if (out && cap > 0) {
+        const std::string who = rival.empty() ? (live_is_es() ? "tu rival" : "your opponent") : rival;
+        if (live_is_es()) {
+            std::snprintf(out, (std::size_t)cap, "Esperando a que %s termine de elegir plantas... (%ds)",
+                          who.c_str(), left);
+        } else {
+            std::snprintf(out, (std::size_t)cap, "Waiting for %s to finish picking plants... (%ds)",
+                          who.c_str(), left);
+        }
+    }
+    return 1;
+}
+
+extern "C" void pvz2_joust_live_shutdown(void) {
+    config_screen_cancel_battlez_replay_prompt();
+    pvz2native::dex::joust_live_end();
+}

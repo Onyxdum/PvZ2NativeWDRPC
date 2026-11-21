@@ -33,6 +33,8 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <deque>
 #include <vector>
@@ -1424,6 +1426,7 @@ struct EditConfig {
 	int  achievement_notifications = 1;
 	int  use_cdn      = 1;
 	int  rewrite_cdn  = 0;
+	int  battlez_live = 1;
 	int  lock_cursor  = 0;
 	char difficulty[32] = "auto";
 	int  difficulty_minigames = 0;
@@ -1444,6 +1447,7 @@ struct EditConfig {
 		achievement_notifications = c->achievement_notifications;
 		use_cdn      = c->use_cdn;
 		rewrite_cdn  = c->rewrite_cdn;
+		battlez_live = pvz2_config_get_battlez_live();
 		lock_cursor  = c->lock_cursor;
 	}
 
@@ -1483,6 +1487,13 @@ bool g_open_requested = false;
 bool g_open_cloud_requested = false;
 bool g_opened_directly_to_cloud = false;
 bool g_quit_confirm = false;
+
+std::mutex g_replay_prompt_mu;
+std::condition_variable g_replay_prompt_cv;
+bool g_replay_prompt_open = false;
+int g_replay_prompt_result = 0; /* 0 = pending, 1 = yes (play replay), -1 = cancel */
+bool g_replay_yes_pressed = false;
+bool g_replay_no_pressed = false;
 char g_cloud_status[256] = "";
 int  g_cloud_edit_field = 0; /* 0=nas_path, 1=gdrive_path, 2=server_url, 3=gist_token, 4=gist_id */
 char g_cloud_text_buf[512] = "";
@@ -2210,6 +2221,9 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
     } else if (screen == Screen::Events) {
         items.push_back({str->events_enable, false, false, g_edit.use_cdn != 0, ""});
         items.push_back({str->events_force_local, false, false, g_edit.rewrite_cdn != 0, ""});
+        const bool es = (pvz2_config() && strncmp(pvz2_config()->user_locale, "es", 2) == 0);
+        items.push_back({es ? "Batallaz en vivo (multijugador)" : "Live Battlez (multiplayer)",
+                         false, false, g_edit.battlez_live != 0, ""});
     } else if (screen == Screen::DisplayPick) {
         const int effective = g_edit.video_display;
         std::vector<DetectedDisplay> displays = list_detected_displays();
@@ -2452,6 +2466,8 @@ static void write_overlay_settings_to_ini(void) {
 	set_key("game", "difficulty", g_edit.difficulty);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.difficulty_minigames);
 	set_key("game", "difficulty_minigames", tmp);
+	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.battlez_live);
+	set_key("game", "battlez_live", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.use_cdn);
 	set_key("runtime", "use_cdn", tmp);
 	SDL_snprintf(tmp, sizeof(tmp), "%d", g_edit.rewrite_cdn);
@@ -2731,6 +2747,122 @@ static bool handle_quit_confirm_event(const SDL_Event *e, float win_w, float win
 	}
 	/* Swallow all other input while the dialog is up (including Escape —
 	 * main.c toggles via config_screen_request_quit_confirm). */
+	return true;
+}
+
+static void resolve_replay_prompt(int choice) {
+	{
+		std::lock_guard<std::mutex> lk(g_replay_prompt_mu);
+		if (!g_replay_prompt_open) return;
+		g_replay_prompt_open = false;
+		g_replay_prompt_result = choice;
+	}
+	g_replay_yes_pressed = false;
+	g_replay_no_pressed = false;
+	g_replay_prompt_cv.notify_all();
+}
+
+static void draw_replay_prompt(float win_w, float win_h) {
+	if (!g_tex_panel_exit.id) return;
+	const bool es = (strncmp(ui_locale(), "es", 2) == 0);
+	const char *title = es ? "Batallaz en vivo" : "Live Battlez";
+	const char *msg1 = es ? "No se encontró ningún rival conectado." : "No live opponent was found.";
+	const char *msg2 = es ? "¿Jugar contra un replay aleatorio?" : "Play against a random replay?";
+	const char *yes_lbl = es ? "Sí, Replay" : "Yes, Replay";
+	const char *no_lbl = es ? "Cancelar" : "Cancel";
+
+	float s = ui_scale(win_w, win_h);
+	float px, py, pw, ph;
+	get_exit_panel_rect(win_w, win_h, px, py, pw, ph);
+	draw_tex(g_tex_panel_exit, px, py, pw, ph);
+
+	if (g_font.ok) {
+		float tw = measure_string(g_font, title, true, win_w, win_h);
+		float tx = px + (pw - tw) * 0.5f;
+		float ty = py + sc(kHeaderBaselineY, s);
+		draw_string(g_font, title, true, tx, ty,
+					0xfd/255.f, 0xdc/255.f, 0x67/255.f,
+					win_w, win_h, true, sc(5,s), sc(5,s), sc(2,s));
+
+		float y1 = py + sc(kQuitMsgY, s);
+		float y2 = y1 + sc(kQuitMsgLineH, s);
+		float w1 = measure_string(g_font, msg1, false, win_w, win_h);
+		float w2 = measure_string(g_font, msg2, false, win_w, win_h);
+		draw_string(g_font, msg1, false,
+					px + (pw - w1) * 0.5f, y1,
+					1.0f, 1.0f, 1.0f, win_w, win_h,
+					true, sc(2,s), sc(2,s), 0, 0.55f);
+		draw_string(g_font, msg2, false,
+					px + (pw - w2) * 0.5f, y2,
+					1.0f, 1.0f, 1.0f, win_w, win_h,
+					true, sc(2,s), sc(2,s), 0, 0.55f);
+	}
+
+	float qx, qy, qw, qh, cx, cy, cw, ch;
+	get_quit_btn_rects(win_w, win_h, qx, qy, qw, qh, cx, cy, cw, ch);
+
+	if (g_tex_save_up.id) {
+		Tex &qt = g_replay_yes_pressed ? g_tex_save_down : g_tex_save_up;
+		draw_tex(qt, qx, qy, qw, qh);
+		if (g_font.ok) {
+			float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+			float tw = measure_string(g_font, yes_lbl, false, win_w, win_h);
+			float tx = qx + (qw - tw) * 0.5f;
+			float ty = qy + qh * 0.5f + cap_h * 0.35f;
+			draw_string(g_font, yes_lbl, false, tx, ty,
+						1.0f, 1.0f, 1.0f, win_w, win_h,
+						true, sc(1,s), sc(1,s), 0, 0.50f);
+		}
+	}
+	if (g_tex_cancel_up.id) {
+		Tex &ct = g_replay_no_pressed ? g_tex_cancel_down : g_tex_cancel_up;
+		draw_tex(ct, cx, cy, cw, ch);
+		if (g_font.ok) {
+			float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+			float tw = measure_string(g_font, no_lbl, false, win_w, win_h);
+			float tx = cx + (cw - tw) * 0.5f;
+			float ty = cy + ch * 0.5f + cap_h * 0.35f;
+			draw_string(g_font, no_lbl, false, tx, ty,
+						1.0f, 1.0f, 1.0f, win_w, win_h,
+						true, sc(1,s), sc(1,s), 0, 0.50f);
+		}
+	}
+}
+
+static bool handle_replay_prompt_event(const SDL_Event *e, float win_w, float win_h) {
+	float qx, qy, qw, qh, cx, cy, cw, ch;
+	get_quit_btn_rects(win_w, win_h, qx, qy, qw, qh, cx, cy, cw, ch);
+
+	if (e->type == SDL_MOUSEMOTION) {
+		g_mouse_x = (float)e->motion.x;
+		g_mouse_y = (float)e->motion.y;
+		return true;
+	}
+	if (e->type == SDL_MOUSEBUTTONDOWN && e->button.button == SDL_BUTTON_LEFT) {
+		g_mouse_x = (float)e->button.x;
+		g_mouse_y = (float)e->button.y;
+		g_mouse_down = true;
+		g_replay_yes_pressed = hit(qx, qy, qw, qh, g_mouse_x, g_mouse_y);
+		g_replay_no_pressed = hit(cx, cy, cw, ch, g_mouse_x, g_mouse_y);
+		return true;
+	}
+	if (e->type == SDL_MOUSEBUTTONUP && e->button.button == SDL_BUTTON_LEFT) {
+		float rx = (float)e->button.x, ry = (float)e->button.y;
+		g_mouse_down = false;
+		if (g_replay_yes_pressed && hit(qx, qy, qw, qh, rx, ry)) {
+			play_sound(g_snd_confirm);
+			resolve_replay_prompt(1);
+			return true;
+		}
+		g_replay_yes_pressed = false;
+		if (g_replay_no_pressed && hit(cx, cy, cw, ch, rx, ry)) {
+			play_sound(g_snd_close);
+			resolve_replay_prompt(-1);
+			return true;
+		}
+		g_replay_no_pressed = false;
+		return true;
+	}
 	return true;
 }
 
@@ -3263,10 +3395,10 @@ static void draw(SDL_Window *window) {
 			pvz2_cloud_sync_local_discord(false, nullptr, 0, g_edit.locale);
 		}
 	}
-	if (!g_open && !g_quit_confirm && g_toasts.empty()) return;
+	if (!g_open && !g_quit_confirm && !g_replay_prompt_open && g_toasts.empty()) return;
 
-	/* Quit-confirm or a notification alone (the settings never opened) still needs resources + window pointer. */
-	if ((g_quit_confirm || !g_toasts.empty()) && !g_loaded) {
+	/* Quit-confirm, replay prompt or a notification alone still needs resources + window pointer. */
+	if ((g_quit_confirm || g_replay_prompt_open || !g_toasts.empty()) && !g_loaded) {
 		g_window = window;
 		int ww, hh;
 		SDL_GL_GetDrawableSize(window, &ww, &hh);
@@ -3307,7 +3439,7 @@ static void draw(SDL_Window *window) {
 	glPushMatrix(); glLoadIdentity();
 
 	/* --- dim overlay (once, whether settings and/or quit confirm; not for a notification alone) --- */
-	if (g_open || g_quit_confirm) {
+	if (g_open || g_quit_confirm || g_replay_prompt_open) {
 	glDisable(GL_TEXTURE_2D);
 	glColor4f(0, 0, 0, 0.5f);
 	glBegin(GL_QUADS);
@@ -3374,6 +3506,8 @@ static void draw(SDL_Window *window) {
 	/* Quit confirm draws above the settings panel when both are active. */
 	if (g_quit_confirm)
 		draw_quit_confirm(win_w, win_h);
+	else if (g_replay_prompt_open)
+		draw_replay_prompt(win_w, win_h);
 
 	/* Restore GL state */
 	glMatrixMode(GL_TEXTURE);  glPopMatrix();
@@ -3435,6 +3569,86 @@ extern "C" void config_screen_draw_toast(SDL_Window *window) {
 	glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
 }
 
+extern "C" void config_screen_draw_live_banner(SDL_Window *window, const char *text) {
+	if (!window || !text || !text[0]) return;
+	if (!g_loaded) {
+		g_window = window;
+		int ww, hh;
+		SDL_GL_GetDrawableSize(window, &ww, &hh);
+		load_resources((float)ww, (float)hh);
+	}
+	int iww, iwh;
+	SDL_GL_GetDrawableSize(window, &iww, &iwh);
+	if (iww <= 0 || iwh <= 0) return;
+	const float win_w = (float)iww;
+	const float win_h = (float)iwh;
+	const float s = ui_scale(win_w, win_h);
+
+	GLint prev_fbo = 0, prev_program = 0, prev_viewport[4] = {0, 0, 0, 0};
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo);
+	glGetIntegerv(GL_CURRENT_PROGRAM, &prev_program);
+	glGetIntegerv(GL_VIEWPORT, prev_viewport);
+
+	glPushAttrib(GL_ALL_ATTRIB_BITS);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glUseProgram(0);
+	glViewport(0, 0, iww, iwh);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_TEXTURE_2D);
+
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix(); glLoadIdentity();
+	glOrtho(0, win_w, win_h, 0, -1, 1);
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix(); glLoadIdentity();
+	glMatrixMode(GL_TEXTURE);
+	glPushMatrix(); glLoadIdentity();
+
+	const float inset = sc(25.0f, s);
+	const float w = sc(g_tex_list_item.id ? (float)g_tex_list_item.w : 737.0f, s);
+	const float inner_w = w - 2.0f * inset;
+	const float text_pad = sc(40.0f, s);
+	std::vector<std::string> lines = wrap_item_label(g_font, text, inner_w - 2.0f * text_pad, win_w, win_h);
+	if (!lines.empty()) {
+		const float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+		const float line_h = cap_h * 1.35f;
+		const float block_h = cap_h + (float)(lines.size() - 1) * line_h;
+		const float inner_h = std::max(sc(110.0f, s), block_h + sc(52.0f, s));
+		const float h = inner_h + 2.0f * inset;
+		const float x = (win_w - w) * 0.5f;
+		const float y = (win_h - h) * 0.5f;
+
+		glDisable(GL_TEXTURE_2D);
+		draw_round_rect(x, y + sc(6.0f, s), w, h, sc(28.0f, s), 0.0f, 0.0f, 0.0f, 0.45f);
+		glEnable(GL_TEXTURE_2D);
+
+		draw_nine_slice(g_tex_panel, x, y, w, h, 48.0f, sc(38.0f, s));
+		draw_nine_slice(g_tex_list_bg, x + inset, y + inset, inner_w, inner_h, 28.0f, sc(24.0f, s));
+
+		float baseline = y + inset + (inner_h - block_h) * 0.5f + cap_h;
+		for (const std::string &l : lines) {
+			const float lw = measure_string(g_font, l.c_str(), false, win_w, win_h);
+			draw_string(g_font, l.c_str(), false, x + (w - lw) * 0.5f, baseline,
+						0x48 / 255.f, 0x3e / 255.f, 0x00 / 255.f, win_w, win_h);
+			baseline += line_h;
+		}
+	}
+
+	glMatrixMode(GL_TEXTURE);  glPopMatrix();
+	glMatrixMode(GL_MODELVIEW); glPopMatrix();
+	glMatrixMode(GL_PROJECTION); glPopMatrix();
+	glPopAttrib();
+	glBindFramebuffer(GL_FRAMEBUFFER, prev_fbo);
+	glUseProgram(prev_program);
+	glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
+}
+
 /* -------------------------------------------------------------------------
  * Slide transition helpers
  * ---------------------------------------------------------------------- */
@@ -3472,6 +3686,10 @@ static void handle_event(const SDL_Event *e) {
 	/* Quit confirm is modal: it eats all input while visible. */
 	if (g_quit_confirm) {
 		handle_quit_confirm_event(e, win_w, win_h);
+		return;
+	}
+	if (g_replay_prompt_open) {
+		handle_replay_prompt_event(e, win_w, win_h);
 		return;
 	}
 
@@ -3551,6 +3769,7 @@ static void handle_event(const SDL_Event *e) {
 	} else if (g_screen == Screen::Events) {
 		ritems.push_back({false,false,false,g_edit.use_cdn!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 		ritems.push_back({false,false,false,g_edit.rewrite_cdn!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
+		ritems.push_back({false,false,false,g_edit.battlez_live!=0,-1,0,0,0,0,nullptr,nullptr,nullptr});
 	} else if (g_screen == Screen::DisplayPick) {
 		const std::vector<DetectedDisplay> displays = list_detected_displays();
 		const size_t n = displays.empty() ? 1 : displays.size();
@@ -4079,6 +4298,10 @@ static void handle_event(const SDL_Event *e) {
 				} else if (g_screen == Screen::Events) {
 					if (i == 0) g_edit.use_cdn = !g_edit.use_cdn;
 					else if (i == 1) g_edit.rewrite_cdn = !g_edit.rewrite_cdn;
+					else if (i == 2) {
+						g_edit.battlez_live = !g_edit.battlez_live;
+						pvz2_config_set_battlez_live(g_edit.battlez_live);
+					}
 					write_overlay_settings_to_ini();
 				} else if (g_screen == Screen::Resolution) {
 					const std::vector<ResOpt> ropts = filtered_res_opts(
@@ -4411,6 +4634,11 @@ void config_screen_request_escape(void) {
 		dismiss_quit_confirm();
 		return;
 	}
+	if (g_replay_prompt_open) {
+		play_sound(g_snd_close);
+		resolve_replay_prompt(-1);
+		return;
+	}
 	if (g_open || g_open_requested || g_open_cloud_requested) {
 		show_quit_confirm();
 		return;
@@ -4431,16 +4659,28 @@ void config_screen_shutdown(void) {
 }
 
 int config_screen_is_open(void) {
-	return (g_open || g_open_requested || g_open_cloud_requested || g_quit_confirm) ? 1 : 0;
+	return (g_open || g_open_requested || g_open_cloud_requested || g_quit_confirm || g_replay_prompt_open) ? 1 : 0;
 }
 
 void config_screen_handle_event(const SDL_Event *e) {
 	/* Achievements overlay is modal over settings: swallow all config input. */
 	if (achievements_screen_is_open()) return;
-	if (!g_open && !g_quit_confirm) return;
-	/* Quit-confirm alone may not have a window yet; wait until draw assigns one. */
+	if (!g_open && !g_quit_confirm && !g_replay_prompt_open) return;
+	/* Quit-confirm / replay prompt alone may not have a window yet; wait until draw assigns one. */
 	if (!g_window) return;
 	handle_event(e);
+}
+
+int config_screen_ask_battlez_replay(void) {
+	std::unique_lock<std::mutex> lk(g_replay_prompt_mu);
+	g_replay_prompt_result = 0;
+	g_replay_prompt_open = true;
+	g_replay_prompt_cv.wait(lk, [] { return g_replay_prompt_result != 0; });
+	return g_replay_prompt_result == 1 ? 1 : 0;
+}
+
+void config_screen_cancel_battlez_replay_prompt(void) {
+	resolve_replay_prompt(-1);
 }
 
 extern "C" void pvz2_invite_tick(void);
@@ -4459,7 +4699,7 @@ void config_screen_draw(SDL_Window *window) {
 	/* Hide settings while the achievements overlay is up; g_open stays true so
 	 * closing achievements restores this screen as it was. */
 	if (achievements_screen_is_open()) return;
-	if ((!g_open && !g_open_requested && !g_open_cloud_requested && !g_quit_confirm && g_toasts.empty()) ||
+	if ((!g_open && !g_open_requested && !g_open_cloud_requested && !g_quit_confirm && !g_replay_prompt_open && g_toasts.empty()) ||
 		!window)
 		return;
 	draw(window);
