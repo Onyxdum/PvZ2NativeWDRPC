@@ -4230,11 +4230,11 @@ static void handle_event(const SDL_Event *e) {
 						begin_transition(Screen::CloudProviderPick, true);
 					} else if (act == 5) {
 						play_sound(g_snd_confirm);
-						pvz2_cloud_upload(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						pvz2_cloud_begin(PVZ2_CLOUD_OP_UPLOAD, g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
 						toast_take_cloud_status();
 					} else if (act == 6) {
 						play_sound(g_snd_confirm);
-						pvz2_cloud_download(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+						pvz2_cloud_begin(PVZ2_CLOUD_OP_DOWNLOAD, g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
 						toast_take_cloud_status();
 					} else if (act == 11) {
 						play_sound(g_snd_confirm);
@@ -4726,6 +4726,8 @@ void config_screen_toast(const char *text) {
 }
 
 int config_screen_has_toast(void) {
+	/* A finished background cloud upload/download reports here. */
+	if (pvz2_cloud_poll_result(g_cloud_status, sizeof(g_cloud_status))) toast_take_cloud_status();
 	pvz2_invite_tick();
 	return g_toasts.empty() ? 0 : 1;
 }

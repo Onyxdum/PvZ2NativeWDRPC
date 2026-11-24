@@ -31,6 +31,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -41,7 +42,12 @@ namespace {
 Pvz2CloudConfig g_cfg{};
 std::mutex g_cfg_mutex;
 bool g_inited = false;
-bool g_writes_locked = false;
+std::atomic<bool> g_writes_locked{false};
+/* curl's exit code of the last command on this thread (6 = host not resolved: no internet). */
+thread_local int g_last_curl_rc = 0;
+/* A download refused because the cloud copy is older than our last upload goes ahead if the
+ * player presses Download again before this time. */
+std::atomic<std::time_t> g_allow_older_until{0};
 std::atomic<bool> g_auth_running{false};
 std::atomic<bool> g_auth_listening{false};
 std::atomic<std::time_t> g_auth_deadline{0};
@@ -93,6 +99,11 @@ struct CloudStrings {
     const char *import_success_fmt;
     const char *import_err_read;
     const char *import_err_invalid;
+    const char *offline;
+    const char *uploading;
+    const char *downloading;
+    const char *busy;
+    const char *older_confirm;
 };
 
 static const CloudStrings kCloudEN = {
@@ -136,7 +147,12 @@ static const CloudStrings kCloudEN = {
     "Failed to write JSON file",
     "Save imported from JSON (%zu files). Press Restart",
     "Failed to read JSON file",
-    "The JSON file does not contain a valid PvZ 2 save"
+    "The JSON file does not contain a valid PvZ 2 save",
+    "No internet connection, try again later",
+    "Uploading your save to the cloud...",
+    "Downloading your save from the cloud...",
+    "The cloud is still working, wait a moment",
+    "The cloud save is older than your last upload. Press Download again to use it"
 };
 
 static const CloudStrings kCloudES = {
@@ -180,7 +196,12 @@ static const CloudStrings kCloudES = {
     "Error al guardar el archivo JSON",
     "Partida importada de JSON (%zu archivos). Pulsa Reiniciar",
     "Error al leer el archivo JSON",
-    "El archivo JSON no contiene una partida válida de PvZ 2"
+    "El archivo JSON no contiene una partida válida de PvZ 2",
+    "Sin conexión a internet, inténtalo más tarde",
+    "Subiendo tu partida a la nube...",
+    "Descargando tu partida de la nube...",
+    "La nube sigue trabajando, espera un momento",
+    "La partida de la nube es más antigua que tu última subida. Pulsa Descargar otra vez para usarla"
 };
 
 static const CloudStrings kCloudFR = {
@@ -224,7 +245,12 @@ static const CloudStrings kCloudFR = {
     "Échec de l'écriture du fichier JSON",
     "Sauvegarde importée depuis JSON (%zu fichiers). Appuyez sur Redémarrer",
     "Échec de la lecture du fichier JSON",
-    "Le fichier JSON ne contient pas de sauvegarde PvZ 2 valide"
+    "Le fichier JSON ne contient pas de sauvegarde PvZ 2 valide",
+    "Pas de connexion Internet, réessayez plus tard",
+    "Envoi de votre sauvegarde vers le cloud...",
+    "Téléchargement de votre sauvegarde depuis le cloud...",
+    "Le cloud travaille encore, patientez un instant",
+    "La sauvegarde du cloud est plus ancienne que votre dernier envoi. Appuyez à nouveau sur Télécharger pour l'utiliser"
 };
 
 static const CloudStrings kCloudDE = {
@@ -268,7 +294,12 @@ static const CloudStrings kCloudDE = {
     "Fehler beim Schreiben der JSON-Datei",
     "Spielstand aus JSON importiert (%zu Dateien). Neustart drücken",
     "Fehler beim Lesen der JSON-Datei",
-    "Die JSON-Datei enthält keinen gültigen PvZ 2-Spielstand"
+    "Die JSON-Datei enthält keinen gültigen PvZ 2-Spielstand",
+    "Keine Internetverbindung, versuche es später erneut",
+    "Spielstand wird in die Cloud hochgeladen...",
+    "Spielstand wird aus der Cloud heruntergeladen...",
+    "Die Cloud arbeitet noch, einen Moment bitte",
+    "Der Cloud-Spielstand ist älter als dein letzter Upload. Drücke erneut auf Herunterladen, um ihn zu verwenden"
 };
 
 static const CloudStrings kCloudPT = {
@@ -312,7 +343,12 @@ static const CloudStrings kCloudPT = {
     "Falha ao salvar o arquivo JSON",
     "Jogo salvo importado de JSON (%zu arquivos). Pressione Reiniciar",
     "Falha ao ler o arquivo JSON",
-    "O arquivo JSON não contém um jogo salvo válido do PvZ 2"
+    "O arquivo JSON não contém um jogo salvo válido do PvZ 2",
+    "Sem conexão com a internet, tente mais tarde",
+    "Enviando seu jogo para a nuvem...",
+    "Baixando seu jogo da nuvem...",
+    "A nuvem ainda está trabalhando, aguarde um momento",
+    "O jogo da nuvem é mais antigo que seu último envio. Pressione Baixar de novo para usá-lo"
 };
 
 static const CloudStrings kCloudIT = {
@@ -356,7 +392,12 @@ static const CloudStrings kCloudIT = {
     "Errore durante il salvataggio del file JSON",
     "Salvataggio importato da JSON (%zu file). Premi Riavvia",
     "Errore durante la lettura del file JSON",
-    "Il file JSON non contiene un salvataggio PvZ 2 valido"
+    "Il file JSON non contiene un salvataggio PvZ 2 valido",
+    "Nessuna connessione a Internet, riprova più tardi",
+    "Caricamento del salvataggio nel cloud...",
+    "Download del salvataggio dal cloud...",
+    "Il cloud sta ancora lavorando, attendi un momento",
+    "Il salvataggio nel cloud è più vecchio del tuo ultimo caricamento. Premi di nuovo Scarica per usarlo"
 };
 
 const CloudStrings *get_cloud_strings(const char *locale = nullptr) {
@@ -461,6 +502,8 @@ void load_cloud_section() {
             copy_str(g_cfg.gist_token, sizeof(g_cfg.gist_token), v);
         } else if (k == "gist_id") {
             copy_str(g_cfg.gist_id, sizeof(g_cfg.gist_id), v);
+        } else if (k == "last_upload") {
+            g_cfg.last_upload_ts = std::atoll(v.c_str());
         }
     }
 }
@@ -658,15 +701,57 @@ std::string build_bundle_json(std::size_t *file_count_out) {
     return ss.str();
 }
 
-bool unpack_bundle_json(const std::string &json, std::size_t *restored_out) {
+/* Copies every local save file to cloud_backups/<date>/ before a download or import replaces
+ * them; the 5 newest backups are kept. */
+void backup_local_saves() {
+    const auto files = collect_local_save_files();
+    if (files.empty()) return;
+    std::time_t t = std::time(nullptr);
+    std::tm tm_buf{};
+#if defined(_WIN32)
+    localtime_s(&tm_buf, &t);
+#else
+    localtime_r(&t, &tm_buf);
+#endif
+    char stamp[32];
+    std::snprintf(stamp, sizeof(stamp), "%04d%02d%02d-%02d%02d%02d", tm_buf.tm_year + 1900, tm_buf.tm_mon + 1,
+                  tm_buf.tm_mday, tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
+    const fs::path root = "cloud_backups";
+    const fs::path dir = root / stamp;
+    std::error_code ec;
+    for (const auto &f : files) {
+        const fs::path dst = dir / fs::path(f.rel_path);
+        fs::create_directories(dst.parent_path(), ec);
+        fs::copy_file(f.host_path, dst, fs::copy_options::overwrite_existing, ec);
+    }
+    std::vector<fs::path> all;
+    for (auto it = fs::directory_iterator(root, ec); !ec && it != fs::directory_iterator(); it.increment(ec)) {
+        if (it->is_directory(ec)) all.push_back(it->path());
+    }
+    std::sort(all.begin(), all.end());
+    while (all.size() > 5) {
+        fs::remove_all(all.front(), ec);
+        all.erase(all.begin());
+    }
+}
+
+long long bundle_timestamp(const std::string &json) {
+    const std::size_t p = json.find("\"timestamp\"");
+    if (p == std::string::npos) return 0;
+    const std::size_t colon = json.find(':', p);
+    if (colon == std::string::npos) return 0;
+    return std::atoll(json.c_str() + colon + 1);
+}
+
+/* 1 = restored, 0 = not a valid save, 2 = refused: older than our last upload (press again). */
+int unpack_bundle_checked(const std::string &json, std::size_t *restored_out, bool check_age) {
     if (restored_out) *restored_out = 0;
     const std::size_t files_pos = json.find("\"files\"");
-    if (files_pos == std::string::npos) return false;
+    if (files_pos == std::string::npos) return 0;
     const std::size_t brace = json.find('{', files_pos);
-    if (brace == std::string::npos) return false;
+    if (brace == std::string::npos) return 0;
 
     std::size_t i = brace + 1;
-    std::size_t restored = 0;
     auto parse_str = [&](std::string &out) -> bool {
         while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' ||
                                    json[i] == '\n' || json[i] == ',')) {
@@ -696,6 +781,8 @@ bool unpack_bundle_json(const std::string &json, std::size_t *restored_out) {
         return false;
     };
 
+    /* Read everything first: nothing is written unless the bundle parses. */
+    std::vector<std::pair<std::string, std::vector<std::uint8_t>>> entries;
     while (i < json.size()) {
         while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\r' ||
                                    json[i] == '\n' || json[i] == ',')) {
@@ -710,13 +797,33 @@ bool unpack_bundle_json(const std::string &json, std::size_t *restored_out) {
         std::string b64;
         if (!parse_str(b64)) break;
         if (rel_path.find("..") != std::string::npos) continue;
-        const std::vector<std::uint8_t> data = base64_decode(b64);
-        const fs::path dst = resolve_local_rel_path(rel_path);
-        if (write_file_bytes(dst, data)) ++restored;
+        if (rel_path.rfind("save/", 0) != 0 && rel_path.rfind("userdata/", 0) != 0) continue;
+        entries.emplace_back(rel_path, base64_decode(b64));
     }
+    if (entries.empty()) return 0;
 
+    if (check_age) {
+        const long long ts = bundle_timestamp(json);
+        const std::time_t now = std::time(nullptr);
+        if (ts > 0 && g_cfg.last_upload_ts > 0 && ts + 5 < g_cfg.last_upload_ts &&
+            now > g_allow_older_until.load()) {
+            g_allow_older_until = now + 30;
+            return 2;
+        }
+    }
+    g_allow_older_until = 0;
+
+    backup_local_saves();
+    std::size_t restored = 0;
+    for (const auto &e : entries) {
+        if (write_file_bytes(resolve_local_rel_path(e.first), e.second)) ++restored;
+    }
     if (restored_out) *restored_out = restored;
-    return restored > 0;
+    return restored > 0 ? 1 : 0;
+}
+
+bool unpack_bundle_json(const std::string &json, std::size_t *restored_out) {
+    return unpack_bundle_checked(json, restored_out, false) == 1;
 }
 
 /* --- Subprocess helper for curl ------------------------------------------- */
@@ -735,14 +842,22 @@ int run_cmd_quiet(const std::string &cmd) {
                         CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
         return -1;
     }
-    WaitForSingleObject(pi.hProcess, 25000);
     DWORD exit_code = 1;
-    GetExitCodeProcess(pi.hProcess, &exit_code);
+    if (WaitForSingleObject(pi.hProcess, 25000) == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, 28);
+        exit_code = 28;
+    } else {
+        GetExitCodeProcess(pi.hProcess, &exit_code);
+    }
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    g_last_curl_rc = (int)exit_code;
     return (int)exit_code;
 #else
-    return std::system(cmd.c_str());
+    int rc = std::system(cmd.c_str());
+    if (rc != -1 && WIFEXITED(rc)) rc = WEXITSTATUS(rc);
+    g_last_curl_rc = rc;
+    return rc;
 #endif
 }
 
@@ -1386,24 +1501,6 @@ std::string build_http_save_endpoint(const std::string &base_url) {
     return base + "/saves/" + safe_id_slug(g_cfg.auth_discord_id);
 }
 
-fs::path resolve_zimaos_smb_save_file() {
-    const std::string fname = safe_id_slug(g_cfg.auth_discord_id) + ".json";
-#if defined(_WIN32)
-    std::error_code ec;
-    const fs::path unc_dir = "\\\\10.246.0.1\\ZimaOS-HD\\AppData\\pvz2-cloud-server\\data\\saves";
-    if (fs::exists("\\\\10.246.0.1\\ZimaOS-HD", ec)) {
-        fs::create_directories(unc_dir, ec);
-        return unc_dir / fname;
-    }
-    const fs::path z_dir = "Z:\\AppData\\pvz2-cloud-server\\data\\saves";
-    if (fs::exists("Z:\\", ec)) {
-        fs::create_directories(z_dir, ec);
-        return z_dir / fname;
-    }
-#endif
-    return {};
-}
-
 bool http_server_upload(const std::string &base_url, bool is_nas, char *status_out, std::size_t cap,
                         const CloudStrings *cs) {
     if (g_cfg.auth_discord_id[0] == '\0' || g_cfg.auth_discord_token[0] == '\0') {
@@ -1438,17 +1535,6 @@ bool http_server_upload(const std::string &base_url, bool is_nas, char *status_o
     int rc = run_cmd_quiet(cmd);
     std::error_code ec;
     fs::remove(tmp, ec);
-
-    if (rc != 0 && is_nas) {
-        const fs::path smb_file = resolve_zimaos_smb_save_file();
-        if (!smb_file.empty()) {
-            std::ofstream sf(smb_file, std::ios::binary | std::ios::trunc);
-            if (sf) {
-                sf.write(bundle.data(), (std::streamsize)bundle.size());
-                if (sf.good()) rc = 0;
-            }
-        }
-    }
 
     if (rc != 0) {
         std::snprintf(status_out, cap, cs->conn_failed_fmt,
@@ -1486,13 +1572,12 @@ bool http_server_download(const std::string &base_url, bool is_nas, char *status
     bool got_bytes = false;
     if (rc == 0 && fs::exists(tmp, ec)) {
         got_bytes = read_file_bytes(tmp, bytes);
-        fs::remove(tmp, ec);
-    } else if (is_nas) {
-        fs::remove(tmp, ec);
-        const fs::path smb_file = resolve_zimaos_smb_save_file();
-        if (!smb_file.empty() && fs::exists(smb_file, ec)) {
-            got_bytes = read_file_bytes(smb_file, bytes);
-        }
+    }
+    fs::remove(tmp, ec);
+    if (rc != 0 && rc != 22) {
+        /* 22 = HTTP error (404: no save yet); anything else is the connection. */
+        std::snprintf(status_out, cap, cs->conn_failed_fmt, is_nas ? "Cloud" : cs->server_word);
+        return false;
     }
 
     if (!got_bytes) {
@@ -1503,7 +1588,12 @@ bool http_server_download(const std::string &base_url, bool is_nas, char *status
 
     std::size_t restored = 0;
     const std::string json(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-    if (!unpack_bundle_json(json, &restored)) {
+    const int res = unpack_bundle_checked(json, &restored, true);
+    if (res == 2) {
+        std::snprintf(status_out, cap, "%s", cs->older_confirm);
+        return false;
+    }
+    if (res != 1) {
         std::snprintf(status_out, cap, "%s", cs->invalid_save_data);
         return false;
     }
@@ -1655,7 +1745,12 @@ bool gdrive_api_download(char *status_out, std::size_t cap, const CloudStrings *
 
     std::size_t restored = 0;
     const std::string json(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-    if (!unpack_bundle_json(json, &restored)) {
+    const int res = unpack_bundle_checked(json, &restored, true);
+    if (res == 2) {
+        std::snprintf(status_out, cap, "%s", cs->older_confirm);
+        return false;
+    }
+    if (res != 1) {
         std::snprintf(status_out, cap, "%s", cs->gdrive_invalid_file);
         return false;
     }
@@ -1830,7 +1925,12 @@ bool gist_download(char *status_out, std::size_t cap, const CloudStrings *cs) {
     }
 
     std::size_t restored = 0;
-    if (!unpack_bundle_json(inner_json, &restored)) {
+    const int res = unpack_bundle_checked(inner_json, &restored, true);
+    if (res == 2) {
+        std::snprintf(status_out, cap, "%s", cs->older_confirm);
+        return false;
+    }
+    if (res != 1) {
         std::snprintf(status_out, cap, "%s", cs->gist_unpack_err);
         return false;
     }
@@ -1896,6 +1996,7 @@ extern "C" void pvz2_cloud_save_config(void) {
         out.push_back(std::string("github_user = ") + g_cfg.github_user);
         out.push_back(std::string("gist_token = ") + g_cfg.gist_token);
         out.push_back(std::string("gist_id = ") + g_cfg.gist_id);
+        out.push_back("last_upload = " + std::to_string(g_cfg.last_upload_ts));
         out.push_back("");
         wrote_cloud = true;
     };
@@ -2018,18 +2119,32 @@ extern "C" bool pvz2_cloud_upload(char *status_out, size_t status_cap, const cha
         status_out = dummy;
         status_cap = sizeof(dummy);
     }
+    g_last_curl_rc = 0;
+    const long long started = (long long)std::time(nullptr);
+    bool ok = false;
     switch (g_cfg.provider) {
         case PVZ2_CLOUD_NAS:
-            return http_server_upload(g_cfg.nas_server_url, true, status_out, status_cap, cs);
+            ok = http_server_upload(g_cfg.nas_server_url, true, status_out, status_cap, cs);
+            break;
         case PVZ2_CLOUD_GDRIVE:
-            return gdrive_api_upload(status_out, status_cap, cs);
+            ok = gdrive_api_upload(status_out, status_cap, cs);
+            break;
         case PVZ2_CLOUD_SERVER:
-            return http_server_upload(g_cfg.server_url, false, status_out, status_cap, cs);
+            ok = http_server_upload(g_cfg.server_url, false, status_out, status_cap, cs);
+            break;
         case PVZ2_CLOUD_GIST:
-            return gist_upload(status_out, status_cap, cs);
+            ok = gist_upload(status_out, status_cap, cs);
+            break;
         default:
-            return false;
+            break;
     }
+    if (ok) {
+        g_cfg.last_upload_ts = started;
+        pvz2_cloud_save_config();
+    } else if (g_last_curl_rc == 6) {
+        std::snprintf(status_out, status_cap, "%s", cs->offline);
+    }
+    return ok;
 }
 
 extern "C" bool pvz2_cloud_download(char *status_out, size_t status_cap, const char *locale) {
@@ -2040,18 +2155,75 @@ extern "C" bool pvz2_cloud_download(char *status_out, size_t status_cap, const c
         status_out = dummy;
         status_cap = sizeof(dummy);
     }
+    g_last_curl_rc = 0;
+    bool ok = false;
     switch (g_cfg.provider) {
         case PVZ2_CLOUD_NAS:
-            return http_server_download(g_cfg.nas_server_url, true, status_out, status_cap, cs);
+            ok = http_server_download(g_cfg.nas_server_url, true, status_out, status_cap, cs);
+            break;
         case PVZ2_CLOUD_GDRIVE:
-            return gdrive_api_download(status_out, status_cap, cs);
+            ok = gdrive_api_download(status_out, status_cap, cs);
+            break;
         case PVZ2_CLOUD_SERVER:
-            return http_server_download(g_cfg.server_url, false, status_out, status_cap, cs);
+            ok = http_server_download(g_cfg.server_url, false, status_out, status_cap, cs);
+            break;
         case PVZ2_CLOUD_GIST:
-            return gist_download(status_out, status_cap, cs);
+            ok = gist_download(status_out, status_cap, cs);
+            break;
         default:
-            return false;
+            break;
     }
+    if (!ok && g_last_curl_rc == 6) std::snprintf(status_out, status_cap, "%s", cs->offline);
+    return ok;
+}
+
+/* --- Background upload / download (the game keeps running) ---------------- */
+
+namespace {
+std::atomic<bool> g_job_running{false};
+std::mutex g_job_mutex;
+bool g_job_done = false;
+char g_job_status[256] = {};
+}  // namespace
+
+extern "C" bool pvz2_cloud_busy(void) {
+    return g_job_running.load();
+}
+
+extern "C" void pvz2_cloud_begin(int op, char *status_out, size_t status_cap, const char *locale) {
+    if (!g_inited) pvz2_cloud_init();
+    const CloudStrings *cs = get_cloud_strings(locale);
+    if (g_job_running.exchange(true)) {
+        if (status_out && status_cap) std::snprintf(status_out, status_cap, "%s", cs->busy);
+        return;
+    }
+    if (status_out && status_cap) {
+        std::snprintf(status_out, status_cap, "%s", op == PVZ2_CLOUD_OP_UPLOAD ? cs->uploading : cs->downloading);
+    }
+    const std::string loc = locale ? locale : "";
+    std::thread([op, loc]() {
+        char msg[256] = {};
+        const char *l = loc.empty() ? nullptr : loc.c_str();
+        if (op == PVZ2_CLOUD_OP_UPLOAD) {
+            pvz2_cloud_upload(msg, sizeof(msg), l);
+        } else {
+            pvz2_cloud_download(msg, sizeof(msg), l);
+        }
+        {
+            std::lock_guard<std::mutex> lk(g_job_mutex);
+            std::snprintf(g_job_status, sizeof(g_job_status), "%s", msg);
+            g_job_done = true;
+        }
+        g_job_running = false;
+    }).detach();
+}
+
+extern "C" bool pvz2_cloud_poll_result(char *status_out, size_t status_cap) {
+    std::lock_guard<std::mutex> lk(g_job_mutex);
+    if (!g_job_done) return false;
+    g_job_done = false;
+    if (status_out && status_cap) std::snprintf(status_out, status_cap, "%s", g_job_status);
+    return true;
 }
 
 extern "C" bool pvz2_cloud_writes_locked(void) {
@@ -2088,6 +2260,8 @@ extern "C" void pvz2_cloud_restart_game(void) {
 
 extern "C" void pvz2_cloud_on_quit(void) {
     if (!g_inited) return;
+    /* A background upload/download still running finishes first (curl gives up after 15-20 s). */
+    for (int i = 0; i < 300 && pvz2_cloud_busy(); ++i) SDL_Delay(100);
     if (g_cfg.auto_sync && !g_writes_locked && pvz2_cloud_is_provider_authenticated()) {
         char msg[256] = {};
         pvz2_cloud_upload(msg, sizeof(msg), nullptr);
