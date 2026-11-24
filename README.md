@@ -61,6 +61,9 @@ button_label = GitHub
 - A cloud button on the main menu (also in settings) with four choices: **Cloud**, your own server, **Google Drive** or **GitHub Gist**.
 - Sign in with Discord for the default cloud. It can also sync for you when you quit.
 - Export or import your save as a `.json` file.
+- Uploads and downloads run in the background, so the game never freezes. With no internet you get a quick "no connection" message instead of a hang.
+- Before a download replaces your local save, a copy goes to `cloud_backups/` (the last five are kept). If the cloud copy is older than your last upload, it asks you to press Download again to confirm.
+- The server keeps your last five uploads, so an upload from a fresh install can be undone.
 - Results appear as a small notification at the top of the screen.
 
 ### 🥊 Battlez is back (v6.6.1)
@@ -89,13 +92,13 @@ Under Settings → **Difficulty** you can pick any of the game's eight dynamic d
 - **Hard++**: no lawn mowers, and each wave brings three times the zombies, spread over every row.
 - **Point Zero**: everything in Hard++, four times the zombies, plus the Dark Ages potions on every lawn, which zombies drink as they walk past.
 
-### 🔄 Auto-updater (Windows)
+### 🔄 Auto-updater (Windows and Linux)
 - When the game starts, it checks for a new release in the background without slowing the launch.
 - If there's one, it tells you which version it is and what's new, and lets you choose: **Update**, **Not now** or **Skip** (skip means it won't ask about that version again).
 - **Update** closes the game the normal way, so your progress and cloud sync are saved. Then it downloads the update with a progress bar and checks the file against the size and SHA-256 that GitHub publishes.
 - It backs up every file before replacing it. If something can't be written (a locked file, say), it puts everything back as it was. Either way, the game reopens at the end.
 - Your saves and game files are never touched. `config.ini` and the presence rules are merged, not overwritten: you keep your settings and just get the new options.
-- On Linux you get a notification when a new version is out.
+- On Linux it works the same way, with one difference: it downloads in the background while you play and installs when you close the game. It picks the right package for you (the loose binary or the AppImage).
 - To turn it off, set `[game] check_updates = 0`.
 
 ### 🚀 Desktop integration

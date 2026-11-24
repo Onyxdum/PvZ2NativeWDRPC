@@ -2298,5 +2298,6 @@ int main(int argc, char **argv) {
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
+    pvz2_updater_on_exit();
     return exit_code;
 }
