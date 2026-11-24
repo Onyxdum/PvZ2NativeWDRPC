@@ -49,6 +49,10 @@ typedef struct Pvz2CloudConfig {
     /* Local Discord desktop app account detected via IPC (bottom button) */
     char local_discord_id[64];
     char local_discord_name[128];
+
+    /* When this install last uploaded successfully (Unix time, 0 = never): a download of an
+     * older cloud copy asks for a second press. */
+    long long last_upload_ts;
 } Pvz2CloudConfig;
 
 void pvz2_cloud_init(void);
@@ -66,6 +70,14 @@ bool pvz2_cloud_sync_local_discord(bool force_connect, char *status_out, size_t 
 
 bool pvz2_cloud_upload(char *status_out, size_t status_cap, const char *locale);
 bool pvz2_cloud_download(char *status_out, size_t status_cap, const char *locale);
+
+/* Upload / download on a worker thread so the game never freezes (no network = a quick
+ * "no connection" message). status_out gets "Uploading..." (or "busy") at once; the result
+ * comes later from pvz2_cloud_poll_result(), which returns true once per finished job. */
+enum { PVZ2_CLOUD_OP_UPLOAD = 1, PVZ2_CLOUD_OP_DOWNLOAD = 2 };
+void pvz2_cloud_begin(int op, char *status_out, size_t status_cap, const char *locale);
+bool pvz2_cloud_poll_result(char *status_out, size_t status_cap);
+bool pvz2_cloud_busy(void);
 
 bool pvz2_cloud_export_local(char *status_out, size_t status_cap, const char *locale);
 bool pvz2_cloud_import_local(char *status_out, size_t status_cap, const char *locale);
