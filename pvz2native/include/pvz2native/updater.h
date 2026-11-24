@@ -7,11 +7,15 @@ extern "C" {
 
 #define PVZ2NATIVE_APP_VERSION "v1.6.0"
 
-/* Asynchronously checks GitHub releases for updates in the background.
- * If a newer version is available, prompts the player with a dialog:
- * "Nueva version disponible ¿Deseas actualizar el Juego? Solo tomara un minuto"
- * If accepted, opens the GitHub release page and launches the automated updater. */
+/* Checks the latest GitHub release on a worker thread (never blocks the start).
+ * Windows: when it is newer and not skipped, a dialog shows the version and its notes
+ * (Update / Skip / Not now); Update starts the installer and closes the game cleanly.
+ * Linux: a notification only. PVZ2_UPDATE_FEED (URL or path of a release JSON)
+ * replaces the GitHub feed, for testing. */
 void pvz2_check_updates_async(void);
+
+/* Main thread, once per frame: shows a pending update notification. */
+void pvz2_updater_tick(void);
 
 #ifdef __cplusplus
 }
