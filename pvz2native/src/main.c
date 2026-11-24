@@ -2276,6 +2276,7 @@ int main(int argc, char **argv) {
             /* Live Battlez start-sync waiting banner */
             if (live_waiting) config_screen_draw_live_banner(window, live_wait_msg);
             /* Notifications always sit on top of all panels (settings, friends, achievements, credits) */
+            pvz2_updater_tick();
             if (config_screen_has_toast()) config_screen_draw_toast(window);
             SDL_GL_SwapWindow(window);
             update_fps_title();
