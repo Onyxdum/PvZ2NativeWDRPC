@@ -61,6 +61,9 @@ button_label = GitHub
 - Un botón de nube en el menú principal (también en ajustes) con cuatro opciones: **Nube**, tu propio servidor, **Google Drive** o **GitHub Gist**.
 - Inicia sesión con Discord para usar la nube por defecto. También puede sincronizar sola al salir.
 - Exporta o importa tu partida como archivo `.json`.
+- Las subidas y descargas van en segundo plano, así que el juego nunca se congela. Sin internet te sale enseguida un aviso de "sin conexión" en vez de quedarse colgado.
+- Antes de que una descarga sustituya tu partida local, se guarda una copia en `cloud_backups/` (se conservan las cinco últimas). Si la copia de la nube es más antigua que tu última subida, te pide pulsar Descargar otra vez para confirmar.
+- El servidor guarda tus cinco últimas subidas, así que una subida desde una instalación nueva se puede deshacer.
 - Los resultados salen como una pequeña notificación arriba de la pantalla.
 
 ### 🥊 Vuelve Battlez (v6.6.1)
@@ -89,13 +92,13 @@ En Ajustes → **Dificultad** puedes elegir cualquiera de los ocho niveles de di
 - **Hard++**: sin cortacéspedes, y cada oleada trae el triple de zombis repartidos por todas las filas.
 - **Point Zero**: todo lo de Hard++, el cuádruple de zombis y además las pociones de la Edad Media en todos los jardines, que los zombis se beben al pasar.
 
-### 🔄 Actualizador automático (Windows)
+### 🔄 Actualizador automático (Windows y Linux)
 - Al arrancar el juego busca una versión nueva en segundo plano, sin retrasar el inicio.
 - Si la hay, te dice qué versión es y qué trae, y te deja elegir: **Actualizar**, **Ahora no** u **Omitir** (omitir hace que no vuelva a preguntar por esa versión).
 - **Actualizar** cierra el juego de forma normal, así que tu progreso y la sincronización con la nube se guardan. Luego descarga la actualización con barra de progreso y comprueba el archivo con el tamaño y el SHA-256 que publica GitHub.
 - Hace copia de seguridad de cada archivo antes de cambiarlo. Si algo no se puede escribir (un archivo bloqueado, por ejemplo), lo deja todo como estaba. En cualquier caso, al final vuelve a abrir el juego.
 - Nunca toca tus partidas ni los archivos del juego. `config.ini` y las reglas de presencia se fusionan en vez de sobrescribirse: conservas tus ajustes y solo se añaden las opciones nuevas.
-- En Linux te avisa con una notificación cuando sale una versión nueva.
+- En Linux funciona igual, con una diferencia: descarga en segundo plano mientras juegas y lo instala al cerrar el juego. Elige solo el paquete que te toca (el binario suelto o el AppImage).
 - Para desactivarlo, pon `[game] check_updates = 0`.
 
 ### 🚀 Integración con el escritorio

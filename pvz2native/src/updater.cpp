@@ -21,6 +21,12 @@
 #include <windows.h>
 #include <wininet.h>
 #include <shellapi.h>
+#else
+#include <atomic>
+#include <filesystem>
+#include <sys/types.h>
+#include <unistd.h>
+#include "updater_install.h"
 #endif
 
 /* In-game updater.
@@ -36,7 +42,9 @@
  *     SHA-256 against the release, backs up every file it replaces, merges config.ini and the
  *     presence rules, and puts everything back if any file cannot be written. Whatever
  *     happens, the game is opened again at the end.
- *   - Linux: a notification says a new version is available (no self-install). */
+ *   - Linux: the same dialog (an SDL message box). Update downloads the right zip (loose binary or
+ *     AppImage) in the background while the player keeps playing, checks its SHA-256, and installs
+ *     it when the game is closed (updater_install.cpp: backup, merge, rollback), then reopens it. */
 
 namespace {
 
@@ -513,7 +521,7 @@ bool fetch_release(Release &rel) {
     return !rel.tag.empty();
 }
 
-/* --- Linux: notification only -------------------------------------------------------- */
+/* --- Notifications from worker threads (shown on the main thread) --------------------- */
 
 std::mutex g_toast_mutex;
 std::string g_pending_toast;
@@ -1051,7 +1059,253 @@ void quit_game_cleanly() {
 
 #endif /* _WIN32 */
 
+#ifndef _WIN32
+
+/* --- Linux self-update -------------------------------------------------------------- */
+
+std::mutex g_linux_mutex;
+bool g_prompt_pending = false;     /* the worker found a release; the main thread asks */
+Release g_prompt_release;
+std::atomic<int> g_stage{0};       /* 0 nothing, 1 downloading, 2 ready to install at exit */
+std::string g_staged_root, g_staged_tag, g_staged_game, g_staged_work;
+bool g_staged_spanish = false;
+
+std::string sh_quote(const std::string &s) {
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out.push_back(c);
+    }
+    return out + "'";
+}
+
+std::string game_dir_no_slash() {
+    std::string d = data_dir();
+    while (d.size() > 1 && d.back() == '/') d.pop_back();
+    return d.empty() ? std::string(".") : d;
+}
+
+const Asset *pick_linux_asset(const Release &rel) {
+    const char *ai = getenv("APPIMAGE");
+    const bool appimage = ai && *ai;
+    for (const Asset &a : rel.assets) {
+        std::string n = lower(a.name.empty() ? a.url : a.name);
+        if (n.find("linux") == std::string::npos || !ends_with(n, ".zip")) continue;
+        if ((n.find("appimage") != std::string::npos) == appimage) return &a;
+    }
+    return nullptr;
+}
+
+std::string sha256_of(const std::string &path) {
+    std::string cmd = "sha256sum " + sh_quote(path) + " 2>/dev/null";
+    FILE *p = popen(cmd.c_str(), "r");
+    if (!p) return std::string();
+    char buf[160] = {0};
+    size_t n = fread(buf, 1, sizeof(buf) - 1, p);
+    pclose(p);
+    std::string out(buf, n);
+    return lower(out.substr(0, out.find_first_of(" \t\n")));
+}
+
+/* Result of the last install, shown as a notification on the next start. */
+std::string result_file() {
+    return data_dir() + "userdata/updater_result.txt";
+}
+
+void report_last_install() {
+    std::string text;
+    if (!read_local_file(result_file(), text)) return;
+    remove(result_file().c_str());
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
+    if (!text.empty()) queue_toast(text);
+}
+
+void linux_download(Release rel, Asset asset, bool spanish) {
+    namespace fs = std::filesystem;
+    const std::string game = game_dir_no_slash();
+    const std::string work = game + "/.pvz2_update";
+    const std::string zip = work + "/update.zip";
+    std::error_code ec;
+    fs::remove_all(work, ec);
+    fs::create_directories(work, ec);
+
+    std::string reason;
+    for (char c : asset.url)
+        if (c == '\'' || c == '\n') reason = "bad url";
+    if (reason.empty()) {
+        pvz2_log("[updater] downloading %s", asset.url.c_str());
+        std::string cmd = "curl -fsSL --retry 2 --connect-timeout 20 -m 1800 -A PvZ2Native-Updater -o " +
+                          sh_quote(zip) + " " + sh_quote(asset.url) + " 2>/dev/null";
+        int rc = system(cmd.c_str());
+        if (rc != 0) reason = spanish ? "sin conexi\xC3\xB3n o descarga cortada" : "no connection or download cut off";
+    }
+    if (reason.empty() && asset.size > 0 && (long long)fs::file_size(zip, ec) != asset.size) {
+        reason = spanish ? "descarga incompleta" : "incomplete download";
+    }
+    if (reason.empty() && !asset.sha256.empty()) {
+        std::string got = sha256_of(zip);
+        if (got.empty()) {
+            pvz2_log("[updater] sha256sum not available, only the size was checked");
+        } else if (got != asset.sha256) {
+            reason = spanish ? "el archivo est\xC3\xA1 da\xC3\xB1" "ado (SHA-256)" : "the file is damaged (SHA-256)";
+        }
+    }
+    std::string root;
+    if (reason.empty()) {
+        std::string err;
+        if (!pvz2_updater::extract_zip(zip, work + "/files", err)) {
+            reason = (spanish ? "no se pudo descomprimir: " : "could not unzip: ") + err;
+        } else {
+            root = pvz2_updater::package_root(work + "/files");
+            if (root.empty()) reason = spanish ? "el paquete no contiene el juego" : "the package has no game binary";
+        }
+    }
+    fs::remove(zip, ec);
+
+    if (!reason.empty()) {
+        fs::remove_all(work, ec);
+        g_stage = 0;
+        pvz2_log("[updater] %s download failed: %s", rel.tag.c_str(), reason.c_str());
+        queue_toast((spanish ? "No se pudo descargar la actualizaci\xC3\xB3n: " : "Could not download the update: ") + reason);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_linux_mutex);
+        g_staged_root = root;
+        g_staged_tag = rel.tag;
+        g_staged_game = game;
+        g_staged_work = work;
+        g_staged_spanish = spanish;
+    }
+    g_stage = 2;
+    pvz2_log("[updater] %s ready in %s, installs when the game closes", rel.tag.c_str(), root.c_str());
+    queue_toast(spanish ? "PvZ2Native " + rel.tag + " descargado: se instalar\xC3\xA1 al cerrar el juego"
+                        : "PvZ2Native " + rel.tag + " is ready: it installs when you close the game");
+}
+
+void linux_prompt(const Release &rel) {
+    const bool spanish = spanish_ui();
+    std::string notes = release_highlights(rel.body, spanish);
+    std::string text;
+    const char *b_update, *b_skip, *b_later;
+    if (spanish) {
+        text = "Hay una nueva versi\xC3\xB3n de PvZ2Native: " + rel.tag + " (tienes " PVZ2NATIVE_APP_VERSION ").\n\n";
+        if (!notes.empty()) text += "Novedades:\n" + notes + "\n";
+        text += "Actualizar la descarga mientras sigues jugando y la instala al cerrar el juego, que se vuelve a "
+                "abrir solo. Tus partidas y reglas de presencia se conservan.\n\n"
+                "Omitir: no volver a avisar de esta versi\xC3\xB3n.";
+        b_update = "Actualizar";
+        b_skip = "Omitir";
+        b_later = "Ahora no";
+    } else {
+        text = "A new version of PvZ2Native is available: " + rel.tag + " (you have " PVZ2NATIVE_APP_VERSION ").\n\n";
+        if (!notes.empty()) text += "What's new:\n" + notes + "\n";
+        text += "Update downloads it while you keep playing and installs it when you close the game, which then "
+                "opens again. Your saves and presence rules are kept.\n\n"
+                "Skip: don't remind me about this version.";
+        b_update = "Update";
+        b_skip = "Skip";
+        b_later = "Not now";
+    }
+    const SDL_MessageBoxButtonData buttons[3] = {
+        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, b_update},
+        {0, 2, b_skip},
+        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 3, b_later},
+    };
+    const SDL_MessageBoxData box = {SDL_MESSAGEBOX_INFORMATION, SDL_GL_GetCurrentWindow(), "Plants vs. Zombies 2",
+                                    text.c_str(), 3, buttons, nullptr};
+    int id = 3;
+    if (SDL_ShowMessageBox(&box, &id) < 0) {
+        pvz2_log("[updater] could not show the dialog: %s", SDL_GetError());
+        queue_toast(spanish ? "Nueva versi\xC3\xB3n de PvZ2Native: " + rel.tag + ". Desc\xC3\xA1rgala en GitHub."
+                            : "PvZ2Native " + rel.tag + " is out. Get it on GitHub.");
+        return;
+    }
+    if (id == 2) {
+        write_skipped_version(rel.tag);
+        pvz2_log("[updater] %s: skipped, will not ask again for this version", rel.tag.c_str());
+        return;
+    }
+    if (id != 1) {
+        pvz2_log("[updater] %s: not now", rel.tag.c_str());
+        return;
+    }
+    const Asset *asset = pick_linux_asset(rel);
+    if (!asset) {
+        pvz2_log("[updater] %s has no matching Linux zip, opening the release page", rel.tag.c_str());
+        SDL_OpenURL(rel.page.c_str());
+        return;
+    }
+    int idle = 0;
+    if (!g_stage.compare_exchange_strong(idle, 1)) return;
+    queue_toast(spanish ? "Descargando PvZ2Native " + rel.tag + " en segundo plano..."
+                        : "Downloading PvZ2Native " + rel.tag + " in the background...");
+    std::thread(linux_download, rel, *asset, spanish).detach();
+}
+
+void linux_tick() {
+    Release rel;
+    {
+        std::lock_guard<std::mutex> lock(g_linux_mutex);
+        if (!g_prompt_pending) return;
+        g_prompt_pending = false;
+        rel = g_prompt_release;
+    }
+    linux_prompt(rel);
+}
+
+/* After SDL_Quit, at the very end of main: install the staged package and start the game again. */
+void linux_install_on_exit() {
+    if (g_stage.load() != 2) return;
+    namespace fs = std::filesystem;
+    std::string root, tag, game, work;
+    bool spanish;
+    {
+        std::lock_guard<std::mutex> lock(g_linux_mutex);
+        root = g_staged_root;
+        tag = g_staged_tag;
+        game = g_staged_game;
+        work = g_staged_work;
+        spanish = g_staged_spanish;
+    }
+    const char *ai = getenv("APPIMAGE");
+    const std::string appimage = (ai && *ai) ? ai : "";
+
+    std::string log, err;
+    const bool ok = pvz2_updater::install_package(root, game, appimage, log, err);
+    std::error_code ec;
+    fs::remove_all(work, ec);
+
+    if (FILE *f = fopen((game + "/pvz2_updater.log").c_str(), "wb")) {
+        fprintf(f, "PvZ2Native updater: %s -> %s\n%s%s\n", PVZ2NATIVE_APP_VERSION, tag.c_str(), log.c_str(),
+                ok ? "done" : ("FAILED: " + err).c_str());
+        fclose(f);
+    }
+    fs::create_directories(game + "/userdata", ec);
+    if (FILE *f = fopen((game + "/userdata/updater_result.txt").c_str(), "wb")) {
+        std::string msg = ok ? (spanish ? "PvZ2Native actualizado a " + tag : "PvZ2Native updated to " + tag)
+                             : (spanish ? "No se pudo instalar " + tag + " (" + err + "). Sigues con la versi\xC3\xB3n anterior"
+                                        : "Could not install " + tag + " (" + err + "). You still have the previous version");
+        fwrite(msg.data(), 1, msg.size(), f);
+        fclose(f);
+    }
+
+    const std::string exe = !appimage.empty() ? appimage : game + "/pvz2";
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        if (chdir(game.c_str()) != 0) _exit(127);
+        execl(exe.c_str(), exe.c_str(), (char *)nullptr);
+        _exit(127);
+    }
+}
+
+#endif /* !_WIN32 */
+
 void check_updates_worker() {
+#ifndef _WIN32
+    report_last_install();
+#endif
     Release rel;
     if (!fetch_release(rel)) return;
 
@@ -1094,12 +1348,10 @@ void check_updates_worker() {
     }
     quit_game_cleanly();
 #else
-    std::string msg = spanish ? "Nueva versi\xC3\xB3n de PvZ2Native: " + rel.tag + " (tienes " PVZ2NATIVE_APP_VERSION
-                                    "). Desc\xC3\xA1rgala en GitHub."
-                              : "PvZ2Native " + rel.tag + " is out (you have " PVZ2NATIVE_APP_VERSION
-                                    "). Get it on GitHub.";
-    queue_toast(msg);
-    pvz2_log("[updater] %s available: %s", rel.tag.c_str(), rel.page.c_str());
+    (void)spanish;
+    std::lock_guard<std::mutex> lock(g_linux_mutex);
+    g_prompt_release = rel;
+    g_prompt_pending = true;
 #endif
 }
 
@@ -1115,6 +1367,9 @@ extern "C" void pvz2_check_updates_async(void) {
 }
 
 extern "C" void pvz2_updater_tick(void) {
+#ifndef _WIN32
+    linux_tick();
+#endif
     std::string toast;
     {
         std::lock_guard<std::mutex> lock(g_toast_mutex);
@@ -1122,4 +1377,10 @@ extern "C" void pvz2_updater_tick(void) {
         toast.swap(g_pending_toast);
     }
     config_screen_toast(toast.c_str());
+}
+
+extern "C" void pvz2_updater_on_exit(void) {
+#ifndef _WIN32
+    linux_install_on_exit();
+#endif
 }
