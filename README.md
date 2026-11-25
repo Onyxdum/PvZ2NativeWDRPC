@@ -64,6 +64,7 @@ button_label = GitHub
 - Uploads and downloads run in the background, so the game never freezes. With no internet you get a quick "no connection" message instead of a hang.
 - Before a download replaces your local save, a copy goes to `cloud_backups/` (the last five are kept). If the cloud copy is older than your last upload, it asks you to press Download again to confirm.
 - The server keeps your last five uploads, so an upload from a fresh install can be undone.
+- 4.5.2 and 6.6.1 each have their own cloud save, so you can't load a save from the other version by mistake. If you're moving to 6.6.1, its cloud menu has a button to bring your 4.5.2 save over. It asks before doing anything and backs up your current save first.
 - Results appear as a small notification at the top of the screen.
 
 ### 🥊 Battlez is back (v6.6.1)

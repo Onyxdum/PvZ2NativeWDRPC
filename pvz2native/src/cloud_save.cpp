@@ -2,6 +2,8 @@
 
 #include <pvz2native/config.h>
 #include <pvz2native/host_paths.h>
+#include <pvz2native/log.h>
+#include <pvz2native/game/symbols.h>
 #include <pvz2native/presence.h>
 
 #include <SDL.h>
@@ -48,6 +50,34 @@ thread_local int g_last_curl_rc = 0;
 /* A download refused because the cloud copy is older than our last upload goes ahead if the
  * player presses Download again before this time. */
 std::atomic<std::time_t> g_allow_older_until{0};
+/* Which game version's cloud slot this thread works with ("" = the running one). Set to "4.5.2" by
+ * the 6.6.1 "bring over my 4.5.2 save" action. */
+thread_local std::string g_slot_version;
+
+/* Every game version keeps its own cloud save: a 4.5.2 save loaded by 6.6.1 (or the other way
+ * round) is not something the player should get by accident. 4.5.2 keeps the original names
+ * (pvz2_cloud_save.json, /saves/<id>), other versions add their own suffix. */
+std::string running_version() {
+    const char *v = pvz2native::sym().version;
+    return (v && std::strcmp(v, "unknown") != 0) ? std::string(v) : std::string();
+}
+
+std::string slot_version() {
+    return g_slot_version.empty() ? running_version() : g_slot_version;
+}
+
+std::string slot_suffix() {
+    const std::string v = slot_version();
+    if (v.empty() || v == "4.5.2") return std::string();
+    std::string digits;
+    for (char c : v)
+        if (c >= '0' && c <= '9') digits.push_back(c);
+    return "_v" + digits;
+}
+
+std::string cloud_file_name() {
+    return "pvz2_cloud_save" + slot_suffix() + ".json";
+}
 std::atomic<bool> g_auth_running{false};
 std::atomic<bool> g_auth_listening{false};
 std::atomic<std::time_t> g_auth_deadline{0};
@@ -104,6 +134,15 @@ struct CloudStrings {
     const char *downloading;
     const char *busy;
     const char *older_confirm;
+    const char *wrong_version_fmt;
+    const char *import452_label;
+    const char *import452_done_fmt;
+    const char *import452_none;
+    const char *version_unknown;
+    const char *import452_confirm;
+    const char *import452_safety_fail;
+    const char *import452_title;
+    const char *import452_ok;
 };
 
 static const CloudStrings kCloudEN = {
@@ -152,7 +191,16 @@ static const CloudStrings kCloudEN = {
     "Uploading your save to the cloud...",
     "Downloading your save from the cloud...",
     "The cloud is still working, wait a moment",
-    "The cloud save is older than your last upload. Press Download again to use it"
+    "The cloud save is older than your last upload. Press Download again to use it",
+    "This cloud save is from version %s, not this one",
+    "Bring over my 4.5.2 save (cloud)",
+    "4.5.2 save copied (%zu files). Press Restart",
+    "No 4.5.2 save found in the cloud for this account",
+    "Wait until the game has loaded",
+    "Your save in this version will be replaced by your 4.5.2 cloud save. A copy of it goes to the cloud and to cloud_backups first.",
+    "Could not save a copy of your current save to the cloud first, so nothing was changed",
+    "Bring over your 4.5.2 save?",
+    "Bring over"
 };
 
 static const CloudStrings kCloudES = {
@@ -201,7 +249,16 @@ static const CloudStrings kCloudES = {
     "Subiendo tu partida a la nube...",
     "Descargando tu partida de la nube...",
     "La nube sigue trabajando, espera un momento",
-    "La partida de la nube es más antigua que tu última subida. Pulsa Descargar otra vez para usarla"
+    "La partida de la nube es más antigua que tu última subida. Pulsa Descargar otra vez para usarla",
+    "Esta partida de la nube es de la versión %s, no de esta",
+    "Traer mi partida de la 4.5.2 (nube)",
+    "Partida de la 4.5.2 copiada (%zu archivos). Pulsa Reiniciar",
+    "No hay partida de la 4.5.2 en la nube para esta cuenta",
+    "Espera a que el juego termine de cargar",
+    "Tu partida de esta versión se sustituirá por la de la 4.5.2 de la nube. Antes se guarda una copia en la nube y otra en cloud_backups.",
+    "No se pudo guardar antes una copia de tu partida actual en la nube, así que no se ha cambiado nada",
+    "¿Traer la partida de la 4.5.2?",
+    "Traer"
 };
 
 static const CloudStrings kCloudFR = {
@@ -250,7 +307,16 @@ static const CloudStrings kCloudFR = {
     "Envoi de votre sauvegarde vers le cloud...",
     "Téléchargement de votre sauvegarde depuis le cloud...",
     "Le cloud travaille encore, patientez un instant",
-    "La sauvegarde du cloud est plus ancienne que votre dernier envoi. Appuyez à nouveau sur Télécharger pour l'utiliser"
+    "La sauvegarde du cloud est plus ancienne que votre dernier envoi. Appuyez à nouveau sur Télécharger pour l'utiliser",
+    "Cette sauvegarde du cloud est de la version %s, pas de celle-ci",
+    "Récupérer ma sauvegarde 4.5.2 (cloud)",
+    "Sauvegarde 4.5.2 copiée (%zu fichiers). Appuyez sur Redémarrer",
+    "Aucune sauvegarde 4.5.2 dans le cloud pour ce compte",
+    "Attendez la fin du chargement du jeu",
+    "Votre sauvegarde de cette version sera remplacée par celle de la 4.5.2 du cloud. Une copie est d'abord envoyée dans le cloud et dans cloud_backups.",
+    "Impossible d'abord d'envoyer une copie de votre sauvegarde actuelle dans le cloud, rien n'a été modifié",
+    "Récupérer la sauvegarde 4.5.2 ?",
+    "Récupérer"
 };
 
 static const CloudStrings kCloudDE = {
@@ -299,7 +365,16 @@ static const CloudStrings kCloudDE = {
     "Spielstand wird in die Cloud hochgeladen...",
     "Spielstand wird aus der Cloud heruntergeladen...",
     "Die Cloud arbeitet noch, einen Moment bitte",
-    "Der Cloud-Spielstand ist älter als dein letzter Upload. Drücke erneut auf Herunterladen, um ihn zu verwenden"
+    "Der Cloud-Spielstand ist älter als dein letzter Upload. Drücke erneut auf Herunterladen, um ihn zu verwenden",
+    "Dieser Cloud-Spielstand ist von Version %s, nicht von dieser",
+    "Meinen 4.5.2-Spielstand übernehmen (Cloud)",
+    "4.5.2-Spielstand kopiert (%zu Dateien). Neustart drücken",
+    "Kein 4.5.2-Spielstand in der Cloud für dieses Konto",
+    "Warte, bis das Spiel geladen ist",
+    "Dein Spielstand dieser Version wird durch den 4.5.2-Spielstand aus der Cloud ersetzt. Vorher wird eine Kopie in die Cloud und nach cloud_backups gesichert.",
+    "Es konnte vorher keine Kopie deines aktuellen Spielstands in die Cloud gesendet werden, nichts wurde geändert",
+    "4.5.2-Spielstand übernehmen?",
+    "Übernehmen"
 };
 
 static const CloudStrings kCloudPT = {
@@ -348,7 +423,16 @@ static const CloudStrings kCloudPT = {
     "Enviando seu jogo para a nuvem...",
     "Baixando seu jogo da nuvem...",
     "A nuvem ainda está trabalhando, aguarde um momento",
-    "O jogo da nuvem é mais antigo que seu último envio. Pressione Baixar de novo para usá-lo"
+    "O jogo da nuvem é mais antigo que seu último envio. Pressione Baixar de novo para usá-lo",
+    "Este jogo da nuvem é da versão %s, não desta",
+    "Trazer meu jogo da 4.5.2 (nuvem)",
+    "Jogo da 4.5.2 copiado (%zu arquivos). Pressione Reiniciar",
+    "Nenhum jogo da 4.5.2 na nuvem para esta conta",
+    "Espere o jogo terminar de carregar",
+    "Seu jogo desta versão será substituído pelo da 4.5.2 na nuvem. Antes, uma cópia vai para a nuvem e outra para cloud_backups.",
+    "Não foi possível enviar antes uma cópia do seu jogo atual para a nuvem, então nada foi alterado",
+    "Trazer o jogo da 4.5.2?",
+    "Trazer"
 };
 
 static const CloudStrings kCloudIT = {
@@ -397,7 +481,16 @@ static const CloudStrings kCloudIT = {
     "Caricamento del salvataggio nel cloud...",
     "Download del salvataggio dal cloud...",
     "Il cloud sta ancora lavorando, attendi un momento",
-    "Il salvataggio nel cloud è più vecchio del tuo ultimo caricamento. Premi di nuovo Scarica per usarlo"
+    "Il salvataggio nel cloud è più vecchio del tuo ultimo caricamento. Premi di nuovo Scarica per usarlo",
+    "Questo salvataggio nel cloud è della versione %s, non di questa",
+    "Porta qui il mio salvataggio 4.5.2 (cloud)",
+    "Salvataggio 4.5.2 copiato (%zu file). Premi Riavvia",
+    "Nessun salvataggio 4.5.2 nel cloud per questo account",
+    "Attendi che il gioco finisca di caricare",
+    "Il salvataggio di questa versione sarà sostituito da quello 4.5.2 nel cloud. Prima ne viene salvata una copia nel cloud e una in cloud_backups.",
+    "Impossibile salvare prima una copia del salvataggio attuale nel cloud, quindi non è stato cambiato nulla",
+    "Portare qui il salvataggio 4.5.2?",
+    "Porta qui"
 };
 
 const CloudStrings *get_cloud_strings(const char *locale = nullptr) {
@@ -527,16 +620,10 @@ std::vector<SaveFileEntry> collect_local_save_files() {
     std::vector<SaveFileEntry> out;
     std::error_code ec;
 
-    const fs::path sdir = local_save_dir();
-    if (fs::exists(sdir, ec) && fs::is_directory(sdir, ec)) {
-        for (auto it = fs::recursive_directory_iterator(sdir, ec);
-             it != fs::recursive_directory_iterator(); it.increment(ec)) {
-            if (ec || !it->is_regular_file(ec)) continue;
-            fs::path rel = fs::relative(it->path(), sdir, ec);
-            if (ec) continue;
-            out.push_back({"save/" + rel.generic_string(), it->path()});
-        }
-    }
+    /* The save folder holds prefs.dat and nothing else of ours -- and by default it IS the game
+     * folder (data.obb, the exe...), so only that file is taken from it. */
+    const fs::path prefs = local_save_dir() / "prefs.dat";
+    if (fs::is_regular_file(prefs, ec)) out.push_back({"save/prefs.dat", prefs});
 
     const fs::path udir = local_userdata_dir();
     if (fs::exists(udir, ec) && fs::is_directory(udir, ec)) {
@@ -685,6 +772,7 @@ std::string build_bundle_json(std::size_t *file_count_out) {
        << "\"discord_id\":\"" << json_escape(g_cfg.auth_discord_id) << "\","
        << "\"discord_name\":\"" << json_escape(g_cfg.auth_discord_name) << "\","
        << "\"timestamp\":" << (long long)std::time(nullptr) << ","
+       << "\"game_version\":\"" << json_escape(running_version()) << "\","
        << "\"files\":{";
     bool first = true;
     std::size_t count = 0;
@@ -743,7 +831,10 @@ long long bundle_timestamp(const std::string &json) {
     return std::atoll(json.c_str() + colon + 1);
 }
 
-/* 1 = restored, 0 = not a valid save, 2 = refused: older than our last upload (press again). */
+thread_local std::string g_bundle_version;
+
+/* 1 = restored, 0 = not a valid save, 2 = refused: older than our last upload (press again),
+ * 3 = refused: a save of another game version (g_bundle_version). */
 int unpack_bundle_checked(const std::string &json, std::size_t *restored_out, bool check_age) {
     if (restored_out) *restored_out = 0;
     const std::size_t files_pos = json.find("\"files\"");
@@ -802,10 +893,21 @@ int unpack_bundle_checked(const std::string &json, std::size_t *restored_out, bo
     }
     if (entries.empty()) return 0;
 
+    /* A bundle of another game version is refused (old bundles carry no version: accepted). */
+    const std::size_t gv = json.find("\"game_version\"");
+    if (gv != std::string::npos) {
+        const std::size_t q1 = json.find('"', json.find(':', gv) + 1);
+        const std::size_t q2 = q1 == std::string::npos ? q1 : json.find('"', q1 + 1);
+        if (q2 != std::string::npos) {
+            g_bundle_version = json.substr(q1 + 1, q2 - q1 - 1);
+            if (!g_bundle_version.empty() && g_bundle_version != slot_version()) return 3;
+        }
+    }
+
     if (check_age) {
         const long long ts = bundle_timestamp(json);
         const std::time_t now = std::time(nullptr);
-        if (ts > 0 && g_cfg.last_upload_ts > 0 && ts + 5 < g_cfg.last_upload_ts &&
+        if (g_slot_version.empty() && ts > 0 && g_cfg.last_upload_ts > 0 && ts + 5 < g_cfg.last_upload_ts &&
             now > g_allow_older_until.load()) {
             g_allow_older_until = now + 30;
             return 2;
@@ -1498,7 +1600,9 @@ void run_auth_server_thread() {
 std::string build_http_save_endpoint(const std::string &base_url) {
     std::string base = trim(base_url);
     while (!base.empty() && base.back() == '/') base.pop_back();
-    return base + "/saves/" + safe_id_slug(g_cfg.auth_discord_id);
+    const std::string suffix = slot_suffix();
+    return base + "/saves/" + safe_id_slug(g_cfg.auth_discord_id) +
+           (suffix.empty() ? std::string() : "?game=" + slot_version());
 }
 
 bool http_server_upload(const std::string &base_url, bool is_nas, char *status_out, std::size_t cap,
@@ -1527,14 +1631,27 @@ bool http_server_upload(const std::string &base_url, bool is_nas, char *status_o
     }
 
     const std::string url = build_http_save_endpoint(base_url);
+    const fs::path resp = fs::temp_directory_path() / "pvz2_cloud_upload_resp.txt";
+    std::error_code ec;
+    fs::remove(resp, ec);
+    /* A few MB through the tunnel can take a while on a slow upload: 60 s, not 15. */
     const std::string cmd =
-        "curl -sS -f -m 15 -X PUT -H \"Content-Type: application/json\" "
+        "curl -sS --fail-with-body --connect-timeout 15 -m 60 -X PUT -H \"Content-Type: application/json\" "
         "-H \"X-Discord-Id: " + safe_id_slug(g_cfg.auth_discord_id) + "\" "
         "-H \"Authorization: Bearer " + std::string(g_cfg.auth_discord_token) + "\" "
+        "-o \"" + resp.string() + "\" "
         "--data-binary @\"" + tmp.string() + "\" \"" + url + "\"";
     int rc = run_cmd_quiet(cmd);
-    std::error_code ec;
     fs::remove(tmp, ec);
+    {
+        std::vector<std::uint8_t> body;
+        read_file_bytes(resp, body);
+        std::string text(body.begin(), body.end());
+        if (text.size() > 200) text.resize(200);
+        pvz2_log("[cloud] upload %zu bytes (%zu files): curl exit %d, server said: %s", bundle.size(), count, rc,
+                 text.empty() ? "(nothing)" : text.c_str());
+        fs::remove(resp, ec);
+    }
 
     if (rc != 0) {
         std::snprintf(status_out, cap, cs->conn_failed_fmt,
@@ -1593,6 +1710,10 @@ bool http_server_download(const std::string &base_url, bool is_nas, char *status
         std::snprintf(status_out, cap, "%s", cs->older_confirm);
         return false;
     }
+    if (res == 3) {
+        std::snprintf(status_out, cap, cs->wrong_version_fmt, g_bundle_version.c_str());
+        return false;
+    }
     if (res != 1) {
         std::snprintf(status_out, cap, "%s", cs->invalid_save_data);
         return false;
@@ -1607,13 +1728,14 @@ bool http_server_download(const std::string &base_url, bool is_nas, char *status
 /* --- Google Drive REST API v3 --------------------------------------------- */
 
 std::string gdrive_find_file_id() {
-    if (g_cfg.gdrive_file_id[0] != '\0') return g_cfg.gdrive_file_id;
+    const bool legacy = slot_suffix().empty();
+    if (legacy && g_cfg.gdrive_file_id[0] != '\0') return g_cfg.gdrive_file_id;
     const fs::path tmp = fs::temp_directory_path() / "pvz2_gd_list.json";
     std::error_code ec;
     fs::remove(tmp, ec);
 
     const std::string url =
-        "https://www.googleapis.com/drive/v3/files?q=name%3D'pvz2_cloud_save.json'+and+trashed%3Dfalse&fields=files(id,name)";
+        "https://www.googleapis.com/drive/v3/files?q=name%3D'" + cloud_file_name() + "'+and+trashed%3Dfalse&fields=files(id,name)";
     std::string cmd =
         "curl -sS -f -m 15 -H \"Authorization: Bearer " + std::string(g_cfg.gdrive_token) + "\" "
         "-o \"" + tmp.string() + "\" \"" + url + "\"";
@@ -1633,7 +1755,7 @@ std::string gdrive_find_file_id() {
 
     const std::string resp(reinterpret_cast<const char *>(bytes.data()), bytes.size());
     std::string id = json_extract_string(resp, "id");
-    if (!id.empty()) {
+    if (!id.empty() && legacy) {
         copy_str(g_cfg.gdrive_file_id, sizeof(g_cfg.gdrive_file_id), id);
         pvz2_cloud_save_config();
     }
@@ -1660,7 +1782,7 @@ bool gdrive_api_upload(char *status_out, std::size_t cap, const CloudStrings *cs
         const fs::path meta_out = fs::temp_directory_path() / "pvz2_gd_create.json";
         {
             std::ofstream f(meta_in, std::ios::binary | std::ios::trunc);
-            f << "{\"name\":\"pvz2_cloud_save.json\",\"mimeType\":\"application/json\"}";
+            f << "{\"name\":\"" << cloud_file_name() << "\",\"mimeType\":\"application/json\"}";
         }
         const std::string create_cmd =
             "curl -sS -f -m 15 -X POST "
@@ -1676,7 +1798,7 @@ bool gdrive_api_upload(char *status_out, std::size_t cap, const CloudStrings *cs
             if (read_file_bytes(meta_out, rbytes)) {
                 const std::string rstr(reinterpret_cast<const char *>(rbytes.data()), rbytes.size());
                 file_id = json_extract_string(rstr, "id");
-                if (!file_id.empty()) {
+                if (!file_id.empty() && slot_suffix().empty()) {
                     copy_str(g_cfg.gdrive_file_id, sizeof(g_cfg.gdrive_file_id), file_id);
                     pvz2_cloud_save_config();
                 }
@@ -1750,6 +1872,10 @@ bool gdrive_api_download(char *status_out, std::size_t cap, const CloudStrings *
         std::snprintf(status_out, cap, "%s", cs->older_confirm);
         return false;
     }
+    if (res == 3) {
+        std::snprintf(status_out, cap, cs->wrong_version_fmt, g_bundle_version.c_str());
+        return false;
+    }
     if (res != 1) {
         std::snprintf(status_out, cap, "%s", cs->gdrive_invalid_file);
         return false;
@@ -1779,7 +1905,7 @@ std::string gist_find_existing_id() {
     fs::remove(tmp, ec);
 
     const std::string rstr(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-    const std::size_t marker = rstr.find("pvz2_cloud_save.json");
+    const std::size_t marker = rstr.find("\"pvz2_cloud_save");
     if (marker == std::string::npos) return "";
     const std::size_t id_pos = rstr.rfind("\"id\"", marker);
     if (id_pos == std::string::npos) return "";
@@ -1806,7 +1932,7 @@ bool gist_upload(char *status_out, std::size_t cap, const CloudStrings *cs) {
     const std::string existing_id = gist_find_existing_id();
     std::ostringstream payload;
     payload << "{\"description\":\"PvZ2Native Cloud Save\",\"public\":false,"
-            << "\"files\":{\"pvz2_cloud_save.json\":{\"content\":\""
+            << "\"files\":{\"" << cloud_file_name() << "\":{\"content\":\""
             << json_escape(bundle) << "\"}}}";
 
     const fs::path tmp_in = fs::temp_directory_path() / "pvz2_gist_req.json";
@@ -1892,12 +2018,12 @@ bool gist_download(char *status_out, std::size_t cap, const CloudStrings *cs) {
     fs::remove(tmp_out, ec);
 
     const std::string rstr(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-    const std::size_t fmt_pos = rstr.find("pvz2_cloud_v1");
-    if (fmt_pos == std::string::npos) {
-        std::snprintf(status_out, cap, "%s", cs->gist_not_pvz2);
+    const std::size_t file_pos = rstr.find("\"" + cloud_file_name() + "\":");
+    if (file_pos == std::string::npos) {
+        std::snprintf(status_out, cap, "%s", cs->gist_no_save);
         return false;
     }
-    std::size_t start = rstr.rfind("\"content\"", fmt_pos);
+    std::size_t start = rstr.find("\"content\"", file_pos);
     if (start == std::string::npos) return false;
     start = rstr.find('"', start + 9);
     if (start == std::string::npos) return false;
@@ -1928,6 +2054,10 @@ bool gist_download(char *status_out, std::size_t cap, const CloudStrings *cs) {
     const int res = unpack_bundle_checked(inner_json, &restored, true);
     if (res == 2) {
         std::snprintf(status_out, cap, "%s", cs->older_confirm);
+        return false;
+    }
+    if (res == 3) {
+        std::snprintf(status_out, cap, cs->wrong_version_fmt, g_bundle_version.c_str());
         return false;
     }
     if (res != 1) {
@@ -2119,6 +2249,10 @@ extern "C" bool pvz2_cloud_upload(char *status_out, size_t status_cap, const cha
         status_out = dummy;
         status_cap = sizeof(dummy);
     }
+    if (running_version().empty()) {
+        std::snprintf(status_out, status_cap, "%s", cs->version_unknown);
+        return false;
+    }
     g_last_curl_rc = 0;
     const long long started = (long long)std::time(nullptr);
     bool ok = false;
@@ -2154,6 +2288,10 @@ extern "C" bool pvz2_cloud_download(char *status_out, size_t status_cap, const c
     if (!status_out || status_cap == 0) {
         status_out = dummy;
         status_cap = sizeof(dummy);
+    }
+    if (running_version().empty()) {
+        std::snprintf(status_out, status_cap, "%s", cs->version_unknown);
+        return false;
     }
     g_last_curl_rc = 0;
     bool ok = false;
@@ -2200,12 +2338,27 @@ extern "C" void pvz2_cloud_begin(int op, char *status_out, size_t status_cap, co
     if (status_out && status_cap) {
         std::snprintf(status_out, status_cap, "%s", op == PVZ2_CLOUD_OP_UPLOAD ? cs->uploading : cs->downloading);
     }
+    if (op == PVZ2_CLOUD_OP_IMPORT_452 && !pvz2_cloud_can_import_452()) {
+        g_job_running = false;
+        return;
+    }
     const std::string loc = locale ? locale : "";
     std::thread([op, loc]() {
         char msg[256] = {};
         const char *l = loc.empty() ? nullptr : loc.c_str();
         if (op == PVZ2_CLOUD_OP_UPLOAD) {
             pvz2_cloud_upload(msg, sizeof(msg), l);
+        } else if (op == PVZ2_CLOUD_OP_IMPORT_452) {
+            /* First this version's current save goes to its own cloud slot (the server keeps the
+             * previous ones), then the 4.5.2 cloud save is restored locally (after a local backup). */
+            if (!pvz2_cloud_upload(msg, sizeof(msg), l)) {
+                pvz2_log("[cloud] import 4.5.2: safety upload failed (%s), nothing changed", msg);
+                std::snprintf(msg, sizeof(msg), "%s", get_cloud_strings(l)->import452_safety_fail);
+            } else {
+                g_slot_version = "4.5.2";
+                pvz2_cloud_download(msg, sizeof(msg), l);
+                g_slot_version.clear();
+            }
         } else {
             pvz2_cloud_download(msg, sizeof(msg), l);
         }
@@ -2387,4 +2540,21 @@ extern "C" bool pvz2_cloud_import_local(char *status_out, size_t status_cap, con
     g_writes_locked = true;
     std::snprintf(status_out, status_cap, cs->import_success_fmt, restored);
     return true;
+}
+
+extern "C" bool pvz2_cloud_can_import_452(void) {
+    const std::string v = running_version();
+    return !v.empty() && v != "4.5.2" && v != "1.6.10";
+}
+
+extern "C" const char *pvz2_cloud_import_452_label(const char *locale) {
+    return get_cloud_strings(locale)->import452_label;
+}
+
+extern "C" void pvz2_cloud_import_452_dialog(const char *locale, const char **title, const char **body,
+                                             const char **ok) {
+    const CloudStrings *cs = get_cloud_strings(locale);
+    if (title) *title = cs->import452_title;
+    if (body) *body = cs->import452_confirm;
+    if (ok) *ok = cs->import452_ok;
 }

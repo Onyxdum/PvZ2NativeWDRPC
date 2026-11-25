@@ -64,6 +64,7 @@ button_label = GitHub
 - Las subidas y descargas van en segundo plano, así que el juego nunca se congela. Sin internet te sale enseguida un aviso de "sin conexión" en vez de quedarse colgado.
 - Antes de que una descarga sustituya tu partida local, se guarda una copia en `cloud_backups/` (se conservan las cinco últimas). Si la copia de la nube es más antigua que tu última subida, te pide pulsar Descargar otra vez para confirmar.
 - El servidor guarda tus cinco últimas subidas, así que una subida desde una instalación nueva se puede deshacer.
+- La 4.5.2 y la 6.6.1 tienen cada una su propia partida en la nube, así que no puedes cargar sin querer la de la otra versión. Si te pasas a la 6.6.1, en su menú de la nube hay un botón para traerte la partida de la 4.5.2. Te pregunta antes de hacer nada y primero guarda una copia de tu partida actual.
 - Los resultados salen como una pequeña notificación arriba de la pantalla.
 
 ### 🥊 Vuelve Battlez (v6.6.1)

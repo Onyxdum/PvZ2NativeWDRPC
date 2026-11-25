@@ -74,10 +74,17 @@ bool pvz2_cloud_download(char *status_out, size_t status_cap, const char *locale
 /* Upload / download on a worker thread so the game never freezes (no network = a quick
  * "no connection" message). status_out gets "Uploading..." (or "busy") at once; the result
  * comes later from pvz2_cloud_poll_result(), which returns true once per finished job. */
-enum { PVZ2_CLOUD_OP_UPLOAD = 1, PVZ2_CLOUD_OP_DOWNLOAD = 2 };
+enum { PVZ2_CLOUD_OP_UPLOAD = 1, PVZ2_CLOUD_OP_DOWNLOAD = 2, PVZ2_CLOUD_OP_IMPORT_452 = 3 };
 void pvz2_cloud_begin(int op, char *status_out, size_t status_cap, const char *locale);
 bool pvz2_cloud_poll_result(char *status_out, size_t status_cap);
 bool pvz2_cloud_busy(void);
+
+/* Each game version has its own cloud save. A newer version (6.6.1) can take the 4.5.2 one
+ * (PVZ2_CLOUD_OP_IMPORT_452); these say whether that row is shown and its text. */
+bool pvz2_cloud_can_import_452(void);
+const char *pvz2_cloud_import_452_label(const char *locale);
+/* Texts of the confirmation window shown before that action. */
+void pvz2_cloud_import_452_dialog(const char *locale, const char **title, const char **body, const char **ok);
 
 bool pvz2_cloud_export_local(char *status_out, size_t status_cap, const char *locale);
 bool pvz2_cloud_import_local(char *status_out, size_t status_cap, const char *locale);
