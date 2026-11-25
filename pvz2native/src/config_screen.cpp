@@ -1487,6 +1487,10 @@ bool g_open_requested = false;
 bool g_open_cloud_requested = false;
 bool g_opened_directly_to_cloud = false;
 bool g_quit_confirm = false;
+/* "Bring over my 4.5.2 save" confirmation window (cloud screen, 6.6.1) */
+bool g_cloud_confirm = false;
+bool g_cc_ok_pressed = false;
+bool g_cc_cancel_pressed = false;
 
 std::mutex g_replay_prompt_mu;
 std::condition_variable g_replay_prompt_cv;
@@ -2299,6 +2303,10 @@ static std::vector<Item> build_items(Screen screen, const Strings *str) {
         if (pvz2_cloud_writes_locked()) {
             items.push_back({str->cloud_restart_now, true, false, false, ""});
         }
+        /* 6.6.1: take the 4.5.2 cloud save (each version keeps its own) */
+        if (pvz2_cloud_can_import_452()) {
+            items.push_back({pvz2_cloud_import_452_label(g_edit.locale), true, false, false, ""});
+        }
         items.push_back({str->cloud_autosync, false, false, cc->auto_sync != 0, ""});
         const pvz2_config_t *cfg = pvz2_config();
         const bool rpc_on = cfg && cfg->discord_enabled != 0;
@@ -2753,6 +2761,115 @@ static bool handle_quit_confirm_event(const SDL_Event *e, float win_w, float win
 	/* Swallow all other input while the dialog is up (including Escape —
 	 * main.c toggles via config_screen_request_quit_confirm). */
 	return true;
+}
+
+/* --- "Bring over my 4.5.2 save" confirmation: the quit dialog's panel and buttons ------- */
+
+static void dismiss_cloud_confirm(void) {
+	g_cloud_confirm = false;
+	g_cc_ok_pressed = false;
+	g_cc_cancel_pressed = false;
+}
+
+static void show_cloud_confirm(void) {
+	g_cloud_confirm = true;
+	g_cc_ok_pressed = false;
+	g_cc_cancel_pressed = false;
+	play_sound(g_snd_exit);
+}
+
+static void accept_cloud_confirm(void) {
+	dismiss_cloud_confirm();
+	play_sound(g_snd_confirm);
+	pvz2_cloud_begin(PVZ2_CLOUD_OP_IMPORT_452, g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
+	toast_take_cloud_status();
+}
+
+static void draw_cloud_confirm(float win_w, float win_h) {
+	if (!g_tex_panel_exit.id) return;
+	const Strings *str = get_strings(ui_locale());
+	const char *title = "", *body = "", *ok = "";
+	pvz2_cloud_import_452_dialog(ui_locale(), &title, &body, &ok);
+	float s = ui_scale(win_w, win_h);
+
+	float px, py, pw, ph;
+	get_exit_panel_rect(win_w, win_h, px, py, pw, ph);
+	draw_tex(g_tex_panel_exit, px, py, pw, ph);
+
+	if (g_font.ok) {
+		float tw = measure_string(g_font, title, true, win_w, win_h);
+		float tx = px + (pw - tw) * 0.5f;
+		float ty = py + sc(kHeaderBaselineY, s);
+		draw_string(g_font, title, true, tx, ty, 0xfd/255.f, 0xdc/255.f, 0x67/255.f,
+					win_w, win_h, true, sc(5,s), sc(5,s), sc(2,s));
+
+		/* Body: wrapped to the panel, centred between the title and the buttons. */
+		std::vector<std::string> lines = wrap_item_label(g_font, body, pw * 0.80f, win_w, win_h);
+		const float line_h = sc(kQuitMsgLineH * 0.80f, s);
+		float qx, qy, qw, qh, cx, cy, cw, ch;
+		get_quit_btn_rects(win_w, win_h, qx, qy, qw, qh, cx, cy, cw, ch);
+		const float top = py + sc(kQuitMsgY - kQuitMsgLineH, s);
+		const float block = line_h * (float)lines.size();
+		float y = top + ((qy - top) - block) * 0.5f + line_h * 0.75f;
+		for (const std::string &l : lines) {
+			float w = measure_string(g_font, l.c_str(), false, win_w, win_h);
+			draw_string(g_font, l.c_str(), false, px + (pw - w) * 0.5f, y, 1.0f, 1.0f, 1.0f, win_w, win_h,
+						true, sc(2,s), sc(2,s), 0, 0.55f);
+			y += line_h;
+		}
+	}
+
+	float qx, qy, qw, qh, cx, cy, cw, ch;
+	get_quit_btn_rects(win_w, win_h, qx, qy, qw, qh, cx, cy, cw, ch);
+	const char *labels[2] = {ok, str->cancel_btn};
+	Tex *texs[2] = {g_cc_ok_pressed ? &g_tex_save_down : &g_tex_save_up,
+					g_cc_cancel_pressed ? &g_tex_cancel_down : &g_tex_cancel_up};
+	const float bx[2] = {qx, cx}, by[2] = {qy, cy}, bw[2] = {qw, cw}, bh[2] = {qh, ch};
+	for (int b = 0; b < 2; ++b) {
+		if (!texs[b]->id) continue;
+		draw_tex(*texs[b], bx[b], by[b], bw[b], bh[b]);
+		if (g_font.ok) {
+			float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
+			float tw = measure_string(g_font, labels[b], false, win_w, win_h);
+			draw_string(g_font, labels[b], false, bx[b] + (bw[b] - tw) * 0.5f, by[b] + bh[b] * 0.5f + cap_h * 0.35f,
+						1.0f, 1.0f, 1.0f, win_w, win_h, true, sc(1,s), sc(1,s), 0, 0.50f);
+		}
+	}
+}
+
+static bool handle_cloud_confirm_event(const SDL_Event *e, float win_w, float win_h) {
+	float qx, qy, qw, qh, cx, cy, cw, ch;
+	get_quit_btn_rects(win_w, win_h, qx, qy, qw, qh, cx, cy, cw, ch);
+	if (e->type == SDL_MOUSEMOTION) {
+		g_mouse_x = (float)e->motion.x;
+		g_mouse_y = (float)e->motion.y;
+		return true;
+	}
+	if (e->type == SDL_MOUSEBUTTONDOWN && e->button.button == SDL_BUTTON_LEFT) {
+		g_mouse_x = (float)e->button.x;
+		g_mouse_y = (float)e->button.y;
+		g_mouse_down = true;
+		g_cc_ok_pressed = hit(qx, qy, qw, qh, g_mouse_x, g_mouse_y);
+		g_cc_cancel_pressed = hit(cx, cy, cw, ch, g_mouse_x, g_mouse_y);
+		return true;
+	}
+	if (e->type == SDL_MOUSEBUTTONUP && e->button.button == SDL_BUTTON_LEFT) {
+		float rx = (float)e->button.x, ry = (float)e->button.y;
+		g_mouse_down = false;
+		if (g_cc_ok_pressed && hit(qx, qy, qw, qh, rx, ry)) {
+			accept_cloud_confirm();
+			return true;
+		}
+		if (g_cc_cancel_pressed && hit(cx, cy, cw, ch, rx, ry)) {
+			play_sound(g_snd_close);
+			dismiss_cloud_confirm();
+			return true;
+		}
+		g_cc_ok_pressed = false;
+		g_cc_cancel_pressed = false;
+		return true;
+	}
+	return true; /* modal: swallow everything else */
 }
 
 static void resolve_replay_prompt(int choice) {
@@ -3529,7 +3646,7 @@ static void draw(SDL_Window *window) {
 
 	/* When quit-confirm opens on top of settings, dim the settings panel too
 	 * so only the quit dialog reads as the active window. */
-	if (g_open && g_quit_confirm) {
+	if (g_open && (g_quit_confirm || g_cloud_confirm)) {
 		glDisable(GL_TEXTURE_2D);
 		glColor4f(0, 0, 0, 0.5f);
 		glBegin(GL_QUADS);
@@ -3542,6 +3659,8 @@ static void draw(SDL_Window *window) {
 	/* Quit confirm draws above the settings panel when both are active. */
 	if (g_quit_confirm)
 		draw_quit_confirm(win_w, win_h);
+	else if (g_cloud_confirm)
+		draw_cloud_confirm(win_w, win_h);
 	else if (g_replay_prompt_open)
 		draw_replay_prompt(win_w, win_h);
 
@@ -3728,6 +3847,10 @@ static void handle_event(const SDL_Event *e) {
 		handle_replay_prompt_event(e, win_w, win_h);
 		return;
 	}
+	if (g_cloud_confirm) {
+		handle_cloud_confirm_event(e, win_w, win_h);
+		return;
+	}
 
 	/* Settings must be open for the rest of the handler. */
 	if (!g_open) return;
@@ -3831,6 +3954,10 @@ static void handle_event(const SDL_Event *e) {
 		/* 8=Restart to load the downloaded save (right below Download, as in build_items) */
 		if (pvz2_cloud_writes_locked()) {
 			ritems.push_back({true, false,false,false, 8,0,0,0,0,nullptr,nullptr,nullptr});
+		}
+		/* 15=Bring over the 4.5.2 cloud save (as in build_items) */
+		if (pvz2_cloud_can_import_452()) {
+			ritems.push_back({true, false,false,false, 15,0,0,0,0,nullptr,nullptr,nullptr});
 		}
 		ritems.push_back({false,false,false,cc->auto_sync!=0, 7,0,0,0,0,nullptr,nullptr,nullptr});
 		const pvz2_config_t *cfg = pvz2_config();
@@ -4236,6 +4363,8 @@ static void handle_event(const SDL_Event *e) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_begin(PVZ2_CLOUD_OP_DOWNLOAD, g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
 						toast_take_cloud_status();
+					} else if (act == 15) {
+						show_cloud_confirm();
 					} else if (act == 11) {
 						play_sound(g_snd_confirm);
 						pvz2_cloud_export_local(g_cloud_status, sizeof(g_cloud_status), g_edit.locale);
@@ -4565,6 +4694,12 @@ int pad_button(int button) {
 		if (button == SDL_CONTROLLER_BUTTON_B) { dismiss_quit_confirm(); return 1; }
 		return 0;
 	}
+	if (g_cloud_confirm) {
+		/* The bring-over-4.5.2 window: A accepts, B cancels. */
+		if (button == SDL_CONTROLLER_BUTTON_A) { accept_cloud_confirm(); return 1; }
+		if (button == SDL_CONTROLLER_BUTTON_B) { play_sound(g_snd_close); dismiss_cloud_confirm(); return 1; }
+		return 1;
+	}
 	if (g_in_transition) return 1;
 	if (!pad_screen_is_list(g_screen)) return 0; /* key capture / text entry: leave them to the cursor */
 	if (g_pad_screen != g_screen) {
@@ -4673,6 +4808,11 @@ void config_screen_request_escape(void) {
 	if (g_replay_prompt_open) {
 		play_sound(g_snd_close);
 		resolve_replay_prompt(-1);
+		return;
+	}
+	if (g_cloud_confirm) {
+		play_sound(g_snd_close);
+		dismiss_cloud_confirm();
 		return;
 	}
 	if (g_open || g_open_requested || g_open_cloud_requested) {
