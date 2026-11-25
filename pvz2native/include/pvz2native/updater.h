@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#define PVZ2NATIVE_APP_VERSION "v1.6.0"
+#define PVZ2NATIVE_APP_VERSION "v1.7.0"
 
 /* Checks the latest GitHub release on a worker thread (never blocks the start).
  * Windows: when it is newer and not skipped, a dialog shows the version and its notes
