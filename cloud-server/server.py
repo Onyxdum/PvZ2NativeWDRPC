@@ -8,6 +8,7 @@ import os
 import random
 import re
 import secrets
+import shutil
 import struct
 import threading
 import time
@@ -45,6 +46,38 @@ def save_token_cache():
         os.replace(tmp, TOKEN_CACHE_FILE)
     except Exception:
         pass
+
+
+SAVE_HISTORY_KEEP = 5
+
+
+SAVE_GAME_VERSIONS = {"6.6.1": "_v661", "1.6.10": "_v1610"}
+
+
+def save_file_for(discord_id: str, request_path: str) -> str:
+    """Each game version keeps its own cloud save: 4.5.2 (and old clients, which send no version)
+    use <id>.json, other versions <id>_v661.json etc. (from ?game=<version>)."""
+    query = urllib.parse.parse_qs(request_path.split("?", 1)[1] if "?" in request_path else "")
+    suffix = SAVE_GAME_VERSIONS.get(query.get("game", [""])[0], "")
+    return os.path.join(DATA_DIR, f"{discord_id}{suffix}.json")
+
+
+def keep_save_history(discord_id: str, save_path: str) -> None:
+    """Before a save is replaced, the current one goes to _history/<id>/<time>.json; the newest
+    SAVE_HISTORY_KEEP are kept, so an upload from a fresh install can be undone by hand."""
+    if not os.path.isfile(save_path):
+        return
+    try:
+        slot = os.path.splitext(os.path.basename(save_path))[0]
+        hist_dir = os.path.join(DATA_DIR, "_history", slot)
+        os.makedirs(hist_dir, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime(os.path.getmtime(save_path)))
+        shutil.copy2(save_path, os.path.join(hist_dir, stamp + ".json"))
+        old = sorted(n for n in os.listdir(hist_dir) if n.endswith(".json"))
+        for name in old[:-SAVE_HISTORY_KEEP]:
+            os.remove(os.path.join(hist_dir, name))
+    except OSError as exc:
+        print(f"[saves] could not keep history for {discord_id}: {exc}")
 
 
 def verify_discord_token(token: str, expected_id: str) -> bool:
@@ -378,6 +411,8 @@ def joust_live_sync(discord_id, body):
             "rivalScore": rival["score"],
             "rivalReady": rival["ready"],
             "rivalFinished": rival["finished"],
+            # The rival left the match before its end (see joust_complete): the port ends ours as a win.
+            "rivalSurrendered": bool(rival.get("surrendered")),
             "bothReady": both_ready,
             "rivalOnline": rival_online,
             "rivalName": rival["name"],
@@ -442,11 +477,26 @@ def joust_complete(discord_id, p, body, people):
                 # Prevent claiming a sudden huge jump at completeMatch that wasn't earned during live sync.
                 if not me["finished"] and my_score > me["score"]:
                     me["score"] = min(my_score, me["score"] + JOUST_MAX_SCORE_PER_SEC)
+                # A result for a match that did not run to its end here is the player giving up: the port says
+                # so with liveFinished: false, and a port without it (v1.7.0) never synced `finished`, which its
+                # FinishMatch hook sends at a normal end. The rival's game sees rivalSurrendered in its next sync
+                # and ends its match as a win.
+                ran_to_end = body.get("liveFinished")
+                if ran_to_end is None:
+                    ran_to_end = me["finished"]
+                if not ran_to_end and not me.get("surrendered"):
+                    me["surrendered"] = True
                 me["finished"] = True
                 me["last_seen"] = now
                 rival_did = next((d for d in room["players"] if d != discord_id), None)
-                if rival_did:
-                    r_score = room["players"][rival_did]["score"]
+                rival = room["players"].get(rival_did) if rival_did else None
+                rival_gone = bool(rival and not rival["finished"] and now - rival["last_seen"] > 20.0)
+                if me.get("surrendered"):
+                    win = False
+                elif rival and (rival.get("surrendered") or rival_gone):
+                    win = True
+                elif rival:
+                    r_score = rival["score"]
                     if me["score"] != r_score:
                         win = me["score"] > r_score
     # Reject instant scripted crown farming (< JOUST_MIN_MATCH_SECS since match creation).
@@ -1398,6 +1448,9 @@ class SaveHandler(BaseHTTPRequestHandler):
                 # The game's request body can carry a stray byte or a NUL after the JSON value
                 # (older ports sent them): read the first value and ignore what follows it.
                 raw = self.rfile.read(length).decode("utf-8", "replace").strip("\x00 \r\n\t")
+                # winRatio is score / rival score: against a rival who gave up at 0 the game writes inf or
+                # nan, which is not JSON. Read those as 0 (the live result is decided by the server anyway).
+                raw = re.sub(r'(?<=[:,\[])\s*-?(?:inf(?:inity)?|nan)\b', '0', raw, flags=re.IGNORECASE)
                 body = json.JSONDecoder().raw_decode(raw)[0] if raw else {}
                 if not isinstance(body, dict):
                     body = {}
@@ -1605,7 +1658,7 @@ class SaveHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized_discord_token"})
             return
 
-        save_path = os.path.join(DATA_DIR, f"{discord_id}.json")
+        save_path = save_file_for(discord_id, self.path)
         if not os.path.isfile(save_path):
             self._send_json(404, {"error": "not_found"})
             return
@@ -1653,7 +1706,8 @@ class SaveHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "invalid_json"})
             return
 
-        save_path = os.path.join(DATA_DIR, f"{discord_id}.json")
+        save_path = save_file_for(discord_id, self.path)
+        keep_save_history(discord_id, save_path)
         tmp_path = save_path + ".tmp"
         with open(tmp_path, "wb") as f:
             f.write(raw)

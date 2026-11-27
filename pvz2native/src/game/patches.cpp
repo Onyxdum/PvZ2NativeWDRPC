@@ -873,16 +873,18 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
                        },
                        "Live Battlez HUD tick");
     }
-    if (sym().patch.joust_get_opponent_score_fn != 0) {
-        install_svc_at(img, sym().patch.joust_get_opponent_score_fn, 0xe92d4c10u, "joust.get_opp_score",
+    /* The opponent's score on the results screen is data+0x64 of the results data the screen copies in; for a
+     * live match it is the rival's live score (kept below ours when the rival gave up). */
+    if (sym().patch.joust_results_set_data_fn != 0) {
+        install_svc_at(img, sym().patch.joust_results_set_data_fn, 0xe92d4c10u, "joust.results_set_data",
                        [](GuestCall &call) {
-                           if (dex::joust_live_is_active()) {
-                               call.set_result((std::uint32_t)dex::joust_live_rival_score());
-                               return;
+                           const std::uint32_t data = call.arg(1);
+                           if (dex::joust_live_is_active() && data != 0 && call.in_bounds(data + 0x64u, 4)) {
+                               call.write32(data + 0x64u, (std::uint32_t)dex::joust_live_rival_score());
                            }
                            emulate_push(call, {4, 10, 11}, call.lr());
                            call.no_return();
-                           call.regs[15] = call.img->so_base + sym().patch.joust_get_opponent_score_fn + 4;
+                           call.regs[15] = call.img->so_base + sym().patch.joust_results_set_data_fn + 4;
                        },
                        "Live Battlez results score");
     }
@@ -915,6 +917,52 @@ void game_apply_late_patches(pvz2_elf_image_t *img) {
                            call.regs[15] = call.img->so_base + sym().patch.joust_finish_match_fn + 4;
                        },
                        "Live Battlez match finish");
+    }
+    /* Live Battlez: when the rival gives up (or vanishes), end this player's match now. Every frame of the level
+     * passes through JoustGameModule::Update; on the frame the rival's surrender is known, it is replaced by
+     * the game's own "end the match now" (timer cleared, then FinishMatch), which shows the victory screen --
+     * joust_live_rival_score() already keeps a surrendered rival's score below ours. */
+    if (sym().patch.joust_module_update_fn != 0 && sym().patch.joust_end_match_now_fn != 0) {
+        install_svc_at(img, sym().patch.joust_module_update_fn, 0xe92d4c70u, "joust.module_update",
+                       [](GuestCall &call) {
+                           const std::uint32_t module = call.arg(0);
+                           /* +0x1c: the level is running (Update itself returns at once otherwise). */
+                           const bool running =
+                               module != 0 && call.in_bounds(module + 0x1cu, 1) && call.read8(module + 0x1cu) != 0;
+                           if (running) dex::joust_live_on_level_frame();
+                           if (running && dex::joust_live_take_forced_end()) {
+                               pvz2_log("[joust-live] rival gave up: ending the match (module 0x%08x)", module);
+                               call.no_return();
+                               call.regs[15] = call.img->so_base + sym().patch.joust_end_match_now_fn;
+                               return;
+                           }
+                           emulate_push(call, {4, 5, 6, 10, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_module_update_fn + 4;
+                       },
+                       "Live Battlez rival surrender");
+    }
+    if (sym().patch.joust_matchmaking_enter_fn != 0) {
+        install_svc_at(img, sym().patch.joust_matchmaking_enter_fn, 0xe92d4c70u, "joust.mm_enter",
+                       [](GuestCall &call) {
+                           dex::joust_set_matchmaking_adaptor(call.arg(0));
+                           emulate_push(call, {4, 5, 6, 10, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_matchmaking_enter_fn + 4;
+                       },
+                       "Battlez matchmaking enter");
+    }
+    if (sym().patch.joust_matchmaking_dtor_fn != 0) {
+        install_svc_at(img, sym().patch.joust_matchmaking_dtor_fn, 0xe92d4c10u, "joust.mm_dtor",
+                       [](GuestCall &call) {
+                           if (dex::joust_get_matchmaking_adaptor() == call.arg(0)) {
+                               dex::joust_set_matchmaking_adaptor(0);
+                           }
+                           emulate_push(call, {4, 10, 11}, call.lr());
+                           call.no_return();
+                           call.regs[15] = call.img->so_base + sym().patch.joust_matchmaking_dtor_fn + 4;
+                       },
+                       "Battlez matchmaking destroy");
     }
 
     if (sym().patch.zomboss_setup_stage == 0) return;

@@ -335,9 +335,20 @@ struct GameSymbols {
         std::uint32_t joust_hud_set_left_score_fn;
         std::uint32_t joust_hud_set_right_score_fn;
         std::uint32_t joust_hud_set_timer_fn;
-        std::uint32_t joust_get_opponent_score_fn;
+        /* AdaptorJoustResultsScreen: (screen, data) copies the results data (built by the caller) into
+         * screen+0xa0; data+0x64 is the opponent's score shown on it. (0x6b105c, once hooked here as
+         * "GetOpponentScore", returns the opponent's PLANT LIST -- returning a score from it broke the list.) */
+        std::uint32_t joust_results_set_data_fn;
         std::uint32_t joust_level_start_fn;
         std::uint32_t joust_finish_match_fn;
+        std::uint32_t joust_matchmaking_enter_fn;
+        std::uint32_t joust_matchmaking_dtor_fn;
+        std::uint32_t joust_matchmaking_cancel_fn;
+        /* JoustGameModule::Update(this), every frame of a Battlez level (push {r4-r6, sl, fp, lr}), and the
+         * game's own "end the match now" (this): clears the level timer, then FinishMatch picks win/lose by
+         * score. Used to end a live match when the rival gives up. 6.6.1 only. */
+        std::uint32_t joust_module_update_fn;
+        std::uint32_t joust_end_match_now_fn;
         /* The live PlayerInfo object (the profile that pp.dat is saved from), found on the guest heap by its
          * two vtables so a friend's gift can be added to the coins and gems while the game runs. Layout,
          * same in 4.5.2 and 6.6.1: vtable at +0, second vtable at +0x58, coins ("c") at +0xa4, gems ("g")

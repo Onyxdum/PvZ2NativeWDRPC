@@ -231,8 +231,15 @@ void joust_deliver_pending(pvz2_elf_image_t *img, GuestRuntime *rt);
 bool joust_live_is_active();
 void joust_live_on_local_score(int score);
 int joust_live_rival_score();
+/* True once, when the live rival has given up (or vanished) and this player's match is still running:
+ * the caller ends the match now (patches.cpp, JoustGameModule::Update hook). */
+bool joust_live_take_forced_end();
+/* A frame of a running Battlez level (JoustGameModule::Update with the level started). */
+void joust_live_on_level_frame();
 void joust_live_on_local_ready();
 void joust_live_on_local_finished();
+void joust_set_matchmaking_adaptor(std::uint32_t adaptor);
+std::uint32_t joust_get_matchmaking_adaptor();
 
 void register_framework_activity(HookTable &t);
 void register_google_play(HookTable &t);

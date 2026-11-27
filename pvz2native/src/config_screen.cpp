@@ -1495,7 +1495,8 @@ bool g_cc_cancel_pressed = false;
 std::mutex g_replay_prompt_mu;
 std::condition_variable g_replay_prompt_cv;
 bool g_replay_prompt_open = false;
-int g_replay_prompt_result = 0; /* 0 = pending, 1 = yes (play replay), -1 = cancel */
+int g_replay_prompt_result = 0; /* 0 = pending, 2 = keep searching, 1 = play replay, -1 = cancel */
+bool g_replay_search_pressed = false;
 bool g_replay_yes_pressed = false;
 bool g_replay_no_pressed = false;
 char g_cloud_status[256] = "";
@@ -2879,9 +2880,34 @@ static void resolve_replay_prompt(int choice) {
 		g_replay_prompt_open = false;
 		g_replay_prompt_result = choice;
 	}
+	g_replay_search_pressed = false;
 	g_replay_yes_pressed = false;
 	g_replay_no_pressed = false;
 	g_replay_prompt_cv.notify_all();
+}
+
+static void get_replay_btn_rects(float win_w, float win_h,
+								 float &sx, float &sy, float &sw, float &sh,
+								 float &rx, float &ry, float &rw, float &rh,
+								 float &cx, float &cy, float &cw, float &ch) {
+	float s = ui_scale(win_w, win_h);
+	float px, py, pw, ph;
+	get_exit_panel_rect(win_w, win_h, px, py, pw, ph);
+	float bh = sc((float)(g_tex_save_up.id ? g_tex_save_up.h : 77), s);
+	/* Row 1: Keep searching + Play Replay (native height, horizontal 3-slice) */
+	float row1_w = sc(270.0f, s);
+	float gap = sc(28.0f, s);
+	float row1_total = row1_w * 2.0f + gap;
+	float row1_x = px + (pw - row1_total) * 0.5f;
+	float row1_y = py + sc(350.0f, s);
+	sx = row1_x;              sy = row1_y; sw = row1_w; sh = bh;
+	rx = row1_x + row1_w + gap; ry = row1_y; rw = row1_w; rh = bh;
+	/* Row 2: Cancel centered underneath at exact 1:1 native button size (195x77) */
+	float cancel_w = sc((float)(g_tex_cancel_up.id ? g_tex_cancel_up.w : 195), s);
+	cx = px + (pw - cancel_w) * 0.5f;
+	cy = py + sc(450.0f, s);
+	cw = cancel_w;
+	ch = bh;
 }
 
 static void draw_replay_prompt(float win_w, float win_h) {
@@ -2889,38 +2915,44 @@ static void draw_replay_prompt(float win_w, float win_h) {
 	const char *loc = ui_locale();
 	const char *title = "Live Battlez";
 	const char *msg1 = "No live opponent was found.";
-	const char *msg2 = "Play against a random replay?";
-	const char *yes_lbl = "Yes, Replay";
+	const char *msg2 = "What would you like to do?";
+	const char *search_lbl = "Keep searching";
+	const char *yes_lbl = "Play Replay";
 	const char *no_lbl = "Cancel";
 	if (strncmp(loc, "es", 2) == 0) {
 		title = "Batallaz en vivo";
 		msg1 = "No se encontró ningún rival conectado.";
-		msg2 = "¿Jugar contra un replay aleatorio?";
-		yes_lbl = "Sí, Replay";
+		msg2 = "¿Qué quieres hacer?";
+		search_lbl = "Seguir buscando";
+		yes_lbl = "Jugar Replay";
 		no_lbl = "Cancelar";
 	} else if (strncmp(loc, "fr", 2) == 0) {
 		title = "Battlez en direct";
 		msg1 = "Aucun adversaire en ligne trouvé.";
-		msg2 = "Jouer contre un replay aléatoire ?";
-		yes_lbl = "Oui, Replay";
+		msg2 = "Que veux-tu faire ?";
+		search_lbl = "Chercher";
+		yes_lbl = "Jouer Replay";
 		no_lbl = "Annuler";
 	} else if (strncmp(loc, "de", 2) == 0) {
 		title = "Battlez Live";
 		msg1 = "Kein Online-Gegner gefunden.";
-		msg2 = "Gegen ein zufälliges Replay spielen?";
-		yes_lbl = "Ja, Replay";
+		msg2 = "Was möchtest du tun?";
+		search_lbl = "Weitersuchen";
+		yes_lbl = "Replay";
 		no_lbl = "Abbrechen";
 	} else if (strncmp(loc, "pt", 2) == 0) {
 		title = "Battlez ao vivo";
 		msg1 = "Nenhum oponente online encontrado.";
-		msg2 = "Jogar contra um replay aleatório?";
-		yes_lbl = "Sim, Replay";
+		msg2 = "O que você deseja fazer?";
+		search_lbl = "Continuar";
+		yes_lbl = "Jogar Replay";
 		no_lbl = "Cancelar";
 	} else if (strncmp(loc, "it", 2) == 0) {
 		title = "Battlez dal vivo";
 		msg1 = "Nessun avversario online trovato.";
-		msg2 = "Giocare contro un replay casuale?";
-		yes_lbl = "Sì, Replay";
+		msg2 = "Cosa vuoi fare?";
+		search_lbl = "Continua";
+		yes_lbl = "Gioca Replay";
 		no_lbl = "Annulla";
 	}
 
@@ -2937,8 +2969,8 @@ static void draw_replay_prompt(float win_w, float win_h) {
 					0xfd/255.f, 0xdc/255.f, 0x67/255.f,
 					win_w, win_h, true, sc(5,s), sc(5,s), sc(2,s));
 
-		float y1 = py + sc(kQuitMsgY, s);
-		float y2 = y1 + sc(kQuitMsgLineH, s);
+		float y1 = py + sc(230.0f, s);
+		float y2 = y1 + sc(52.0f, s);
 		float w1 = measure_string(g_font, msg1, false, win_w, win_h);
 		float w2 = measure_string(g_font, msg2, false, win_w, win_h);
 		draw_string(g_font, msg1, false,
@@ -2951,40 +2983,55 @@ static void draw_replay_prompt(float win_w, float win_h) {
 					true, sc(2,s), sc(2,s), 0, 0.55f);
 	}
 
-	float qx, qy, qw, qh, cx, cy, cw, ch;
-	get_quit_btn_rects(win_w, win_h, qx, qy, qw, qh, cx, cy, cw, ch);
+	float sx, sy, sw, sh, rx, ry, rw, rh, cx, cy, cw, ch;
+	get_replay_btn_rects(win_w, win_h, sx, sy, sw, sh, rx, ry, rw, rh, cx, cy, cw, ch);
 
-	if (g_tex_save_up.id) {
-		Tex &qt = g_replay_yes_pressed ? g_tex_save_down : g_tex_save_up;
-		draw_tex(qt, qx, qy, qw, qh);
-		if (g_font.ok) {
-			float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
-			float tw = measure_string(g_font, yes_lbl, false, win_w, win_h);
-			float tx = qx + (qw - tw) * 0.5f;
-			float ty = qy + qh * 0.5f + cap_h * 0.35f;
-			draw_string(g_font, yes_lbl, false, tx, ty,
-						1.0f, 1.0f, 1.0f, win_w, win_h,
-						true, sc(1,s), sc(1,s), 0, 0.50f);
+	auto draw_btn_3slice = [&](Tex &tex, float bx, float by, float bw, float bh, const char *lbl) {
+		if (!tex.id) return;
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, tex.id);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		/* Horizontal 3-slice at exact native height so corners & borders stay 1:1. */
+		float cap_src = 24.0f;
+		float u1 = cap_src / (float)(tex.w > 0 ? tex.w : 195);
+		float cap_px = sc(cap_src, s);
+		if (cap_px * 2.0f > bw) cap_px = bw * 0.5f;
+		float xs[4] = { bx, bx + cap_px, bx + bw - cap_px, bx + bw };
+		float us[4] = { 0.0f, u1, 1.0f - u1, 1.0f };
+		glBegin(GL_QUADS);
+		for (int ix = 0; ix < 3; ++ix) {
+			glTexCoord2f(us[ix],     0.0f); glVertex2f(xs[ix],     by);
+			glTexCoord2f(us[ix + 1], 0.0f); glVertex2f(xs[ix + 1], by);
+			glTexCoord2f(us[ix + 1], 1.0f); glVertex2f(xs[ix + 1], by + bh);
+			glTexCoord2f(us[ix],     1.0f); glVertex2f(xs[ix],     by + bh);
 		}
-	}
-	if (g_tex_cancel_up.id) {
-		Tex &ct = g_replay_no_pressed ? g_tex_cancel_down : g_tex_cancel_up;
-		draw_tex(ct, cx, cy, cw, ch);
+		glEnd();
 		if (g_font.ok) {
-			float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s;
-			float tw = measure_string(g_font, no_lbl, false, win_w, win_h);
-			float tx = cx + (cw - tw) * 0.5f;
-			float ty = cy + ch * 0.5f + cap_h * 0.35f;
-			draw_string(g_font, no_lbl, false, tx, ty,
+			float raw_tw = measure_string(g_font, lbl, false, win_w, win_h);
+			float max_tw = bw - sc(32.0f, s);
+			float m = (raw_tw > max_tw && raw_tw > 1.0f) ? (max_tw / raw_tw) : 1.0f;
+			float cap_h = g_font.scale_item * (float)g_font.ascent_unscaled * s * m;
+			float tw = raw_tw * m;
+			float tx = bx + (bw - tw) * 0.5f;
+			float ty = by + bh * 0.5f + cap_h * 0.35f;
+			draw_string(g_font, lbl, false, tx, ty,
 						1.0f, 1.0f, 1.0f, win_w, win_h,
-						true, sc(1,s), sc(1,s), 0, 0.50f);
+						true, sc(1,s), sc(1,s), 0, 0.50f,
+						1.0f, 0, 0, 0, 0, m);
 		}
-	}
+	};
+
+	draw_btn_3slice(g_replay_search_pressed ? g_tex_save_down : g_tex_save_up,
+					sx, sy, sw, sh, search_lbl);
+	draw_btn_3slice(g_replay_yes_pressed ? g_tex_cancel_down : g_tex_cancel_up,
+					rx, ry, rw, rh, yes_lbl);
+	draw_btn_3slice(g_replay_no_pressed ? g_tex_cancel_down : g_tex_cancel_up,
+					cx, cy, cw, ch, no_lbl);
 }
 
 static bool handle_replay_prompt_event(const SDL_Event *e, float win_w, float win_h) {
-	float qx, qy, qw, qh, cx, cy, cw, ch;
-	get_quit_btn_rects(win_w, win_h, qx, qy, qw, qh, cx, cy, cw, ch);
+	float sx, sy, sw, sh, rx, ry, rw, rh, cx, cy, cw, ch;
+	get_replay_btn_rects(win_w, win_h, sx, sy, sw, sh, rx, ry, rw, rh, cx, cy, cw, ch);
 
 	if (e->type == SDL_MOUSEMOTION) {
 		g_mouse_x = (float)e->motion.x;
@@ -2995,20 +3042,27 @@ static bool handle_replay_prompt_event(const SDL_Event *e, float win_w, float wi
 		g_mouse_x = (float)e->button.x;
 		g_mouse_y = (float)e->button.y;
 		g_mouse_down = true;
-		g_replay_yes_pressed = hit(qx, qy, qw, qh, g_mouse_x, g_mouse_y);
+		g_replay_search_pressed = hit(sx, sy, sw, sh, g_mouse_x, g_mouse_y);
+		g_replay_yes_pressed = hit(rx, ry, rw, rh, g_mouse_x, g_mouse_y);
 		g_replay_no_pressed = hit(cx, cy, cw, ch, g_mouse_x, g_mouse_y);
 		return true;
 	}
 	if (e->type == SDL_MOUSEBUTTONUP && e->button.button == SDL_BUTTON_LEFT) {
-		float rx = (float)e->button.x, ry = (float)e->button.y;
+		float ux = (float)e->button.x, uy = (float)e->button.y;
 		g_mouse_down = false;
-		if (g_replay_yes_pressed && hit(qx, qy, qw, qh, rx, ry)) {
+		if (g_replay_search_pressed && hit(sx, sy, sw, sh, ux, uy)) {
+			play_sound(g_snd_confirm);
+			resolve_replay_prompt(2);
+			return true;
+		}
+		g_replay_search_pressed = false;
+		if (g_replay_yes_pressed && hit(rx, ry, rw, rh, ux, uy)) {
 			play_sound(g_snd_confirm);
 			resolve_replay_prompt(1);
 			return true;
 		}
 		g_replay_yes_pressed = false;
-		if (g_replay_no_pressed && hit(cx, cy, cw, ch, rx, ry)) {
+		if (g_replay_no_pressed && hit(cx, cy, cw, ch, ux, uy)) {
 			play_sound(g_snd_close);
 			resolve_replay_prompt(-1);
 			return true;
@@ -4852,7 +4906,9 @@ int config_screen_ask_battlez_replay(void) {
 	g_replay_prompt_result = 0;
 	g_replay_prompt_open = true;
 	g_replay_prompt_cv.wait(lk, [] { return g_replay_prompt_result != 0; });
-	return g_replay_prompt_result == 1 ? 1 : 0;
+	if (g_replay_prompt_result == 2) return 2;
+	if (g_replay_prompt_result == 1) return 1;
+	return 0;
 }
 
 void config_screen_cancel_battlez_replay_prompt(void) {

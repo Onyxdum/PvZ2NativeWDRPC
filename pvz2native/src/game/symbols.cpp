@@ -357,9 +357,14 @@ const GameSymbols kVersions[] = {
             .joust_hud_set_left_score_fn  = 0x1d63b0, /* AdaptorJoustPlayMeterHUD::SetLeftScore(hud, score) */
             .joust_hud_set_right_score_fn = 0x1d6534, /* AdaptorJoustPlayMeterHUD::SetRightScore(hud, score) */
             .joust_hud_set_timer_fn       = 0x1d695c, /* AdaptorJoustPlayMeterHUD::SetTimer(hud, seconds) */
-            .joust_get_opponent_score_fn  = 0x6b105c, /* Joust::GetOpponentScore() */
+            .joust_results_set_data_fn    = 0x1d84b8, /* AdaptorJoustResultsScreen: copy results data */
             .joust_level_start_fn         = 0x6a06d4, /* JoustGameModule::OnLevelStart() */
             .joust_finish_match_fn        = 0x6a0644, /* JoustGameModule::FinishMatch() */
+            .joust_matchmaking_enter_fn   = 0x1d1584, /* AdaptorJoustMatchmakingScreen::OnEnter() */
+            .joust_matchmaking_dtor_fn    = 0x1d2418, /* AdaptorJoustMatchmakingScreen::~Adaptor() */
+            .joust_matchmaking_cancel_fn  = 0x1d13e4, /* AdaptorJoustMatchmakingScreen::OnBackButton (CancelMatchmakingButton) */
+            .joust_module_update_fn       = 0x6a0104, /* JoustGameModule::Update(this) */
+            .joust_end_match_now_fn       = 0x6a06d4, /* JoustGameModule: timer to 0, then FinishMatch */
             .player_info_vtable  = 0x12bf05c, /* PlayerInfo (coins at +0xa4, gems at +0xac) */
             .player_info_vtable2 = 0x12cf56c, /* its second base, at +0x58 */
         },

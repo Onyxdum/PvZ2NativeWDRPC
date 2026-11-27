@@ -97,7 +97,7 @@ void config_screen_draw_toast(SDL_Window *window);
 void config_screen_draw_live_banner(SDL_Window *window, const char *text);
 
 /* Blocking modal prompt (called from Battlez worker thread when 15s live search finds nobody):
- * asks whether to play against a random replay. Returns 1 = Yes (play replay), 0 = Cancel. */
+ * asks what to do next. Returns 2 = Keep searching, 1 = Play random replay, 0 = Cancel. */
 int config_screen_ask_battlez_replay(void);
 void config_screen_cancel_battlez_replay_prompt(void);
 
