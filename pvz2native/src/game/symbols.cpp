@@ -260,6 +260,8 @@ const GameSymbols kVersions[] = {
             .social_button_click_fn    = 0x8dcca4, /* vtable 0x10e3ed0 slot 46 */
             .social_button_switch_branch = 0x8dcc74,
             .social_button_agegate_call  = 0x8dcc7c,
+            .player_info_vtable  = 0x10d8e18, /* PlayerInfo (coins at +0xa4, gems at +0xac) */
+            .player_info_vtable2 = 0x10a48a8, /* its second base, at +0x58 */
         },
         /* probe: the frame-gate field offsets are 9.6.1's; reading a 4.5.2 driver
          * at them printed plausible garbage, which is worse than printing
@@ -358,6 +360,8 @@ const GameSymbols kVersions[] = {
             .joust_get_opponent_score_fn  = 0x6b105c, /* Joust::GetOpponentScore() */
             .joust_level_start_fn         = 0x6a06d4, /* JoustGameModule::OnLevelStart() */
             .joust_finish_match_fn        = 0x6a0644, /* JoustGameModule::FinishMatch() */
+            .player_info_vtable  = 0x12bf05c, /* PlayerInfo (coins at +0xa4, gems at +0xac) */
+            .player_info_vtable2 = 0x12cf56c, /* its second base, at +0x58 */
         },
         .fingerprint_draw_frame    = 0xE79F0000E59F0004ull, /* LDR R0,[PC,#4]; LDR R0,[PC,R0]     */
         .fingerprint_game_app_init = 0xE28DB01CE92D4FF0ull, /* PUSH {R4-R11,LR}; ADD R11,SP,#0x1C */

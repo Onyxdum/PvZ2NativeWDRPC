@@ -33,6 +33,11 @@ void friends_screen_draw(SDL_Window *window);
  * is on screen. Blocks for at most a few seconds, and does nothing without a linked Discord account. */
 void friends_claim_gifts_at_boot(void);
 
+/* Main thread, between frames (session.cpp), with the guest image (pvz2_elf_image_t *): gifts that arrive
+ * while the game runs (the worker asks once a minute) are added to the coins and gems of the live player
+ * profile, with the same notification; the game saves them itself. */
+void friends_tick_live_gifts(void *guest_image);
+
 /* Stop the worker and release GL resources. Idempotent. */
 void friends_screen_shutdown(void);
 

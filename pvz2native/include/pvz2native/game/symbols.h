@@ -338,6 +338,12 @@ struct GameSymbols {
         std::uint32_t joust_get_opponent_score_fn;
         std::uint32_t joust_level_start_fn;
         std::uint32_t joust_finish_match_fn;
+        /* The live PlayerInfo object (the profile that pp.dat is saved from), found on the guest heap by its
+         * two vtables so a friend's gift can be added to the coins and gems while the game runs. Layout,
+         * same in 4.5.2 and 6.6.1: vtable at +0, second vtable at +0x58, coins ("c") at +0xa4, gems ("g")
+         * at +0xac. The game saves this object on its own a little later. 0 = not known for this build. */
+        std::uint32_t player_info_vtable;
+        std::uint32_t player_info_vtable2;
     } patch;
 
     /* What diagnostics/guest_probe reads to explain a frame that draws nothing.

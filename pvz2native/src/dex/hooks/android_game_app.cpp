@@ -891,12 +891,29 @@ void config_write_boolean(DexCall &d) {
 void get_ui_orientation(DexCall &d) { d.ret(4); }
 void is_supported_orientation(DexCall &d) { d.ret_bool(true); }
 
-/* boolean Web_SysOpenURL(String) -- on Android this launches an external
- * VIEW intent; here we open the host's default browser. */
+/* boolean Web_SysOpenURL(String) -- on Android this launches an external VIEW intent.
+ * - The main menu's Google Play button opens a canvas.popcap.com page: it opens our cloud save menu.
+ * - A store link (an "update available" dialog, e.g. Battlez's): this port updates itself, so it opens
+ *   the port's release page instead of Google Play.
+ * - Anything else (help, license, privacy) opens in the default browser. */
 void open_url(DexCall &d) {
     const std::string url = d.string_arg(0);
-    d.c.log("[dex] Web_SysOpenURL intercepted for Cloud Save: %s", url.c_str());
-    config_screen_request_open_cloud();
+    std::string lower = url;
+    for (char &ch : lower) ch = (char)std::tolower((unsigned char)ch);
+    if (lower.find("canvas.popcap.com") != std::string::npos) {
+        d.c.log("[dex] Web_SysOpenURL -> cloud save menu: %s", url.c_str());
+        config_screen_request_open_cloud();
+    } else if (lower.rfind("market://", 0) == 0 || lower.find("play.google.com") != std::string::npos ||
+               lower.find("itunes.apple.com") != std::string::npos || lower.find("apps.apple.com") != std::string::npos) {
+        static const char kReleases[] = "https://github.com/Onyxdum/PvZ2NativeWDRPC/releases/latest";
+        d.c.log("[dex] Web_SysOpenURL store link %s -> %s", url.c_str(), kReleases);
+        SDL_OpenURL(kReleases);
+    } else if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0) {
+        d.c.log("[dex] Web_SysOpenURL -> browser: %s", url.c_str());
+        SDL_OpenURL(url.c_str());
+    } else {
+        d.c.log("[dex] Web_SysOpenURL ignored: %s", url.c_str());
+    }
     d.ret_bool(true);
 }
 

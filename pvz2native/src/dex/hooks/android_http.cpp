@@ -620,6 +620,21 @@ void start(DexCall &d) {
         return;
     }
 
+    /* forceupdateconfig: EA's live copy (still online) asks for 6.7.1 to play Battlez, and the game then
+     * shows "update available" instead of Battlez. Every version this port runs is the newest it can be,
+     * so the minimums are always 0.0.0, whatever use_cdn says. */
+    if (is_get && !tx.url.empty() &&
+        ascii_lower_copy(strip_cdn_version_suffix(basename_of(url_rel_path(tx.url)))) == "forceupdateconfig.json") {
+        static const char kNoForcedUpdate[] =
+            "{\"version\":1,\"objects\":[{\"objclass\":\"ForceUpdateConfigData\",\"objdata\":{"
+            "\"MinVersion\":\"0.0.0\",\"MinJoustVersion\":\"0.0.0\",\"iOSURL\":\"\",\"AndroidURL\":\"\"}}]}";
+        const std::vector<std::uint8_t> body(kNoForcedUpdate, kNoForcedUpdate + sizeof(kNoForcedUpdate) - 1);
+        if (serve_local(d, tx, "generated forceupdateconfig (no minimum version)", body)) {
+            d.ret(0);
+            return;
+        }
+    }
+
     if (pvz2_config()->use_cdn == 0) {
         static bool announced = false;
         if (!announced) {
