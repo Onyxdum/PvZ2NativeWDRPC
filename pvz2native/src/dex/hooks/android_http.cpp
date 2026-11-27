@@ -821,6 +821,19 @@ void joust_deliver_pending(pvz2_elf_image_t *img, GuestRuntime *rt) {
         }
         /* Same order and arguments as serve_local, called the way the purchase driver calls back. */
         const std::uint32_t base = img->so_base;
+        if (j.status == -1) {
+            /* User cancelled Live Battlez matchmaking from the replay fallback prompt: dismiss the
+             * native matchmaking screen cleanly without starting an AI match or showing Disconnected. */
+            const std::uint32_t adaptor = joust_get_matchmaking_adaptor();
+            if (adaptor != 0 && sym().patch.joust_matchmaking_cancel_fn != 0) {
+                joust_set_matchmaking_adaptor(0);
+                const std::uint32_t cancel_args[1] = {adaptor};
+                call_guest_between_frames_n(base + sym().patch.joust_matchmaking_cancel_fn, cancel_args, 1);
+                pvz2_log("[joust-live] cancelled matchmaking screen cleanly (adaptor=0x%08x)", adaptor);
+                continue;
+            }
+            j.status = 0; /* fallback to HttpTransactionError */
+        }
         if (j.status == 0 || resp == 0 || data == 0 || done == 0) {
             if (err != 0) {
                 const std::uint32_t a[4] = {kJniEnvPtrAddr, j.thiz, j.native, 0};

@@ -456,8 +456,17 @@ struct LiveSession {
     std::mutex mu;
     std::atomic<bool> active{false};
     std::atomic<bool> stop{false};
+    /* Bumped by every joust_live_begin: a sync worker of an older match (detached, maybe still waiting on
+     * curl) sees a different number and stops without touching this match. */
+    std::atomic<unsigned> generation{0};
     std::atomic<int> local_score{0};
     std::atomic<int> rival_score{0};
+    /* The rival gave up (server's rivalSurrendered) or vanished for kRivalGoneMs once both were playing:
+     * this player's match ends at once as a win (patches.cpp, JoustGameModule::Update hook). */
+    std::atomic<bool> rival_surrendered{false};
+    std::atomic<bool> end_forced{false};
+    std::atomic<std::int64_t> rival_offline_since_ms{0};
+    std::atomic<bool> level_running{false}; /* JoustGameModule::Update saw the level running */
     std::atomic<bool> local_ready{false};
     std::atomic<bool> both_ready{false};
     std::atomic<bool> local_finished{false};
@@ -492,10 +501,16 @@ const char *L6(const char *en, const char *es, const char *fr, const char *de, c
     return t[live_lang()];
 }
 
-void live_worker_loop(std::string match_id, std::string base, std::string did, std::string token) {
+constexpr std::int64_t kRivalGoneMs = 20000;
+
+void live_worker_loop(unsigned gen, std::string match_id, std::string base, std::string did, std::string token) {
     static std::atomic<unsigned> s_sync_seq{0};
     const std::filesystem::path dir = std::filesystem::temp_directory_path();
-    while (!g_live.stop.load(std::memory_order_relaxed)) {
+    const auto current = [gen] {
+        return !g_live.stop.load(std::memory_order_relaxed) &&
+               g_live.generation.load(std::memory_order_relaxed) == gen;
+    };
+    while (current()) {
         const int sc = g_live.local_score.load(std::memory_order_relaxed);
         const bool rdy = g_live.local_ready.load(std::memory_order_relaxed);
         const bool fin = g_live.local_finished.load(std::memory_order_relaxed);
@@ -521,6 +536,9 @@ void live_worker_loop(std::string match_id, std::string base, std::string did, s
         std::filesystem::remove(in_f, ec);
         std::filesystem::remove(out_f, ec);
 
+        /* The match may have ended (or another begun) while this request was in flight: such an answer must
+         * not touch the current match or show a stale notice. */
+        if (!current()) break;
         if (rc == 0 && !raw.empty()) {
             const std::string resp(raw.begin(), raw.end());
             const int r_score = (int)field_int(resp, "rivalScore", -1);
@@ -532,6 +550,35 @@ void live_worker_loop(std::string match_id, std::string base, std::string did, s
             if (field(resp, "bothReady") == "true") {
                 g_live.both_ready.store(true, std::memory_order_relaxed);
             }
+            /* The rival gave up, or has been gone for kRivalGoneMs -- also while this player is still in the
+             * seed chooser: the match then ends on its first running frame (patches.cpp). */
+            bool gave_up = field(resp, "rivalSurrendered") == "true";
+            if (!g_live.local_finished.load(std::memory_order_relaxed) && field(resp, "rivalOnline") == "false" &&
+                field(resp, "rivalFinished") != "true") {
+                std::int64_t since = g_live.rival_offline_since_ms.load(std::memory_order_relaxed);
+                if (since == 0) g_live.rival_offline_since_ms.store(since = steady_now_ms(), std::memory_order_relaxed);
+                if (steady_now_ms() - since >= kRivalGoneMs) gave_up = true;
+            } else if (field(resp, "rivalOnline") == "true") {
+                g_live.rival_offline_since_ms.store(0, std::memory_order_relaxed);
+            }
+            if (gave_up && !g_live.local_finished.load(std::memory_order_relaxed) &&
+                !g_live.rival_surrendered.exchange(true, std::memory_order_relaxed)) {
+                /* Nobody to wait for: no "waiting for the rival to pick plants" countdown. */
+                g_live.both_ready.store(true, std::memory_order_relaxed);
+                std::lock_guard<std::mutex> lk(g_live.mu);
+                g_live.pending_toast =
+                    g_live.level_running.load(std::memory_order_relaxed)
+                        ? L6("Your rival gave up: you win!", "Tu rival se ha rendido: ¡ganas!",
+                             "Ton adversaire a abandonné : tu gagnes !", "Dein Gegner hat aufgegeben: du gewinnst!",
+                             "Seu oponente desistiu: você venceu!", "Il tuo avversario si è arreso: hai vinto!")
+                        : L6("Your rival gave up: start the level to claim the win!",
+                             "Tu rival se ha rendido: empieza el nivel para llevarte la victoria",
+                             "Ton adversaire a abandonné : lance le niveau pour remporter la victoire !",
+                             "Dein Gegner hat aufgegeben: starte das Level, um den Sieg zu holen!",
+                             "Seu oponente desistiu: comece o nível para levar a vitória!",
+                             "Il tuo avversario si è arreso: avvia il livello per prenderti la vittoria!");
+                pvz2_log("[joust-live] rival gave up -- ending the match as a win");
+            }
             const std::string rname = field(resp, "rivalName");
             if (!rname.empty()) {
                 std::lock_guard<std::mutex> lk(g_live.mu);
@@ -539,7 +586,7 @@ void live_worker_loop(std::string match_id, std::string base, std::string did, s
             }
         }
 
-        for (int i = 0; i < 8 && !g_live.stop.load(std::memory_order_relaxed); ++i) {
+        for (int i = 0; i < 8 && current(); ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
@@ -552,6 +599,10 @@ void joust_live_end() {
     g_live.both_ready.store(false, std::memory_order_relaxed);
     g_live.local_finished.store(false, std::memory_order_relaxed);
     g_live.ready_since_ms.store(0, std::memory_order_relaxed);
+    g_live.rival_surrendered.store(false, std::memory_order_relaxed);
+    g_live.end_forced.store(false, std::memory_order_relaxed);
+    g_live.rival_offline_since_ms.store(0, std::memory_order_relaxed);
+    g_live.level_running.store(false, std::memory_order_relaxed);
     std::thread old;
     {
         std::lock_guard<std::mutex> lk(g_live.mu);
@@ -576,6 +627,10 @@ void joust_live_begin(const std::string &match_id, const std::string &rival_name
     g_live.both_ready.store(false, std::memory_order_relaxed);
     g_live.local_finished.store(false, std::memory_order_relaxed);
     g_live.ready_since_ms.store(0, std::memory_order_relaxed);
+    g_live.rival_surrendered.store(false, std::memory_order_relaxed);
+    g_live.end_forced.store(false, std::memory_order_relaxed);
+    g_live.rival_offline_since_ms.store(0, std::memory_order_relaxed);
+    g_live.level_running.store(false, std::memory_order_relaxed);
     g_live.active.store(true, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lk(g_live.mu);
@@ -591,7 +646,8 @@ void joust_live_begin(const std::string &match_id, const std::string &rival_name
                          "Partida ao vivo contra %s!", "Partita Battlez dal vivo contro %s!"),
                       who.c_str());
         g_live.pending_toast = tbuf;
-        g_live.worker = std::thread(live_worker_loop, match_id, base, std::string(cloud->auth_discord_id),
+        const unsigned gen = g_live.generation.fetch_add(1, std::memory_order_relaxed) + 1;
+        g_live.worker = std::thread(live_worker_loop, gen, match_id, base, std::string(cloud->auth_discord_id),
                                     std::string(cloud->auth_discord_token));
     }
     pvz2_log("[joust-live] started live match %s vs '%s'", match_id.c_str(), rival_name.c_str());
@@ -626,93 +682,109 @@ JoustReply joust_request(const std::string &method, const std::string &url, cons
         const std::string target = base + url.substr(v1);
         const std::string route = route_of(url);
         const bool is_match = (route == "match");
-        const char *mode_hdr = pvz2_config_get_battlez_live() ? "live" : "replay";
-        /* One temp file set per request: several may be in flight. */
-        static std::atomic<unsigned> s_seq{0};
-        const std::filesystem::path dir = std::filesystem::temp_directory_path();
-        const std::string tag = "pvz2_joust_" + std::to_string(s_seq.fetch_add(1)) + "_";
-        const std::filesystem::path in_file = dir / (tag + "in.json");
-        const std::filesystem::path out_file = dir / (tag + "out.json");
-        const std::filesystem::path code_file = dir / (tag + "code.txt");
-        std::string cmd = "curl -sS -m " + std::string(is_match ? "25" : "12") + " -X " +
-                          (method.empty() ? std::string("GET") : method) +
-                          " -H \"Content-Type: application/json\" -H \"X-Client-Version: 6.6.1\""
-                          " -H \"X-Battlez-Mode: " + std::string(mode_hdr) + "\""
-                          " -H \"X-Discord-Id: " + std::string(cloud->auth_discord_id) + "\""
-                          " -H \"Authorization: Bearer " + std::string(cloud->auth_discord_token) + "\"";
-        /* The name shown to other players, percent-encoded (any UTF-8, and nothing cmd.exe or the
-         * shell could read as syntax). The server only uses it when Discord itself cannot be asked. */
-        {
-            std::string enc;
-            for (const char *p = cloud->auth_discord_name; *p; ++p) {
-                const unsigned char ch = (unsigned char)*p;
-                if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.') {
-                    enc.push_back((char)ch);
-                } else {
-                    char hex[4];
-                    std::snprintf(hex, sizeof(hex), "%%%02X", ch);
-                    enc += hex;
-                }
-            }
-            if (!enc.empty()) cmd += " -H \"X-Discord-Name: " + enc + "\"";
-        }
-        /* The avatar hash Discord gave at sign-in (hex, nothing to escape), for the same fallback. */
-        {
-            std::string hash;
-            for (const char *p = cloud->auth_discord_avatar; *p; ++p)
-                if (std::isalnum((unsigned char)*p) || *p == '_') hash.push_back(*p);
-            if (!hash.empty()) cmd += " -H \"X-Discord-Avatar: " + hash + "\"";
-        }
-        if (method == "POST") {
-            host_files::write(in_file.string(), std::vector<std::uint8_t>(body.begin(), body.end()));
-            cmd += " --data-binary @\"" + in_file.string() + "\"";
-        }
-        cmd += " -o \"" + out_file.string() + "\" -w \"%{http_code}\" \"" + target + "\" > \"" +
-               code_file.string() + "\"";
-        const int rc = run_hidden(cmd, is_match ? 28000u : 20000u);
-        const std::vector<std::uint8_t> out = host_files::read(out_file.string());
-        const std::vector<std::uint8_t> code = host_files::read(code_file.string());
-        std::error_code ec;
-        std::filesystem::remove(in_file, ec);
-        std::filesystem::remove(out_file, ec);
-        std::filesystem::remove(code_file, ec);
-        const int status = code.empty() ? 0 : std::atoi(std::string(code.begin(), code.end()).c_str());
-        /* 404 means a server without Battlez (not updated yet): answered locally like a dead one. */
-        if (rc == 0 && status >= 200 && status < 500 && status != 404 && !out.empty()) {
-            reply.status = status;
-            reply.body.assign(out.begin(), out.end());
-            reply.from_server = true;
-            register_names(reply.body);
-            if (status == 200) {
-                if (is_match) {
-                    if (field(reply.body, "live") == "true") {
-                        joust_live_begin(field(reply.body, "matchId"), field(reply.body, "rivalName"));
+        for (;;) {
+            const char *mode_hdr = pvz2_config_get_battlez_live() ? "live" : "replay";
+            /* One temp file set per request: several may be in flight. */
+            static std::atomic<unsigned> s_seq{0};
+            const std::filesystem::path dir = std::filesystem::temp_directory_path();
+            const std::string tag = "pvz2_joust_" + std::to_string(s_seq.fetch_add(1)) + "_";
+            const std::filesystem::path in_file = dir / (tag + "in.json");
+            const std::filesystem::path out_file = dir / (tag + "out.json");
+            const std::filesystem::path code_file = dir / (tag + "code.txt");
+            std::string cmd = "curl -sS -m " + std::string(is_match ? "25" : "12") + " -X " +
+                              (method.empty() ? std::string("GET") : method) +
+                              " -H \"Content-Type: application/json\" -H \"X-Client-Version: 6.6.1\""
+                              " -H \"X-Battlez-Mode: " + std::string(mode_hdr) + "\""
+                              " -H \"X-Discord-Id: " + std::string(cloud->auth_discord_id) + "\""
+                              " -H \"Authorization: Bearer " + std::string(cloud->auth_discord_token) + "\"";
+            /* The name shown to other players, percent-encoded (any UTF-8, and nothing cmd.exe or the
+             * shell could read as syntax). The server only uses it when Discord itself cannot be asked. */
+            {
+                std::string enc;
+                for (const char *p = cloud->auth_discord_name; *p; ++p) {
+                    const unsigned char ch = (unsigned char)*p;
+                    if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.') {
+                        enc.push_back((char)ch);
                     } else {
-                        joust_live_end();
-                        if (pvz2_config_get_battlez_live()) {
-                            pvz2_log("[joust-live] no live opponent after 15s -- asking user whether to play replay");
-                            const int play_replay = config_screen_ask_battlez_replay();
-                            if (!play_replay) {
-                                pvz2_log("[joust-live] user declined replay fallback -- cancelling matchmaking");
-                                reply.status = 503;
-                                reply.body = "{}";
-                                return reply;
+                        char hex[4];
+                        std::snprintf(hex, sizeof(hex), "%%%02X", ch);
+                        enc += hex;
+                    }
+                }
+                if (!enc.empty()) cmd += " -H \"X-Discord-Name: " + enc + "\"";
+            }
+            /* The avatar hash Discord gave at sign-in (hex, nothing to escape), for the same fallback. */
+            {
+                std::string hash;
+                for (const char *p = cloud->auth_discord_avatar; *p; ++p)
+                    if (std::isalnum((unsigned char)*p) || *p == '_') hash.push_back(*p);
+                if (!hash.empty()) cmd += " -H \"X-Discord-Avatar: " + hash + "\"";
+            }
+            if (method == "POST") {
+                /* Live match result: say whether the match ran to its end here (FinishMatch). A result sent
+                 * without it is this player giving up, which the server turns into the rival's win. */
+                std::string sent = body;
+                if (route == "completeMatch" && g_live.active.load(std::memory_order_relaxed) && !sent.empty() &&
+                    sent[0] == '{') {
+                    const bool ran_out = g_live.local_finished.load(std::memory_order_relaxed);
+                    sent.insert(1, ran_out ? "\"liveFinished\":true," : "\"liveFinished\":false,");
+                    if (!ran_out) pvz2_log("[joust-live] match left before its end -- reporting a surrender");
+                }
+                host_files::write(in_file.string(), std::vector<std::uint8_t>(sent.begin(), sent.end()));
+                cmd += " --data-binary @\"" + in_file.string() + "\"";
+            }
+            cmd += " -o \"" + out_file.string() + "\" -w \"%{http_code}\" \"" + target + "\" > \"" +
+                   code_file.string() + "\"";
+            const int rc = run_hidden(cmd, is_match ? 28000u : 20000u);
+            const std::vector<std::uint8_t> out = host_files::read(out_file.string());
+            const std::vector<std::uint8_t> code = host_files::read(code_file.string());
+            std::error_code ec;
+            std::filesystem::remove(in_file, ec);
+            std::filesystem::remove(out_file, ec);
+            std::filesystem::remove(code_file, ec);
+            const int status = code.empty() ? 0 : std::atoi(std::string(code.begin(), code.end()).c_str());
+            /* 404 means a server without Battlez (not updated yet): answered locally like a dead one. */
+            if (rc == 0 && status >= 200 && status < 500 && status != 404 && !out.empty()) {
+                reply.status = status;
+                reply.body.assign(out.begin(), out.end());
+                reply.from_server = true;
+                register_names(reply.body);
+                if (status == 200) {
+                    if (is_match) {
+                        if (field(reply.body, "live") == "true") {
+                            joust_live_begin(field(reply.body, "matchId"), field(reply.body, "rivalName"));
+                        } else {
+                            joust_live_end();
+                            if (pvz2_config_get_battlez_live()) {
+                                pvz2_log("[joust-live] no live opponent after 15s -- asking user what to do");
+                                const int choice = config_screen_ask_battlez_replay();
+                                if (choice == 2) {
+                                    pvz2_log("[joust-live] user chose keep searching -- retrying live matchmaking");
+                                    continue;
+                                }
+                                if (choice == 0) {
+                                    pvz2_log("[joust-live] user cancelled matchmaking -- dismissing screen");
+                                    reply.status = -1;
+                                    reply.body.clear();
+                                    return reply;
+                                }
                             }
                         }
+                    } else if (route == "completeMatch") {
+                        g_live.local_finished.store(true, std::memory_order_relaxed);
+                    } else if (route == "finalizeMatch" || route == "dashboard") {
+                        joust_live_end();
                     }
-                } else if (route == "completeMatch") {
-                    g_live.local_finished.store(true, std::memory_order_relaxed);
-                } else if (route == "finalizeMatch" || route == "dashboard") {
-                    joust_live_end();
                 }
+                pvz2_log("[joust] %s %s -> %s: HTTP %d", method.c_str(), url.c_str(), target.c_str(), status);
+                if (!body.empty()) pvz2_log("[joust]   request body (%zu bytes): %.600s", body.size(), body.c_str());
+                pvz2_log("[joust]   response: %.1500s", reply.body.c_str());
+                return reply;
             }
-            pvz2_log("[joust] %s %s -> %s: HTTP %d", method.c_str(), url.c_str(), target.c_str(), status);
-            if (!body.empty()) pvz2_log("[joust]   request body (%zu bytes): %.600s", body.size(), body.c_str());
-            pvz2_log("[joust]   response: %.1500s", reply.body.c_str());
-            return reply;
+            pvz2_log("[joust] %s unreachable for %s (curl rc=%d, HTTP %d) -- answering locally", target.c_str(),
+                     url.c_str(), rc, status);
+            break;
         }
-        pvz2_log("[joust] %s unreachable for %s (curl rc=%d, HTTP %d) -- answering locally", target.c_str(),
-                 url.c_str(), rc, status);
     }
     reply.status = 200;
     reply.body = joust_local_respond(method, url, body);
@@ -812,7 +884,24 @@ void joust_live_on_local_score(int score) {
 }
 
 int joust_live_rival_score() {
-    return g_live.rival_score.load(std::memory_order_relaxed);
+    const int rival = g_live.rival_score.load(std::memory_order_relaxed);
+    if (!g_live.rival_surrendered.load(std::memory_order_relaxed)) return rival;
+    /* A rival who gave up must not win on points: FinishMatch picks the winner by comparing the two scores
+     * (ours >= theirs = victory), so keep theirs at most half of ours (0 against 0 is a draw, which the game
+     * counts as ours). */
+    const int local = g_live.local_score.load(std::memory_order_relaxed);
+    return rival <= local / 2 ? rival : local / 2;
+}
+
+void joust_live_on_level_frame() {
+    if (g_live.active.load(std::memory_order_relaxed)) g_live.level_running.store(true, std::memory_order_relaxed);
+}
+
+bool joust_live_take_forced_end() {
+    if (!g_live.active.load(std::memory_order_relaxed) || !g_live.rival_surrendered.load(std::memory_order_relaxed) ||
+        g_live.local_finished.load(std::memory_order_relaxed))
+        return false;
+    return !g_live.end_forced.exchange(true, std::memory_order_relaxed);
 }
 
 void joust_live_on_local_ready() {
@@ -829,6 +918,16 @@ void joust_live_on_local_finished() {
     pvz2_log("[joust-live] match finished: local=%d rival=%d",
              g_live.local_score.load(std::memory_order_relaxed),
              g_live.rival_score.load(std::memory_order_relaxed));
+}
+
+std::atomic<std::uint32_t> g_joust_mm_adaptor{0};
+
+void joust_set_matchmaking_adaptor(std::uint32_t adaptor) {
+    g_joust_mm_adaptor.store(adaptor, std::memory_order_relaxed);
+}
+
+std::uint32_t joust_get_matchmaking_adaptor() {
+    return g_joust_mm_adaptor.load(std::memory_order_relaxed);
 }
 
 }  // namespace dex
