@@ -37,6 +37,7 @@
 #include <pvz2native/runtime/dynarmic_config.h>
 #include <pvz2native/runtime/guest_runtime.h>
 #include <pvz2native/surface.h>
+#include <pvz2native/friends_screen.h>
 
 extern "C" {
 #include <pvz2native/elf32/elf32_loader.h>
@@ -214,6 +215,8 @@ extern "C" int pvz2_session_frame(pvz2_session_t *s) {
     }
     /* Battlez answers from the server, likewise between top-level guest calls. */
     dex::joust_deliver_pending(&s->img, &s->rt);
+    /* Friends' gifts that arrived while playing go into the live coins and gems. */
+    friends_tick_live_gifts(&s->img);
     /* Discord pictures that finished downloading go into the Battlez avatar atlas (GL thread). */
     pvz2native::joust_avatars::tick_gl();
 

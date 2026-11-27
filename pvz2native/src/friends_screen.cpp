@@ -59,6 +59,9 @@
 #include <vector>
 
 extern "C" void apply_magenta_colorkey(SDL_Surface *surface);
+extern "C" {
+#include <pvz2native/elf32/elf32_loader.h>
+}
 
 namespace {
 
@@ -466,6 +469,92 @@ void send_queued_gifts() {
     if (!queue.empty()) g_refresh.store(true);
 }
 
+/* --- Gifts while the game runs ---
+ * At boot the gifts go into pp.dat before the game reads it (friends_claim_gifts_at_boot). Afterwards the
+ * worker asks the server once a minute; new gifts are added on the main thread, between frames, straight to
+ * the coins and gems of the live PlayerInfo (friends_tick_live_gifts), and the game saves them itself. */
+constexpr int kLiveGiftEverySeconds = 60;
+const char *const kGiftsAppliedPath = "userdata/friend_gifts_applied.txt";
+
+struct LiveGifts {
+    std::vector<std::string> ids; /* gifts not yet added */
+    long long coins = 0, gems = 0;
+    std::vector<std::string> names;
+};
+LiveGifts &g_live_gifts = *new LiveGifts;               /* under g_lock: waiting for the main thread */
+std::vector<std::string> &g_gift_acks = *new std::vector<std::string>; /* under g_lock: added, to acknowledge */
+std::mutex &g_applied_lock = *new std::mutex;           /* userdata/friend_gifts_applied.txt */
+
+std::string read_applied() {
+    const std::vector<std::uint8_t> b = host_files::read(kGiftsAppliedPath);
+    return std::string(b.begin(), b.end());
+}
+
+void write_applied(const std::string &s) {
+    host_files::write(kGiftsAppliedPath, std::vector<std::uint8_t>(s.begin(), s.end()));
+}
+
+void poll_live_gifts() {
+    if (!linked(pvz2_cloud_config())) return;
+    {
+        std::lock_guard<std::mutex> lk(g_lock);
+        if (!g_live_gifts.ids.empty()) return; /* the last batch is not in yet */
+    }
+    std::string out;
+    if (friends_http("GET", "gifts", "", out) != 200 || out.empty()) return;
+    std::string applied;
+    {
+        std::lock_guard<std::mutex> lk(g_applied_lock);
+        applied = read_applied();
+    }
+    LiveGifts fresh;
+    std::vector<std::string> already; /* in the save, but the server was never told */
+    for (const std::string &line : split(out, '\n')) {
+        const std::vector<std::string> f = split(line, '\t');
+        if (f.size() < 4 || f[0].empty() || !safe_token(f[0].c_str())) continue;
+        if (applied.find(f[0] + "\n") != std::string::npos) {
+            already.push_back(f[0]);
+            continue;
+        }
+        fresh.ids.push_back(f[0]);
+        fresh.coins += std::max(0L, std::atol(f[2].c_str()));
+        fresh.gems += std::max(0L, std::atol(f[3].c_str()));
+        if (std::find(fresh.names.begin(), fresh.names.end(), f[1]) == fresh.names.end()) fresh.names.push_back(f[1]);
+    }
+    std::lock_guard<std::mutex> lk(g_lock);
+    g_gift_acks.insert(g_gift_acks.end(), already.begin(), already.end());
+    if (!fresh.ids.empty()) {
+        pvz2_log("[friends] %zu new gift(s) while playing: %lld coins, %lld gems", fresh.ids.size(), fresh.coins,
+                 fresh.gems);
+        g_live_gifts = std::move(fresh);
+    }
+}
+
+void send_gift_acks() {
+    std::vector<std::string> ids;
+    {
+        std::lock_guard<std::mutex> lk(g_lock);
+        ids.swap(g_gift_acks);
+    }
+    if (ids.empty()) return;
+    std::string body = "{\"ids\":[";
+    for (std::size_t i = 0; i < ids.size(); ++i) body += (i ? ",\"" : "\"") + ids[i] + "\"";
+    body += "]}";
+    std::string out;
+    if (friends_http("POST", "ack", body, out) != 200) {
+        std::lock_guard<std::mutex> lk(g_lock); /* try again next round; they stay in the applied list */
+        g_gift_acks.insert(g_gift_acks.end(), ids.begin(), ids.end());
+        return;
+    }
+    std::lock_guard<std::mutex> lk(g_applied_lock); /* the server forgot them: so can we */
+    std::string applied = read_applied();
+    for (const std::string &id : ids) {
+        const auto at = applied.find(id + "\n");
+        if (at != std::string::npos) applied.erase(at, id.size() + 1);
+    }
+    write_applied(applied);
+}
+
 void process_queued_actions() {
     std::vector<FriendAction> acts;
     {
@@ -527,13 +616,20 @@ void process_queued_actions() {
 
 void worker_main() {
     auto last = std::chrono::steady_clock::now() - std::chrono::seconds(kStatusEverySeconds);
+    /* The first look comes a minute in: anything older was taken at boot. */
+    auto last_gifts = std::chrono::steady_clock::now();
     while (!g_stop.load()) {
         process_queued_actions();
         send_queued_gifts();
+        send_gift_acks();
         const auto now = std::chrono::steady_clock::now();
         if (g_refresh.exchange(false) || now - last >= std::chrono::seconds(kStatusEverySeconds)) {
             sync_once();
             last = std::chrono::steady_clock::now();
+        }
+        if (now - last_gifts >= std::chrono::seconds(kLiveGiftEverySeconds)) {
+            poll_live_gifts();
+            last_gifts = std::chrono::steady_clock::now();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
@@ -1486,7 +1582,7 @@ void draw_screen(float win_w, float win_h) {
                           rr.ry + rr.rh * 0.5f + 12 * bs + (rej_down ? 2.0f * s : 0.0f), bs, 1, 1, 1);
             }
         } else {
-            /* Gift button: 1000 coins + 5 gems, once a day per friend, delivered when their game next starts. */
+            /* Gift button: 1000 coins + 5 gems, once a day per friend, delivered within a minute if their game is open, else when it next starts. */
             const int st = gift_button_state(fr);
             const char *label = st == 0 ? L6("Send gift", "Regalar", "Offrir", "Schenken", "Presentear", "Regala")
                               : st == 1 ? "..."
@@ -1899,6 +1995,83 @@ void friends_claim_gifts_at_boot(void) {
     body += "]}";
     if (friends_http("POST", "ack", body, out, 6) == 200)
         host_files::write(applied_path, std::vector<std::uint8_t>()); /* the server forgot them too */
+}
+
+void friends_tick_live_gifts(void *guest_image) {
+    auto *img = static_cast<pvz2_elf_image_t *>(guest_image);
+    const std::uint32_t vt = sym().patch.player_info_vtable, vt2 = sym().patch.player_info_vtable2;
+    if (img == nullptr || vt == 0 || vt2 == 0) return;
+    LiveGifts gift;
+    {
+        std::lock_guard<std::mutex> lk(g_lock);
+        if (g_live_gifts.ids.empty()) return;
+        gift = g_live_gifts;
+    }
+    /* Looking for the profile walks the whole heap: at most every few seconds while a gift waits (before the
+     * profile is loaded it is not there yet). */
+    static auto last_try = std::chrono::steady_clock::time_point{};
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_try < std::chrono::seconds(3)) return;
+    last_try = now;
+
+    constexpr std::uint32_t kVtable2At = 0x58, kCoinsAt = 0xa4, kGemsAt = 0xac, kEnd = 0xb0;
+    auto rd = [img](std::uint32_t a) {
+        std::uint32_t v;
+        std::memcpy(&v, img->mem + a, 4);
+        return v;
+    };
+    const std::uint32_t want = img->so_base + vt, want2 = img->so_base + vt2;
+    auto is_profile = [&](std::uint32_t a) {
+        return a >= img->images_end && a + kEnd <= img->mem_size && rd(a) == want && rd(a + kVtable2At) == want2;
+    };
+    static std::uint32_t profile = 0; /* where it was last time */
+    if (profile == 0 || !is_profile(profile)) {
+        profile = 0;
+        int found = 0;
+        for (std::uint32_t a = (img->images_end + 3u) & ~3u; a + kEnd <= img->mem_size; a += 4) {
+            if (rd(a) != want || !is_profile(a)) continue;
+            if (++found == 1) profile = a;
+        }
+        if (found != 1) {
+            /* None: not loaded yet. Several: no way to tell which one the game saves -- leave the gift for
+             * the next boot, which writes it into pp.dat instead. */
+            if (found > 1) pvz2_log("[friends] %d player profiles in memory, gift left for the next start", found);
+            profile = 0;
+            return;
+        }
+    }
+    const std::uint32_t coins = rd(profile + kCoinsAt), gems = rd(profile + kGemsAt);
+    const long long new_coins = std::min<long long>((long long)coins + gift.coins, 0x7fffffff);
+    const long long new_gems = std::min<long long>((long long)gems + gift.gems, 0x7fffffff);
+    const std::uint32_t nc = (std::uint32_t)new_coins, ng = (std::uint32_t)new_gems;
+    std::memcpy(img->mem + profile + kCoinsAt, &nc, 4);
+    std::memcpy(img->mem + profile + kGemsAt, &ng, 4);
+    pvz2_log("[friends] %zu gift(s) added while playing: coins %u -> %u, gems %u -> %u", gift.ids.size(), coins, nc,
+             gems, ng);
+    {
+        std::lock_guard<std::mutex> lk(g_applied_lock);
+        std::string applied = read_applied();
+        for (const std::string &id : gift.ids) applied += id + "\n";
+        write_applied(applied);
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_lock);
+        g_gift_acks.insert(g_gift_acks.end(), gift.ids.begin(), gift.ids.end());
+        g_live_gifts = LiveGifts{};
+    }
+    std::string who;
+    for (std::size_t i = 0; i < gift.names.size() && i < 3; ++i) who += (i ? ", " : "") + gift.names[i];
+    if (gift.names.size() > 3) who += "...";
+    char msg[256];
+    std::snprintf(msg, sizeof(msg),
+                  L6("Gift from %s: %lld coins and %lld gems",
+                     "Regalo de %s: %lld monedas y %lld gemas",
+                     "Cadeau de %s : %lld pièces et %lld gemmes",
+                     "Geschenk von %s: %lld Münzen und %lld Juwelen",
+                     "Presente de %s: %lld moedas e %lld joias",
+                     "Regalo da %s: %lld monete e %lld gemme"),
+                  who.c_str(), gift.coins, gift.gems);
+    config_screen_toast(msg);
 }
 
 void friends_screen_shutdown(void) {
